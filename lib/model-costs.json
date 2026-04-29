@@ -1,0 +1,44 @@
+[
+  {
+    "model": "Claude Sonnet 4.6",
+    "cost": "$3 / 1M",
+    "tier": "mid",
+    "input": 3.00,
+    "output": 15.00
+  },
+  {
+    "model": "Claude Opus 4.7",
+    "cost": "$15 / 1M",
+    "tier": "high",
+    "input": 15.00,
+    "output": 75.00
+  },
+  {
+    "model": "GPT-4o",
+    "cost": "$5 / 1M",
+    "tier": "mid",
+    "input": 5.00,
+    "output": 15.00
+  },
+  {
+    "model": "GPT-4o mini",
+    "cost": "$0.15 / 1M",
+    "tier": "low",
+    "input": 0.15,
+    "output": 0.60
+  },
+  {
+    "model": "Gemini 2.5 Pro",
+    "cost": "$1.25 / 1M",
+    "tier": "low",
+    "input": 1.25,
+    "output": 10.00
+  },
+  {
+    "model": "Llama 3.3 70B",
+    "cost": "$0.59 / 1M",
+    "tier": "low",
+    "input": 0.59,
+    "output": 0.79
+  }
+]
