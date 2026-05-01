@@ -8,6 +8,7 @@ import {
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET
+const IS_PRODUCTION = process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test'
 
 type GitHubUser = {
   login?: string
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
 
   cookieStore.set(LOCAL_GITHUB_SESSION_COOKIE, encodeLocalGitHubSession(session), {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: IS_PRODUCTION,
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 7,
     path: '/',

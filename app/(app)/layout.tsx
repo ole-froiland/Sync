@@ -13,18 +13,25 @@ import type { Profile } from '@/types'
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  if (!SUPABASE_CONFIGURED) {
-    const cookieStore = await cookies()
-    const githubSession = decodeLocalGitHubSession(
-      cookieStore.get(LOCAL_GITHUB_SESSION_COOKIE)?.value
-    )
-    const profile = githubSession ? localGitHubProfile(githubSession) : mockProfiles[0]
+  const cookieStore = await cookies()
+  const githubSession = decodeLocalGitHubSession(
+    cookieStore.get(LOCAL_GITHUB_SESSION_COOKIE)?.value
+  )
 
+  if (githubSession) {
     return (
       <AppShell
-        profile={profile}
-        githubStatus={{ connected: !!githubSession, login: githubSession?.login ?? null }}
+        profile={localGitHubProfile(githubSession)}
+        githubStatus={{ connected: true, login: githubSession.login }}
       >
+        {children}
+      </AppShell>
+    )
+  }
+
+  if (!SUPABASE_CONFIGURED) {
+    return (
+      <AppShell profile={mockProfiles[0]} githubStatus={{ connected: false, login: null }}>
         {children}
       </AppShell>
     )

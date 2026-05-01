@@ -2,11 +2,25 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 const PROTECTED_PATHS = ['/dashboard', '/projects', '/chat', '/people', '/settings']
+const LOCAL_GITHUB_SESSION_COOKIE = 'sync_local_github_session'
 
 const SUPABASE_CONFIGURED =
   (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
 
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  const hasLocalGitHubSession = Boolean(request.cookies.get(LOCAL_GITHUB_SESSION_COOKIE)?.value)
+
+  if (hasLocalGitHubSession) {
+    if (pathname === '/login') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+
+    return NextResponse.next()
+  }
+
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.next()
   }
@@ -35,8 +49,6 @@ export async function proxy(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-
-  const { pathname } = request.nextUrl
 
   if (pathname === '/login' && user) {
     const url = request.nextUrl.clone()
