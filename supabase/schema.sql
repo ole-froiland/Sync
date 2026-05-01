@@ -221,6 +221,13 @@ create trigger on_auth_user_created
 -- ─────────────────────────────────────────
 -- GITHUB CONNECTIONS
 -- ─────────────────────────────────────────
+
+-- TODO: Encrypt github_access_token at rest before writing to this column.
+-- Options: pgcrypto's pgp_sym_encrypt with a secret key stored in Vault, or
+-- encrypt in the application layer (e.g. AES-GCM) before calling supabase.upsert().
+-- Currently stored as plaintext. Mitigation: the token is NEVER read on the
+-- client — all reads happen inside server-only API route handlers, and RLS
+-- restricts SELECT to the owning user only.
 create table if not exists public.github_connections (
   id                  uuid primary key default uuid_generate_v4(),
   user_id             uuid not null references public.profiles(id) on delete cascade,
@@ -232,15 +239,19 @@ create table if not exists public.github_connections (
 
 alter table public.github_connections enable row level security;
 
--- Token is only ever read server-side; these RLS policies are a safety net
+-- SELECT: a user can only read their own row. The access token is never sent to
+-- the browser — API route handlers query it server-side and use it internally.
 create policy "Users can view own github connection"
   on public.github_connections for select using (auth.uid() = user_id);
 
 create policy "Users can insert own github connection"
   on public.github_connections for insert with check (auth.uid() = user_id);
 
+-- WITH CHECK prevents a user from updating user_id to someone else's id.
 create policy "Users can update own github connection"
-  on public.github_connections for update using (auth.uid() = user_id);
+  on public.github_connections for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
 create policy "Users can delete own github connection"
   on public.github_connections for delete using (auth.uid() = user_id);

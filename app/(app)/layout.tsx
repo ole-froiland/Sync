@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import AppShell from '@/components/layout/AppShell'
 import { mockProfiles } from '@/lib/mock-data'
+import { redirect } from 'next/navigation'
 import type { Profile } from '@/types'
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
@@ -19,30 +20,33 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     data: { user },
   } = await supabase.auth.getUser()
 
+  // Middleware handles the common case, but this is defence-in-depth for when
+  // the middleware is bypassed or Supabase session validation fails mid-flight.
+  if (!user) {
+    redirect('/login')
+  }
+
   const [profileResult, githubResult] = await Promise.all([
-    user
-      ? supabase.from('profiles').select('*').eq('id', user.id).single()
-      : Promise.resolve({ data: null }),
-    user
-      ? supabase
-          .from('github_connections')
-          .select('github_login')
-          .eq('user_id', user.id)
-          .single()
-      : Promise.resolve({ data: null }),
+    supabase.from('profiles').select('*').eq('id', user.id).single(),
+    supabase
+      .from('github_connections')
+      .select('github_login')
+      .eq('user_id', user.id)
+      .single(),
   ])
 
-  const resolvedProfile: Profile = profileResult.data ?? (user
-    ? {
-        id: user.id,
-        email: user.email ?? '',
-        name: user.user_metadata?.full_name ?? user.email ?? 'User',
-        avatar_url: user.user_metadata?.avatar_url ?? null,
-        role: null,
-        tools_used: null,
-        created_at: user.created_at,
-      }
-    : mockProfiles[0])
+  // user is guaranteed non-null here (redirect above handles null case).
+  // Fall back to auth metadata if the profiles row doesn't exist yet
+  // (e.g. the trigger hasn't fired yet on first login).
+  const resolvedProfile: Profile = profileResult.data ?? {
+    id: user.id,
+    email: user.email ?? '',
+    name: user.user_metadata?.full_name ?? user.email ?? 'User',
+    avatar_url: user.user_metadata?.avatar_url ?? null,
+    role: null,
+    tools_used: null,
+    created_at: user.created_at,
+  }
 
   return (
     <AppShell
