@@ -8,6 +8,7 @@ import {
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN
+const IS_PRODUCTION = process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test'
 
 type GitHubUser = {
   login?: string
@@ -20,6 +21,10 @@ function isConfigured(value: string | undefined) {
 }
 
 async function signInWithToken(origin: string) {
+  if (IS_PRODUCTION) {
+    return NextResponse.redirect(`${origin}/login?error=github_not_configured`)
+  }
+
   if (!isConfigured(GITHUB_TOKEN)) {
     return NextResponse.redirect(`${origin}/login?error=github_not_configured`)
   }
@@ -49,7 +54,7 @@ async function signInWithToken(origin: string) {
   const cookieStore = await cookies()
   cookieStore.set(LOCAL_GITHUB_SESSION_COOKIE, encodeLocalGitHubSession(session), {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: IS_PRODUCTION,
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 7,
     path: '/',
@@ -70,7 +75,7 @@ export async function GET(request: NextRequest) {
   const cookieStore = await cookies()
   cookieStore.set('github_login_state', state, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: IS_PRODUCTION,
     sameSite: 'lax',
     maxAge: 600,
     path: '/',

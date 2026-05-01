@@ -1,14 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { LogIn, ShieldCheck, Zap } from 'lucide-react'
 import Button from '@/components/ui/Button'
-
-const SUPABASE_READY =
-  (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http') &&
-  Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) &&
-  !(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').startsWith('your_')
 
 const loginErrors: Record<string, string> = {
   auth_failed: 'GitHub login failed. Please try again.',
@@ -16,9 +10,9 @@ const loginErrors: Record<string, string> = {
   github_invalid_state: 'GitHub login expired. Please try again.',
   github_missing_params: 'GitHub did not return the expected login details.',
   github_not_configured:
-    'GitHub login needs GITHUB_TOKEN or GitHub OAuth app values in .env.local.',
+    'GitHub login needs GitHub OAuth app values in the site environment.',
   github_profile_failed: 'Could not fetch your GitHub profile. Please try again.',
-  github_token_failed: 'Could not use the configured GitHub token. Please check .env.local.',
+  github_token_failed: 'Could not finish GitHub login. Please check the GitHub configuration.',
 }
 
 export default function LoginPage() {
@@ -37,34 +31,9 @@ export default function LoginPage() {
   }, [])
 
   async function signInWithGitHub() {
-    if (!SUPABASE_READY) {
-      setLoading(true)
-      setError(null)
-      window.location.assign('/auth/github')
-      return
-    }
-
     setLoading(true)
     setError(null)
-
-    try {
-      const supabase = createClient()
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'github',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-          skipBrowserRedirect: true,
-        },
-      })
-
-      if (error) throw error
-      if (!data.url) throw new Error('GitHub did not return a login URL.')
-
-      window.location.assign(data.url)
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Could not open GitHub login.')
-      setLoading(false)
-    }
+    window.location.assign('/auth/github')
   }
 
   return (
@@ -102,11 +71,7 @@ export default function LoginPage() {
                 <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
               </svg>
             )}
-            {loading
-              ? 'Opening GitHub...'
-              : SUPABASE_READY
-                ? 'Continue with GitHub'
-                : 'Continue with GitHub locally'}
+            {loading ? 'Opening GitHub...' : 'Continue with GitHub'}
           </Button>
 
           {error && (
@@ -117,9 +82,7 @@ export default function LoginPage() {
 
           <div className="mt-6 flex items-center justify-center gap-2 border-t border-gray-100 pt-5 text-xs text-gray-500">
             <LogIn size={14} />
-            {SUPABASE_READY
-              ? 'Secure authentication by GitHub OAuth.'
-              : 'Local GitHub OAuth for development.'}
+            Secure authentication by GitHub OAuth.
           </div>
         </div>
 
