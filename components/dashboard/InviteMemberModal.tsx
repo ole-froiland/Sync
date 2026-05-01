@@ -82,7 +82,7 @@ export default function InviteMemberModal({ open, onClose, userId }: InviteMembe
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <p className="text-sm text-gray-500">Enter the email address of the person you want to invite. They will need to sign in with Google.</p>
+          <p className="text-sm text-gray-500">Enter the email address of the person you want to invite. They will need to sign in with GitHub.</p>
           <Input label="Email address" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="friend@example.com" required />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={handleClose}>Cancel</Button>
