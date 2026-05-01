@@ -2,14 +2,29 @@ import { createClient } from '@/lib/supabase/server'
 import AppShell from '@/components/layout/AppShell'
 import { mockProfiles } from '@/lib/mock-data'
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
+import {
+  decodeLocalGitHubSession,
+  localGitHubProfile,
+  LOCAL_GITHUB_SESSION_COOKIE,
+} from '@/lib/local-github-session'
 import type { Profile } from '@/types'
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   if (!SUPABASE_CONFIGURED) {
+    const cookieStore = await cookies()
+    const githubSession = decodeLocalGitHubSession(
+      cookieStore.get(LOCAL_GITHUB_SESSION_COOKIE)?.value
+    )
+    const profile = githubSession ? localGitHubProfile(githubSession) : mockProfiles[0]
+
     return (
-      <AppShell profile={mockProfiles[0]} githubStatus={{ connected: false, login: null }}>
+      <AppShell
+        profile={profile}
+        githubStatus={{ connected: !!githubSession, login: githubSession?.login ?? null }}
+      >
         {children}
       </AppShell>
     )
