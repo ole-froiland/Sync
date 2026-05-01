@@ -25,9 +25,10 @@ const nav = [
 interface SidebarProps {
   profile: Profile | null
   onSignOut: () => void
+  signingOut?: boolean
 }
 
-export default function Sidebar({ profile, onSignOut }: SidebarProps) {
+export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps) {
   const pathname = usePathname()
 
   return (
@@ -78,11 +79,14 @@ export default function Sidebar({ profile, onSignOut }: SidebarProps) {
           <Settings size={14} className="text-gray-300 dark:text-gray-600 group-hover:text-gray-500 dark:group-hover:text-gray-400 flex-shrink-0" />
         </Link>
         <button
+          type="button"
           onClick={onSignOut}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-all duration-200 mt-0.5"
+          disabled={signingOut}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-700 dark:hover:text-red-300 disabled:opacity-60 disabled:pointer-events-none transition-all duration-200 mt-1"
+          aria-label="Log out and return to login"
         >
           <LogOut size={15} />
-          Sign out
+          {signingOut ? 'Logging out...' : 'Log out'}
         </button>
       </div>
     </aside>
