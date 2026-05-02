@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 
-const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID
-const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET
+const GITHUB_CONNECT_CLIENT_ID = process.env.GITHUB_CONNECT_CLIENT_ID
+const GITHUB_CONNECT_CLIENT_SECRET = process.env.GITHUB_CONNECT_CLIENT_SECRET
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
 
 type GitHubUser = {
@@ -20,8 +20,8 @@ async function exchangeCodeForGitHubUser(code: string) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      client_id: GITHUB_CLIENT_ID,
-      client_secret: GITHUB_CLIENT_SECRET,
+      client_id: GITHUB_CONNECT_CLIENT_ID,
+      client_secret: GITHUB_CONNECT_CLIENT_SECRET,
       code,
     }),
   })
@@ -70,7 +70,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${SITE_URL}/settings?github_error=invalid_state`)
   }
 
-  if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
+  if (!GITHUB_CONNECT_CLIENT_ID || !GITHUB_CONNECT_CLIENT_SECRET) {
     return NextResponse.redirect(`${SITE_URL}/settings?github_error=not_configured`)
   }
 
