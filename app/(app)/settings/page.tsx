@@ -21,6 +21,7 @@ const GITHUB_ERROR_MESSAGES: Record<string, string> = {
   invalid_state: 'OAuth state mismatch — please try again.',
   not_configured: 'GitHub OAuth is not configured on this server.',
   token_failed: 'Failed to exchange GitHub authorization code for a token.',
+  save_failed: 'Token was received but could not be saved. Check Supabase table and RLS policies.',
 }
 
 export default function SettingsPage() {
@@ -31,30 +32,34 @@ export default function SettingsPage() {
   const [role, setRole] = useState(profile?.role ?? '')
   const [tools, setTools] = useState<string[]>(profile?.tools_used ?? [])
   const [saved, setSaved] = useState(false)
-
-  // Optimistic GitHub state (updated after disconnect)
-  const [githubConnected, setGithubConnected] = useState(github.connected)
-  const [githubLogin, setGithubLogin] = useState(github.login)
   const [disconnecting, setDisconnecting] = useState(false)
 
-  // Flash messages from OAuth redirect query params
-  const [flash, setFlash] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
-
-  useEffect(() => {
+  // Read URL params once on mount to set the initial flash — no useEffect setState needed
+  const [flash, setFlash] = useState<{ type: 'success' | 'error'; message: string } | null>(() => {
+    if (typeof window === 'undefined') return null
     const params = new URLSearchParams(window.location.search)
     if (params.get('github_connected')) {
-      setGithubConnected(true)
-      setFlash({ type: 'success', message: 'GitHub connected successfully!' })
-      // Clean URL without reload
-      window.history.replaceState({}, '', '/settings')
-    } else if (params.get('github_error')) {
+      return { type: 'success', message: 'GitHub connected successfully!' }
+    }
+    if (params.get('github_error')) {
       const code = params.get('github_error') ?? 'unknown'
-      setFlash({
-        type: 'error',
-        message: GITHUB_ERROR_MESSAGES[code] ?? 'GitHub connection failed. Please try again.',
-      })
+      const detail = params.get('detail')
+      const base = GITHUB_ERROR_MESSAGES[code] ?? 'GitHub connection failed. Please try again.'
+      return { type: 'error', message: detail ? `${base} (${decodeURIComponent(detail)})` : base }
+    }
+    return null
+  })
+
+  // Side effects only: clean URL + refresh context (no setState here)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('github_connected') || params.get('github_error')) {
       window.history.replaceState({}, '', '/settings')
     }
+    if (params.get('github_connected')) {
+      github.refresh()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function toggleTool(tool: string) {
@@ -84,8 +89,7 @@ export default function SettingsPage() {
     setDisconnecting(true)
     try {
       await fetch('/api/github/disconnect', { method: 'DELETE' })
-      setGithubConnected(false)
-      setGithubLogin(null)
+      await github.refresh()
     } finally {
       setDisconnecting(false)
     }
@@ -177,15 +181,17 @@ export default function SettingsPage() {
                   <GitBranch size={14} className="text-white dark:text-gray-900" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">GitHub</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    GitHub Repositories
+                  </p>
                   <p className="text-xs text-gray-400 dark:text-gray-500">
-                    {githubConnected && githubLogin
-                      ? `@${githubLogin}`
-                      : 'Not connected — required for repository creation'}
+                    {github.connected && github.login
+                      ? `@${github.login}`
+                      : 'Not connected — required for repository access'}
                   </p>
                 </div>
               </div>
-              {githubConnected ? (
+              {github.connected ? (
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-full">
                     Connected

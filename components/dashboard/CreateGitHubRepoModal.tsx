@@ -1,13 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Modal from '@/components/ui/Modal'
 import Input from '@/components/ui/Input'
 import Textarea from '@/components/ui/Textarea'
 import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
 import { GitBranch, CheckCircle, ExternalLink } from 'lucide-react'
-import { useGitHub } from '@/context/GitHubContext'
 import type { Project } from '@/types'
 
 interface CreateGitHubRepoModalProps {
@@ -21,7 +20,11 @@ export default function CreateGitHubRepoModal({
   onClose,
   onCreated,
 }: CreateGitHubRepoModalProps) {
-  const github = useGitHub()
+  // Fetch real connection status from the API on every open — never trust stale context.
+  // statusLoading starts true; reset() restores it to true so the next open re-checks.
+  const [statusLoading, setStatusLoading] = useState(true)
+  const [connected, setConnected] = useState(false)
+  const [login, setLogin] = useState<string | null>(null)
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -29,6 +32,22 @@ export default function CreateGitHubRepoModal({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [created, setCreated] = useState<{ name: string; url: string } | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    // No synchronous setState — all updates happen in promise callbacks
+    fetch('/api/github/status')
+      .then((r) => r.json())
+      .then((data) => {
+        setConnected(data.connected ?? false)
+        setLogin(data.login ?? null)
+      })
+      .catch(() => {
+        setConnected(false)
+        setLogin(null)
+      })
+      .finally(() => setStatusLoading(false))
+  }, [open])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -70,6 +89,10 @@ export default function CreateGitHubRepoModal({
     setError(null)
     setCreated(null)
     setLoading(false)
+    // Restore statusLoading so the next open re-checks fresh (OK here — event handler, not effect)
+    setStatusLoading(true)
+    setConnected(false)
+    setLogin(null)
   }
 
   function handleClose() {
@@ -79,7 +102,7 @@ export default function CreateGitHubRepoModal({
 
   return (
     <Modal open={open} onClose={handleClose} title="Create GitHub Repository">
-      {/* Success state */}
+      {/* Success */}
       {created ? (
         <div className="flex flex-col items-center gap-4 py-6">
           <CheckCircle size={40} className="text-green-500" />
@@ -104,8 +127,14 @@ export default function CreateGitHubRepoModal({
             Close
           </Button>
         </div>
-      ) : !github.connected ? (
-        /* GitHub not connected */
+      ) : statusLoading ? (
+        /* Checking connection */
+        <div className="flex flex-col items-center gap-3 py-8">
+          <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs text-gray-400 dark:text-gray-500">Checking GitHub connection…</p>
+        </div>
+      ) : !connected ? (
+        /* Not connected */
         <div className="flex flex-col items-center gap-4 py-6 text-center">
           <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
             <GitBranch size={22} className="text-gray-400 dark:text-gray-500" />
@@ -134,7 +163,7 @@ export default function CreateGitHubRepoModal({
             <span>
               Creating as{' '}
               <span className="font-medium text-gray-700 dark:text-gray-300">
-                {github.login}
+                {login}
               </span>{' '}
               via GitHub OAuth
             </span>

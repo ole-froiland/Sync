@@ -1,13 +1,21 @@
 'use client'
 
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useState, useCallback } from 'react'
 
 export interface GitHubStatus {
   connected: boolean
   login: string | null
 }
 
-const GitHubContext = createContext<GitHubStatus>({ connected: false, login: null })
+interface GitHubContextValue extends GitHubStatus {
+  refresh: () => Promise<void>
+}
+
+const GitHubContext = createContext<GitHubContextValue>({
+  connected: false,
+  login: null,
+  refresh: async () => {},
+})
 
 export function GitHubProvider({
   status,
@@ -16,9 +24,26 @@ export function GitHubProvider({
   status: GitHubStatus
   children: React.ReactNode
 }) {
-  return <GitHubContext.Provider value={status}>{children}</GitHubContext.Provider>
+  const [current, setCurrent] = useState<GitHubStatus>(status)
+
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fetch('/api/github/status')
+      if (!res.ok) return
+      const data = await res.json()
+      setCurrent({ connected: data.connected ?? false, login: data.login ?? null })
+    } catch {
+      // ignore network errors — keep current state
+    }
+  }, [])
+
+  return (
+    <GitHubContext.Provider value={{ ...current, refresh }}>
+      {children}
+    </GitHubContext.Provider>
+  )
 }
 
-export function useGitHub(): GitHubStatus {
+export function useGitHub(): GitHubContextValue {
   return useContext(GitHubContext)
 }

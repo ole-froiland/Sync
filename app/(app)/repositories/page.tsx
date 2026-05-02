@@ -114,8 +114,14 @@ export default function RepositoriesPage() {
   const [error, setError] = useState<{ message: string; code?: string } | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
 
-  // loading = connected but fetch hasn't finished (and no error yet)
-  const loading = github.connected && !loadingDone && !error
+  // Treat "not connected" as an API-level concern, not a stale-context concern.
+  // We always attempt the fetch; the API tells us if the token is missing.
+  const notConnected =
+    !loadingDone
+      ? false
+      : error?.code === 'not_connected' || error?.code === 'token_expired'
+
+  const loading = !loadingDone && !error
 
   const fetchRepos = useCallback(() => {
     fetch('/api/github/user-repos')
@@ -124,17 +130,21 @@ export default function RepositoriesPage() {
         if (Array.isArray(data)) {
           setRepos(data)
           setError(null)
+          // Sync the context if it was stale
+          if (!github.connected) github.refresh()
         } else {
           setError({ message: data.error ?? 'Failed to load repositories', code: data.code })
         }
       })
       .catch(() => setError({ message: 'Network error. Please try again.', code: 'network_error' }))
       .finally(() => setLoadingDone(true))
-  }, [])
+  }, [github])
 
   useEffect(() => {
-    if (github.connected) fetchRepos()
-  }, [github.connected, fetchRepos])
+    fetchRepos()
+  // Run once on mount — fetchRepos is stable (useCallback with github dep)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function handleRetry() {
     setError(null)
@@ -148,12 +158,14 @@ export default function RepositoriesPage() {
     fetchRepos()
   }
 
+  const showNewRepoButton = loadingDone && !notConnected && !error
+
   return (
     <>
       <TopBar
         title="Repositories"
         actions={
-          github.connected ? (
+          showNewRepoButton ? (
             <Button size="sm" onClick={() => setCreateOpen(true)}>
               <GitBranch size={14} />
               New repository
@@ -163,25 +175,28 @@ export default function RepositoriesPage() {
       />
 
       <div className="flex-1 overflow-y-auto px-6 py-6">
-        {/* Not connected */}
-        {!github.connected && (
+        {/* Not connected (as told by the API, not stale context) */}
+        {notConnected && (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
             <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
               <GitBranch size={26} className="text-gray-400 dark:text-gray-500" />
             </div>
             <div>
               <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
-                Connect your GitHub account
+                {error?.code === 'token_expired'
+                  ? 'GitHub token expired'
+                  : 'Connect your GitHub account'}
               </p>
               <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs">
-                Link your GitHub to view and manage your repositories directly from Sync. Your
-                token is stored securely server-side and never exposed to the browser.
+                {error?.code === 'token_expired'
+                  ? 'Your GitHub token has expired or been revoked. Please reconnect.'
+                  : 'Link your GitHub to view and manage your repositories directly from Sync. Your token is stored securely server-side.'}
               </p>
             </div>
             <a href="/api/github/connect">
               <Button>
                 <GitBranch size={14} />
-                Connect GitHub
+                {error?.code === 'token_expired' ? 'Reconnect GitHub' : 'Connect GitHub'}
               </Button>
             </a>
             <p className="text-xs text-gray-300 dark:text-gray-600">
@@ -193,8 +208,8 @@ export default function RepositoriesPage() {
           </div>
         )}
 
-        {/* Error */}
-        {github.connected && !loading && error && (
+        {/* Generic error (not a "not connected" case) */}
+        {loadingDone && error && !notConnected && (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
             <div className="w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-950/30 flex items-center justify-center">
               <AlertCircle size={24} className="text-red-400 dark:text-red-500" />
@@ -207,18 +222,9 @@ export default function RepositoriesPage() {
                 {error.message}
               </p>
             </div>
-            {error.code === 'token_expired' || error.code === 'not_connected' ? (
-              <a href="/api/github/connect">
-                <Button variant="secondary" size="sm">
-                  <GitBranch size={13} />
-                  Reconnect GitHub
-                </Button>
-              </a>
-            ) : (
-              <Button variant="secondary" size="sm" onClick={handleRetry}>
-                Try again
-              </Button>
-            )}
+            <Button variant="secondary" size="sm" onClick={handleRetry}>
+              Try again
+            </Button>
           </div>
         )}
 
@@ -232,7 +238,7 @@ export default function RepositoriesPage() {
         )}
 
         {/* Empty */}
-        {github.connected && loadingDone && !error && repos.length === 0 && (
+        {loadingDone && !error && repos.length === 0 && (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
             <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
               <GitBranch size={26} className="text-gray-400 dark:text-gray-500" />
@@ -253,7 +259,7 @@ export default function RepositoriesPage() {
         )}
 
         {/* Repos grid */}
-        {github.connected && loadingDone && !error && repos.length > 0 && (
+        {loadingDone && !error && repos.length > 0 && (
           <>
             <p className="text-xs text-gray-400 dark:text-gray-500 mb-5">
               {repos.length} {repos.length === 1 ? 'repository' : 'repositories'}
