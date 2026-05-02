@@ -1,10 +1,11 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useState, useTransition } from 'react'
 import { onboardingAction } from './actions'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import AvatarPicker from '@/components/onboarding/AvatarPicker'
+import { createClient } from '@/lib/supabase/client'
 import { Zap, Eye, EyeOff, CheckCircle, XCircle } from 'lucide-react'
 
 const PASSWORD_RULES = [
@@ -24,10 +25,53 @@ interface Props {
 }
 
 export default function OnboardingForm({ defaultFirst, defaultLast }: Props) {
-  const [state, action, pending] = useActionState(onboardingAction, null)
+  const [isPending, startTransition] = useTransition()
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [avatarId, setAvatarId] = useState('')
+
+  const isLoading = passwordLoading || isPending
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (isLoading) return
+    setError(null)
+
+    const formData = new FormData(e.currentTarget)
+    const firstName = (formData.get('firstName') as string ?? '').trim()
+    const lastName = (formData.get('lastName') as string ?? '').trim()
+
+    // Client-side validation
+    if (!firstName) { setError('First name is required.'); return }
+    if (!lastName) { setError('Last name is required.'); return }
+    if (password.length < 10) { setError('Password must be at least 10 characters.'); return }
+    if (!/[!@#$%^&*()\-_=+[\]{};':"\\|,.<>/?`~]/.test(password)) {
+      setError('Password must contain at least one special character.')
+      return
+    }
+    if (!avatarId) { setError('Please select an avatar.'); return }
+
+    // Step 1 — update password using the browser client (has the live OAuth session)
+    setPasswordLoading(true)
+    const supabase = createClient()
+    const { error: pwErr } = await supabase.auth.updateUser({ password })
+    setPasswordLoading(false)
+
+    if (pwErr) {
+      console.error('Password update error:', pwErr)
+      setError(pwErr.message)
+      return
+    }
+
+    // Step 2 — save profile fields via server action (DB write only)
+    startTransition(async () => {
+      const result = await onboardingAction(null, formData)
+      if (result?.error) setError(result.error)
+      // On success onboardingAction calls redirect('/dashboard')
+    })
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
@@ -46,8 +90,8 @@ export default function OnboardingForm({ defaultFirst, defaultLast }: Props) {
         </div>
 
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-6">
-          <form action={action} className="space-y-5">
-            {/* Hidden avatar ID – value comes from React state */}
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Hidden avatar ID – set by AvatarPicker state */}
             <input type="hidden" name="avatarId" value={avatarId} />
 
             {/* Name row */}
@@ -133,10 +177,10 @@ export default function OnboardingForm({ defaultFirst, defaultLast }: Props) {
             {/* Avatar picker */}
             <AvatarPicker value={avatarId} onChange={setAvatarId} />
 
-            {/* Server error */}
-            {state?.error && (
+            {/* Error */}
+            {error && (
               <p className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-3 py-2 text-sm text-red-700 dark:text-red-400">
-                {state.error}
+                {error}
               </p>
             )}
 
@@ -145,10 +189,10 @@ export default function OnboardingForm({ defaultFirst, defaultLast }: Props) {
               variant="primary"
               size="lg"
               className="w-full justify-center"
-              loading={pending}
-              disabled={pending || !avatarId}
+              loading={isLoading}
+              disabled={isLoading || !avatarId}
             >
-              {pending ? 'Saving…' : 'Finish setup →'}
+              {isLoading ? 'Saving…' : 'Finish setup →'}
             </Button>
           </form>
         </div>

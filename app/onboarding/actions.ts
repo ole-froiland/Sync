@@ -6,13 +6,6 @@ import { redirect } from 'next/navigation'
 
 export type OnboardingState = { error: string } | null
 
-function validatePassword(password: string): string | null {
-  if (password.length < 10) return 'Password must be at least 10 characters.'
-  if (!/[!@#$%^&*()\-_=+[\]{};':"\\|,.<>/?`~]/.test(password))
-    return 'Password must contain at least one special character.'
-  return null
-}
-
 export async function onboardingAction(
   _prevState: OnboardingState,
   formData: FormData
@@ -28,15 +21,10 @@ export async function onboardingAction(
 
   const firstName = String(formData.get('firstName') ?? '').trim()
   const lastName = String(formData.get('lastName') ?? '').trim()
-  const password = String(formData.get('password') ?? '')
   const avatarId = String(formData.get('avatarId') ?? '').trim()
 
   if (!firstName) return { error: 'First name is required.' }
   if (!lastName) return { error: 'Last name is required.' }
-
-  const pwError = validatePassword(password)
-  if (pwError) return { error: pwError }
-
   if (!avatarId) return { error: 'Please select an avatar.' }
 
   // Generate unique username from first + last name
@@ -54,11 +42,6 @@ export async function onboardingAction(
     username = `${base}${counter++}`
   }
 
-  // Add password to the existing OAuth user
-  const { error: pwError2 } = await supabase.auth.updateUser({ password })
-  if (pwError2) return { error: 'Failed to set password. Please try again.' }
-
-  // Compute avatar URL (SVG data URI) so existing Avatar components render it everywhere
   const avatar = getAvatar(avatarId)
   const avatarUrl = avatarToUrl(avatar.emoji, avatar.color)
 
