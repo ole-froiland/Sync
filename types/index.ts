@@ -2,9 +2,14 @@ export type Profile = {
   id: string
   email: string
   name: string
+  first_name: string | null
+  last_name: string | null
+  username: string | null
+  selected_avatar: string | null
   avatar_url: string | null
   role: string | null
   tools_used: string[] | null
+  onboarding_completed: boolean
   created_at: string
 }
 

@@ -18,14 +18,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     supabase.from('github_connections').select('github_login').eq('user_id', user.id).single(),
   ])
 
-  const resolvedProfile: Profile = profileResult.data ?? {
+  const profileData = profileResult.data
+
+  // Send unboarded users to the onboarding flow
+  if (!profileData || !profileData.onboarding_completed) {
+    redirect('/onboarding')
+  }
+
+  const resolvedProfile: Profile = {
     id: user.id,
-    email: user.email ?? '',
-    name: user.user_metadata?.full_name ?? user.email ?? 'User',
-    avatar_url: user.user_metadata?.avatar_url ?? null,
-    role: null,
-    tools_used: null,
-    created_at: user.created_at,
+    email: profileData.email ?? user.email ?? '',
+    name: profileData.name || user.user_metadata?.full_name || 'User',
+    first_name: profileData.first_name ?? null,
+    last_name: profileData.last_name ?? null,
+    username: profileData.username ?? null,
+    selected_avatar: profileData.selected_avatar ?? null,
+    avatar_url: profileData.avatar_url ?? user.user_metadata?.avatar_url ?? null,
+    role: profileData.role ?? null,
+    tools_used: profileData.tools_used ?? null,
+    onboarding_completed: true,
+    created_at: profileData.created_at ?? user.created_at,
   }
 
   return (
@@ -33,7 +45,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       profile={resolvedProfile}
       githubStatus={{
         connected: !!githubResult.data,
-        login: (githubResult.data as { github_login?: string | null } | null)?.github_login ?? null,
+        login:
+          (githubResult.data as { github_login?: string | null } | null)?.github_login ?? null,
       }}
     >
       {children}

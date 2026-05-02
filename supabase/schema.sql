@@ -8,13 +8,18 @@ create extension if not exists "uuid-ossp";
 -- PROFILES
 -- ─────────────────────────────────────────
 create table if not exists public.profiles (
-  id          uuid primary key references auth.users(id) on delete cascade,
-  email       text not null unique,
-  name        text not null default '',
-  avatar_url  text,
-  role        text,
-  tools_used  text[],
-  created_at  timestamptz not null default now()
+  id                   uuid primary key references auth.users(id) on delete cascade,
+  email                text not null unique,
+  name                 text not null default '',
+  first_name           text,
+  last_name            text,
+  username             text unique,
+  selected_avatar      text,
+  avatar_url           text,
+  role                 text,
+  tools_used           text[],
+  onboarding_completed boolean not null default false,
+  created_at           timestamptz not null default now()
 );
 
 alter table public.profiles enable row level security;
@@ -201,12 +206,13 @@ create policy "Project creators can update join requests"
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
-  insert into public.profiles (id, email, name, avatar_url)
+  insert into public.profiles (id, email, name, avatar_url, onboarding_completed)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data->>'full_name', new.email),
-    new.raw_user_meta_data->>'avatar_url'
+    new.raw_user_meta_data->>'avatar_url',
+    false
   )
   on conflict (id) do nothing;
   return new;
@@ -266,3 +272,18 @@ returns boolean as $$
     where email = user_email and accepted = false
   );
 $$ language sql security definer;
+
+-- ─────────────────────────────────────────
+-- MIGRATION: add onboarding fields to profiles
+-- Run this if the profiles table already exists without these columns.
+-- ─────────────────────────────────────────
+
+-- alter table public.profiles
+--   add column if not exists first_name           text,
+--   add column if not exists last_name            text,
+--   add column if not exists username             text unique,
+--   add column if not exists selected_avatar      text,
+--   add column if not exists onboarding_completed boolean not null default false;
+
+-- Mark any pre-existing users as already onboarded so they aren't sent to /onboarding:
+-- update public.profiles set onboarding_completed = true;

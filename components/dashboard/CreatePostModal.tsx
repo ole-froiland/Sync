@@ -80,10 +80,15 @@ export default function CreatePostModal({
       author: {
         id: userId,
         name: userProfile.name,
+        first_name: null,
+        last_name: null,
+        username: null,
+        selected_avatar: null,
         avatar_url: userProfile.avatar_url,
         email: '',
         role: null,
         tools_used: null,
+        onboarding_completed: true,
         created_at: '',
       },
     }

@@ -1,7 +1,16 @@
 import type { Profile, Project, Post, Message, Task } from '@/types'
 
+const MOCK_PROFILE_DEFAULTS = {
+  first_name: null,
+  last_name: null,
+  username: null,
+  selected_avatar: null,
+  onboarding_completed: true,
+} as const
+
 export const mockProfiles: Profile[] = [
   {
+    ...MOCK_PROFILE_DEFAULTS,
     id: 'user-1',
     email: 'alex@example.com',
     name: 'Alex Strand',
@@ -11,6 +20,7 @@ export const mockProfiles: Profile[] = [
     created_at: '2024-01-10T10:00:00Z',
   },
   {
+    ...MOCK_PROFILE_DEFAULTS,
     id: 'user-2',
     email: 'mia@example.com',
     name: 'Mia Berg',
@@ -20,6 +30,7 @@ export const mockProfiles: Profile[] = [
     created_at: '2024-01-12T10:00:00Z',
   },
   {
+    ...MOCK_PROFILE_DEFAULTS,
     id: 'user-3',
     email: 'jonas@example.com',
     name: 'Jonas Lie',
@@ -29,6 +40,7 @@ export const mockProfiles: Profile[] = [
     created_at: '2024-01-15T10:00:00Z',
   },
   {
+    ...MOCK_PROFILE_DEFAULTS,
     id: 'user-4',
     email: 'sara@example.com',
     name: 'Sara Dahl',
