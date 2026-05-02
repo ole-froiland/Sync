@@ -7,13 +7,17 @@ const GITHUB_CONNECT_CLIENT_SECRET = process.env.GITHUB_CONNECT_CLIENT_SECRET
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
 
 type GitHubUser = {
+  id?: number
   login?: string
+  email?: string | null
   name?: string | null
   avatar_url?: string | null
 }
 
 async function exchangeCodeForToken(code: string): Promise<{
   token: string | null
+  tokenType: string | null
+  scope: string | null
   user: GitHubUser | null
   error?: string
 }> {
@@ -34,13 +38,15 @@ async function exchangeCodeForToken(code: string): Promise<{
     tokenData = await tokenRes.json()
   } catch (err) {
     console.error('[github/callback] Token exchange network error:', err)
-    return { token: null, user: null, error: 'Token exchange network error' }
+    return { token: null, tokenType: null, scope: null, user: null, error: 'Token exchange network error' }
   }
 
   if (tokenData.error) {
     console.error('[github/callback] GitHub token error:', tokenData.error, tokenData.error_description)
     return {
       token: null,
+      tokenType: null,
+      scope: null,
       user: null,
       error: `GitHub: ${tokenData.error_description ?? tokenData.error}`,
     }
@@ -49,7 +55,7 @@ async function exchangeCodeForToken(code: string): Promise<{
   const accessToken = tokenData.access_token as string | undefined
   if (!accessToken) {
     console.error('[github/callback] No access_token in response:', tokenData)
-    return { token: null, user: null, error: 'GitHub did not return an access token' }
+    return { token: null, tokenType: null, scope: null, user: null, error: 'GitHub did not return an access token' }
   }
 
   let githubUser: GitHubUser
@@ -62,15 +68,20 @@ async function exchangeCodeForToken(code: string): Promise<{
     })
     if (!userRes.ok) {
       console.error('[github/callback] GitHub /user returned', userRes.status)
-      return { token: null, user: null, error: `GitHub /user error: ${userRes.status}` }
+      return { token: null, tokenType: null, scope: null, user: null, error: `GitHub /user error: ${userRes.status}` }
     }
     githubUser = await userRes.json()
   } catch (err) {
     console.error('[github/callback] GitHub /user network error:', err)
-    return { token: null, user: null, error: 'Could not fetch GitHub user' }
+    return { token: null, tokenType: null, scope: null, user: null, error: 'Could not fetch GitHub user' }
   }
 
-  return { token: accessToken, user: githubUser }
+  return {
+    token: accessToken,
+    tokenType: (tokenData.token_type as string) ?? null,
+    scope: (tokenData.scope as string) ?? null,
+    user: githubUser,
+  }
 }
 
 export async function GET(request: Request) {
@@ -103,7 +114,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${SITE_URL}/settings?github_error=not_configured`)
   }
 
-  const { token, user: githubUser, error: tokenError } = await exchangeCodeForToken(code)
+  const { token, tokenType, scope, user: githubUser, error: tokenError } = await exchangeCodeForToken(code)
 
   if (!token || !githubUser?.login) {
     const detail = encodeURIComponent(tokenError ?? 'unknown')
@@ -129,8 +140,12 @@ export async function GET(request: Request) {
   const { error: upsertError } = await supabase.from('github_connections').upsert(
     {
       user_id: user.id,
-      github_access_token: token,
-      github_login: githubUser.login,
+      github_user_id: githubUser.id ?? null,
+      github_username: githubUser.login,
+      github_email: githubUser.email ?? null,
+      access_token: token,
+      token_type: tokenType,
+      scope,
     },
     { onConflict: 'user_id' }
   )

@@ -15,7 +15,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const [profileResult, githubResult] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).single(),
-    supabase.from('github_connections').select('github_login').eq('user_id', user.id).single(),
+    supabase.from('github_connections').select('github_username').eq('user_id', user.id).single(),
   ])
 
   const profileData = profileResult.data
@@ -46,7 +46,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       githubStatus={{
         connected: !!githubResult.data,
         login:
-          (githubResult.data as { github_login?: string | null } | null)?.github_login ?? null,
+          (githubResult.data as { github_username?: string | null } | null)?.github_username ?? null,
       }}
     >
       {children}

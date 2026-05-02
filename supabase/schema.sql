@@ -228,39 +228,58 @@ create trigger on_auth_user_created
 -- GITHUB CONNECTIONS
 -- ─────────────────────────────────────────
 
--- TODO: Encrypt github_access_token at rest before writing to this column.
--- Options: pgcrypto's pgp_sym_encrypt with a secret key stored in Vault, or
--- encrypt in the application layer (e.g. AES-GCM) before calling supabase.upsert().
--- Currently stored as plaintext. Mitigation: the token is NEVER read on the
--- client — all reads happen inside server-only API route handlers, and RLS
--- restricts SELECT to the owning user only.
+-- See supabase/migrations/20240101_github_connections.sql for the full
+-- idempotent migration to run in the Supabase SQL editor.
+--
+-- access_token is never read on the client — all reads happen inside
+-- server-only API route handlers, and RLS restricts SELECT to the owning user.
 create table if not exists public.github_connections (
-  id                  uuid primary key default uuid_generate_v4(),
-  user_id             uuid not null references public.profiles(id) on delete cascade,
-  github_access_token text not null,
-  github_login        text,
-  created_at          timestamptz not null default now(),
-  unique(user_id)
+  id               uuid        primary key default gen_random_uuid(),
+  user_id          uuid        not null references auth.users(id) on delete cascade,
+  github_user_id   bigint,
+  github_username  text,
+  github_email     text,
+  access_token     text        not null,
+  token_type       text,
+  scope            text,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  unique (user_id)
 );
 
 alter table public.github_connections enable row level security;
 
--- SELECT: a user can only read their own row. The access token is never sent to
--- the browser — API route handlers query it server-side and use it internally.
+drop policy if exists "Users can view own github connection"   on public.github_connections;
+drop policy if exists "Users can insert own github connection" on public.github_connections;
+drop policy if exists "Users can update own github connection" on public.github_connections;
+drop policy if exists "Users can delete own github connection" on public.github_connections;
+
 create policy "Users can view own github connection"
-  on public.github_connections for select using (auth.uid() = user_id);
+  on public.github_connections for select
+  using (auth.uid() = user_id);
 
 create policy "Users can insert own github connection"
-  on public.github_connections for insert with check (auth.uid() = user_id);
+  on public.github_connections for insert
+  with check (auth.uid() = user_id);
 
--- WITH CHECK prevents a user from updating user_id to someone else's id.
 create policy "Users can update own github connection"
   on public.github_connections for update
-  using (auth.uid() = user_id)
+  using  (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
 create policy "Users can delete own github connection"
-  on public.github_connections for delete using (auth.uid() = user_id);
+  on public.github_connections for delete
+  using (auth.uid() = user_id);
+
+create or replace function public.set_updated_at()
+returns trigger language plpgsql as $$
+begin new.updated_at = now(); return new; end;
+$$;
+
+drop trigger if exists set_github_connections_updated_at on public.github_connections;
+create trigger set_github_connections_updated_at
+  before update on public.github_connections
+  for each row execute function public.set_updated_at();
 
 -- ─────────────────────────────────────────
 -- FUNCTION: check if user has valid invite

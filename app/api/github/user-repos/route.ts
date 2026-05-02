@@ -19,11 +19,11 @@ export async function GET() {
   if (SUPABASE_CONFIGURED && user) {
     const { data: connection } = await supabase
       .from('github_connections')
-      .select('github_access_token')
+      .select('access_token')
       .eq('user_id', user.id)
       .single()
 
-    githubToken = connection?.github_access_token ?? null
+    githubToken = connection?.access_token ?? null
   }
 
   githubToken ??= process.env.GITHUB_TOKEN ?? null
