@@ -45,20 +45,32 @@ export async function onboardingAction(
   const avatar = getAvatar(avatarId)
   const avatarUrl = avatarToUrl(avatar.emoji, avatar.color)
 
+  // Use upsert so this works whether the trigger already created a row or not.
+  // onConflict:'id' means: insert if missing, update if the row already exists.
   const { error: profileError } = await supabase
     .from('profiles')
-    .update({
-      first_name: firstName,
-      last_name: lastName,
-      name: `${firstName} ${lastName}`,
-      username,
-      selected_avatar: avatarId,
-      avatar_url: avatarUrl,
-      onboarding_completed: true,
-    })
-    .eq('id', user.id)
+    .upsert(
+      {
+        id: user.id,
+        email: user.email ?? '',
+        first_name: firstName,
+        last_name: lastName,
+        name: `${firstName} ${lastName}`,
+        username,
+        selected_avatar: avatarId,
+        avatar_url: avatarUrl,
+        onboarding_completed: true,
+      },
+      { onConflict: 'id' }
+    )
 
-  if (profileError) return { error: 'Failed to save profile. Please try again.' }
+  if (profileError) {
+    console.error('[onboarding] profile upsert failed:', profileError)
+    // Surface the real message so it's visible in the UI during development
+    return {
+      error: `Profile save failed: ${profileError.message} (code: ${profileError.code})`,
+    }
+  }
 
   redirect('/dashboard')
 }

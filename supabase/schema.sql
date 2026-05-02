@@ -273,17 +273,68 @@ returns boolean as $$
   );
 $$ language sql security definer;
 
--- ─────────────────────────────────────────
--- MIGRATION: add onboarding fields to profiles
--- Run this if the profiles table already exists without these columns.
--- ─────────────────────────────────────────
+-- ═════════════════════════════════════════
+-- MIGRATION — run this in the Supabase SQL
+-- editor if the profiles table already
+-- existed before the onboarding feature
+-- was added.  Safe to run more than once.
+-- ═════════════════════════════════════════
 
--- alter table public.profiles
---   add column if not exists first_name           text,
---   add column if not exists last_name            text,
---   add column if not exists username             text unique,
---   add column if not exists selected_avatar      text,
---   add column if not exists onboarding_completed boolean not null default false;
+alter table public.profiles
+  add column if not exists first_name           text,
+  add column if not exists last_name            text,
+  add column if not exists username             text,
+  add column if not exists selected_avatar      text,
+  add column if not exists onboarding_completed boolean not null default false;
 
--- Mark any pre-existing users as already onboarded so they aren't sent to /onboarding:
--- update public.profiles set onboarding_completed = true;
+-- Add unique constraint on username only if it does not exist yet
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'profiles_username_key'
+      and conrelid = 'public.profiles'::regclass
+  ) then
+    alter table public.profiles add constraint profiles_username_key unique (username);
+  end if;
+end$$;
+
+-- Rebuild the trigger function so it records onboarding_completed = false
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id, email, name, avatar_url, onboarding_completed)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data->>'full_name', new.email),
+    new.raw_user_meta_data->>'avatar_url',
+    false
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+-- Recreate RLS policies (drop first so re-runs don't error)
+alter table public.profiles enable row level security;
+
+drop policy if exists "Profiles are viewable by workspace members" on public.profiles;
+drop policy if exists "Users can update their own profile"         on public.profiles;
+drop policy if exists "Users can insert their own profile"         on public.profiles;
+
+create policy "Profiles are viewable by workspace members"
+  on public.profiles for select using (true);
+
+create policy "Users can update their own profile"
+  on public.profiles for update
+  using  (auth.uid() = id)
+  with check (auth.uid() = id);
+
+create policy "Users can insert their own profile"
+  on public.profiles for insert with check (auth.uid() = id);
+
+-- Optional: mark any users who signed up before onboarding was added
+-- as already onboarded (so they aren't redirected to /onboarding).
+-- Uncomment and run only if you have pre-existing users you want to skip:
+-- update public.profiles set onboarding_completed = true where first_name is null;
