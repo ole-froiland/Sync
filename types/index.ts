@@ -100,6 +100,21 @@ export type GitHubRepo = {
   }
 }
 
+export type GitHubUserRepo = {
+  id: number
+  name: string
+  full_name: string
+  description: string | null
+  private: boolean
+  visibility: string
+  default_branch: string
+  updated_at: string
+  html_url: string
+  language: string | null
+  fork: boolean
+  archived: boolean
+}
+
 export type NewsItem = {
   id: number
   title: string

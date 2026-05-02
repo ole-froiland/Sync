@@ -11,6 +11,7 @@ import {
   Zap,
   Settings,
   LogOut,
+  GitBranch,
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
 import type { Profile } from '@/types'
@@ -18,6 +19,7 @@ import type { Profile } from '@/types'
 const nav = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/projects', label: 'Projects', icon: FolderKanban },
+  { href: '/repositories', label: 'Repositories', icon: GitBranch },
   { href: '/chat', label: 'Chat', icon: MessageSquare },
   { href: '/people', label: 'People', icon: Users },
 ]
