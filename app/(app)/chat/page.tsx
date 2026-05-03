@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import TopBar from '@/components/layout/TopBar'
 import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -24,33 +23,13 @@ export default function ChatPage() {
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Load projects
-  useEffect(() => {
-    if (!SUPABASE_CONFIGURED) {
-      setProjects(mockProjects)
-      setActiveProjectId(mockProjects[0]?.id ?? '')
-      setProjectsLoading(false)
-      return
-    }
-    fetch('/api/projects')
-      .then((r) => r.json())
-      .then((data) => {
-        const list = Array.isArray(data) ? data : mockProjects
-        setProjects(list)
-        setActiveProjectId(list[0]?.id ?? '')
-      })
-      .catch(() => {
-        setProjects(mockProjects)
-        setActiveProjectId(mockProjects[0]?.id ?? '')
-      })
-      .finally(() => setProjectsLoading(false))
-  }, [])
-
   // Fetch messages for active project
   const fetchMessages = useCallback((projectId: string) => {
     if (!projectId) return
     if (!SUPABASE_CONFIGURED) {
-      setMessages(mockMessages.filter((m) => m.project_id === projectId))
+      queueMicrotask(() => {
+        setMessages(mockMessages.filter((m) => m.project_id === projectId))
+      })
       return
     }
     setMessagesLoading(true)
@@ -61,9 +40,40 @@ export default function ChatPage() {
       .finally(() => setMessagesLoading(false))
   }, [])
 
+  // Load projects
   useEffect(() => {
-    fetchMessages(activeProjectId)
-  }, [activeProjectId, fetchMessages])
+    if (!SUPABASE_CONFIGURED) {
+      queueMicrotask(() => {
+        const firstProjectId = mockProjects[0]?.id ?? ''
+        setProjects(mockProjects)
+        setActiveProjectId(firstProjectId)
+        setMessages(mockMessages.filter((m) => m.project_id === firstProjectId))
+        setProjectsLoading(false)
+      })
+      return
+    }
+    fetch('/api/projects')
+      .then((r) => r.json())
+      .then((data) => {
+        const list = Array.isArray(data) ? data : mockProjects
+        const firstProjectId = list[0]?.id ?? ''
+        setProjects(list)
+        setActiveProjectId(firstProjectId)
+        fetchMessages(firstProjectId)
+      })
+      .catch(() => {
+        const firstProjectId = mockProjects[0]?.id ?? ''
+        setProjects(mockProjects)
+        setActiveProjectId(firstProjectId)
+        fetchMessages(firstProjectId)
+      })
+      .finally(() => setProjectsLoading(false))
+  }, [fetchMessages])
+
+  function handleProjectSelect(projectId: string) {
+    setActiveProjectId(projectId)
+    fetchMessages(projectId)
+  }
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -168,7 +178,7 @@ export default function ChatPage() {
             projects.map((project) => (
               <button
                 key={project.id}
-                onClick={() => setActiveProjectId(project.id)}
+                onClick={() => handleProjectSelect(project.id)}
                 className={cn(
                   'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-left',
                   activeProjectId === project.id

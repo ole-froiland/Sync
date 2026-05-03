@@ -22,8 +22,10 @@ export default function SyncWithOthersModal({ open, onClose, userId }: SyncWithO
   // Pre-generate a link whenever the modal opens
   useEffect(() => {
     if (open) {
-      const token = Math.random().toString(36).slice(2, 10)
-      setInviteLink(`${window.location.origin}/login?invite=${token}`)
+      queueMicrotask(() => {
+        const token = Math.random().toString(36).slice(2, 10)
+        setInviteLink(`${window.location.origin}/login?invite=${token}`)
+      })
     }
   }, [open])
 

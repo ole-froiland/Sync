@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import { cn, initials } from '@/lib/utils'
 
 interface AvatarProps {

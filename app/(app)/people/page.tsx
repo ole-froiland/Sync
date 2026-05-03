@@ -29,9 +29,11 @@ export default function PeoplePage() {
 
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) {
-      setProfiles(mockProfiles)
-      setProjects(mockProjects)
-      setLoading(false)
+      queueMicrotask(() => {
+        setProfiles(mockProfiles)
+        setProjects(mockProjects)
+        setLoading(false)
+      })
       return
     }
 

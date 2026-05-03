@@ -1,43 +1,56 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Paths that require an authenticated Supabase session
 const PROTECTED_PATHS = ['/dashboard', '/projects', '/chat', '/people', '/settings']
 
+const SUPABASE_CONFIGURED =
+  (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http') &&
+  Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+
 export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl
+  // When Supabase is not yet configured (placeholder env vars), skip all auth
+  // logic so the app still works in mock mode during local development.
+  if (!SUPABASE_CONFIGURED) {
+    return NextResponse.next()
+  }
+
+  // Build the response that we will eventually return. Supabase SSR needs us
+  // to mutate this object so that refreshed session cookies are forwarded to
+  // the browser on every response.
   let supabaseResponse = NextResponse.next({ request })
 
-  // Skip if Supabase env vars are not configured yet
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!supabaseUrl || !supabaseUrl.startsWith('http') || !supabaseAnonKey) {
-    return supabaseResponse
-  }
-
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          // Write cookies to the outgoing request (so downstream server code sees them)
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          // Rebuild the response so cookies are also sent to the browser
+          supabaseResponse = NextResponse.next({ request })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          )
+        },
       },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-        supabaseResponse = NextResponse.next({ request })
-        cookiesToSet.forEach(({ name, value, options }) =>
-          supabaseResponse.cookies.set(name, value, options)
-        )
-      },
-    },
-  })
+    }
+  )
 
-  let user = null
-  try {
-    const { data } = await supabase.auth.getUser()
-    user = data.user
-  } catch {
-    // Supabase temporarily unavailable — layout will enforce auth
-    return supabaseResponse
-  }
+  // getUser() validates the JWT and refreshes the session when it is close to
+  // expiry. This MUST be called on every proxy run; do not short-circuit
+  // before this line or the session will silently expire.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
+  const { pathname } = request.nextUrl
+
+  // Redirect authenticated users away from the login page
   if (pathname === '/login' && user) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
@@ -47,13 +60,14 @@ export async function proxy(request: NextRequest) {
   const isProtected = PROTECTED_PATHS.some(
     (p) => pathname === p || pathname.startsWith(p + '/')
   )
-
   if (isProtected && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
+  // Return supabaseResponse (not NextResponse.next()) so that the updated
+  // session cookies are included in the response headers.
   return supabaseResponse
 }
 

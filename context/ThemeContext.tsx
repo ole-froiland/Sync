@@ -13,11 +13,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>('light')
 
   useEffect(() => {
-    const stored = localStorage.getItem('sync-theme') as Theme | null
-    const initial =
-      stored ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-    setTheme(initial)
-    document.documentElement.classList.toggle('dark', initial === 'dark')
+    queueMicrotask(() => {
+      const stored = localStorage.getItem('sync-theme') as Theme | null
+      const initial =
+        stored ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      setTheme(initial)
+      document.documentElement.classList.toggle('dark', initial === 'dark')
+    })
   }, [])
 
   function toggle() {

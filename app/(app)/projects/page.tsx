@@ -30,8 +30,10 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) {
-      setProjects(mockProjects)
-      setLoading(false)
+      queueMicrotask(() => {
+        setProjects(mockProjects)
+        setLoading(false)
+      })
       return
     }
     fetch('/api/projects')

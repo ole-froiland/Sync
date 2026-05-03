@@ -440,7 +440,7 @@ export default function RepositoriesPage() {
 
   const filteredRepos = useMemo(() => {
     const q = search.toLowerCase()
-    let result = repos.filter((repo) => {
+    const result = repos.filter((repo) => {
       if (activeGroup !== 'all' && getEffectiveGroup(repo, folderMap) !== activeGroup) return false
       if (q && !repo.name.toLowerCase().includes(q) && !repo.description?.toLowerCase().includes(q))
         return false
@@ -510,14 +510,22 @@ export default function RepositoriesPage() {
   const toggleStar = (id: number) =>
     setStarredIds((prev) => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
       return next
     })
 
   const toggleCollapse = (group: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev)
-      next.has(group) ? next.delete(group) : next.add(group)
+      if (next.has(group)) {
+        next.delete(group)
+      } else {
+        next.add(group)
+      }
       return next
     })
 

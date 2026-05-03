@@ -31,11 +31,13 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   // Fetch project
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) {
-      const mock = mockProjects.find((p) => p.id === id) ?? mockProjects[0]
-      setProject(mock)
-      setTasks(mockTasks.filter((t) => t.project_id === mock.id))
-      setMessages(mockMessages.filter((m) => m.project_id === mock.id))
-      setLoading(false)
+      queueMicrotask(() => {
+        const mock = mockProjects.find((p) => p.id === id) ?? mockProjects[0]
+        setProject(mock)
+        setTasks(mockTasks.filter((t) => t.project_id === mock.id))
+        setMessages(mockMessages.filter((m) => m.project_id === mock.id))
+        setLoading(false)
+      })
       return
     }
 

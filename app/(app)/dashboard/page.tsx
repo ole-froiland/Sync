@@ -49,11 +49,13 @@ export default function DashboardPage() {
 
   // Hydrate tab from localStorage after mount to avoid SSR mismatch
   useEffect(() => {
-    const saved = localStorage.getItem('dashboard-tab') as Tab | null
-    if (saved && ['feed', 'discover', 'trending'].includes(saved)) {
-      setActiveTab(saved)
-    }
-    setTabReady(true)
+    queueMicrotask(() => {
+      const saved = localStorage.getItem('dashboard-tab') as Tab | null
+      if (saved && ['feed', 'discover', 'trending'].includes(saved)) {
+        setActiveTab(saved)
+      }
+      setTabReady(true)
+    })
   }, [])
 
   function handleTabChange(tab: Tab) {
@@ -64,8 +66,10 @@ export default function DashboardPage() {
   // Fetch posts
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) {
-      setPosts(mockPosts)
-      setPostsLoading(false)
+      queueMicrotask(() => {
+        setPosts(mockPosts)
+        setPostsLoading(false)
+      })
       return
     }
     fetch('/api/posts')

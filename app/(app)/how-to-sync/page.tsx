@@ -61,8 +61,10 @@ export default function HowToSyncPage() {
 
   // Generate a share link on mount
   useEffect(() => {
-    const token = Math.random().toString(36).slice(2, 10)
-    setInviteLink(`${window.location.origin}/login?invite=${token}`)
+    queueMicrotask(() => {
+      const token = Math.random().toString(36).slice(2, 10)
+      setInviteLink(`${window.location.origin}/login?invite=${token}`)
+    })
   }, [])
 
   async function copyInviteLink() {

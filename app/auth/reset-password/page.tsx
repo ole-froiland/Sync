@@ -38,7 +38,9 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get('code')
     if (!code) {
-      setStage('invalid')
+      queueMicrotask(() => {
+        setStage('invalid')
+      })
       return
     }
 

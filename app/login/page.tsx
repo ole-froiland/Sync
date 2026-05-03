@@ -126,7 +126,7 @@ export default function LoginPage() {
                 </button>
                 <h2 className="text-base font-semibold text-gray-900">Reset your password</h2>
                 <p className="text-sm text-gray-400 mt-1">
-                  Enter your email and we'll send you a reset link.
+                  Enter your email and we&apos;ll send you a reset link.
                 </p>
               </div>
 

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Avatar from '@/components/ui/Avatar'
-import { GitBranch, ExternalLink, CheckSquare, Users } from 'lucide-react'
+import { GitBranch, ExternalLink, CheckSquare } from 'lucide-react'
 import { STATUS_COLORS, STATUS_LABELS } from '@/lib/utils'
 import type { Project } from '@/types'
 

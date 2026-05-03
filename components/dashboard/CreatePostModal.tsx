@@ -69,8 +69,14 @@ export default function CreatePostModal({
     } catch {}
 
     // Mock fallback (Supabase not configured)
+    const mockIdBase = title
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+    const mockPostId = `post-${mockIdBase || 'draft'}-${body.length}`
     const mockPost: Post = {
-      id: `post-${Date.now()}`,
+      id: mockPostId,
       author_id: userId,
       title,
       body,
