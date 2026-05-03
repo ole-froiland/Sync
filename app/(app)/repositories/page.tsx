@@ -1,6 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from 'react'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -23,24 +30,64 @@ import {
   ChevronDown,
   ChevronRight,
   LayoutGrid,
+  MoreHorizontal,
+  Check,
+  Plus,
+  FolderPlus,
 } from 'lucide-react'
 
-type Group = 'all' | 'active' | 'side-projects' | 'archived'
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 type SortKey = 'updated' | 'name'
+// Keys are String(repo.id) — JSON always serialises numeric keys as strings
+type FolderMap = Record<string, string>
+
+interface FolderDef {
+  id: string
+  label: string
+  icon: ReactNode
+  isCustom?: boolean
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const ACTIVE_THRESHOLD_MS = 14 * 24 * 60 * 60 * 1000
 
-function getRepoGroup(repo: GitHubUserRepo): 'active' | 'side-projects' | 'archived' {
+const DEFAULT_FOLDERS: FolderDef[] = [
+  { id: 'active', label: 'Active', icon: <Zap size={13} /> },
+  { id: 'side-projects', label: 'Side projects', icon: <Folder size={13} /> },
+  { id: 'archived', label: 'Archived', icon: <Archive size={13} /> },
+]
+
+const LS_FOLDER_MAP = 'sync_repo_folder_map'
+const LS_CUSTOM_FOLDERS = 'sync_custom_folders'
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function lsGet<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw !== null ? (JSON.parse(raw) as T) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function getAutoGroup(repo: GitHubUserRepo): string {
   if (repo.archived) return 'archived'
   if (Date.now() - new Date(repo.updated_at).getTime() <= ACTIVE_THRESHOLD_MS) return 'active'
   return 'side-projects'
 }
 
-const GROUPS: { id: Exclude<Group, 'all'>; label: string; icon: ReactNode }[] = [
-  { id: 'active', label: 'Active', icon: <Zap size={13} /> },
-  { id: 'side-projects', label: 'Side projects', icon: <Folder size={13} /> },
-  { id: 'archived', label: 'Archived', icon: <Archive size={13} /> },
-]
+function getEffectiveGroup(repo: GitHubUserRepo, folderMap: FolderMap): string {
+  return folderMap[String(repo.id)] ?? getAutoGroup(repo)
+}
+
+function genId(): string {
+  return Math.random().toString(36).slice(2, 9)
+}
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function RepoSkeleton() {
   return (
@@ -60,17 +107,143 @@ function RepoSkeleton() {
   )
 }
 
+// ─── Sidebar item (drag-drop target) ─────────────────────────────────────────
+
+function SidebarItem({
+  icon,
+  label,
+  count,
+  active,
+  dragOver,
+  onClick,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: {
+  icon: ReactNode
+  label: string
+  count: number
+  active: boolean
+  dragOver: boolean
+  onClick: () => void
+  onDragOver: (e: React.DragEvent) => void
+  onDragLeave: () => void
+  onDrop: (e: React.DragEvent) => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className={cn(
+        'w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-sm transition-all duration-100',
+        active
+          ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium'
+          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-700 dark:hover:text-gray-300',
+        dragOver &&
+          'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 ring-1 ring-inset ring-indigo-200 dark:ring-indigo-800'
+      )}
+    >
+      {/* pointer-events-none prevents dragleave firing on child elements */}
+      <span className="flex items-center gap-2 pointer-events-none">
+        {icon}
+        {label}
+      </span>
+      <span className="text-xs tabular-nums pointer-events-none">{count}</span>
+    </button>
+  )
+}
+
+// ─── Move-to dropdown ─────────────────────────────────────────────────────────
+
+function MoveMenu({
+  folders,
+  currentFolderId,
+  onMove,
+  onNewFolder,
+}: {
+  folders: FolderDef[]
+  currentFolderId: string
+  onMove: (folderId: string) => void
+  onNewFolder: () => void
+}) {
+  return (
+    <div
+      className="absolute right-0 top-full mt-1 z-50 min-w-[172px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg shadow-black/5 dark:shadow-black/30 py-1"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 px-3 pt-1.5 pb-1">
+        Move to folder
+      </p>
+      {folders.map((f) => (
+        <button
+          key={f.id}
+          onClick={() => onMove(f.id)}
+          className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm text-gray-700 dark:text-gray-300"
+        >
+          <span className="flex items-center gap-2">
+            <span className="text-gray-400 dark:text-gray-500">{f.icon}</span>
+            {f.label}
+          </span>
+          {currentFolderId === f.id && (
+            <Check size={12} className="text-indigo-500 flex-shrink-0 ml-2" />
+          )}
+        </button>
+      ))}
+      <div className="my-1 mx-2 h-px bg-gray-100 dark:bg-gray-800" />
+      <button
+        onClick={onNewFolder}
+        className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm text-gray-500 dark:text-gray-400"
+      >
+        <FolderPlus size={13} />
+        New folder
+      </button>
+    </div>
+  )
+}
+
+// ─── Repo card ────────────────────────────────────────────────────────────────
+
 function RepoCard({
   repo,
   starred,
+  folders,
+  currentFolderId,
+  menuOpen,
+  isDragging,
   onToggleStar,
+  onOpenMenu,
+  onMove,
+  onNewFolder,
+  onDragStart,
+  onDragEnd,
 }: {
   repo: GitHubUserRepo
   starred: boolean
+  folders: FolderDef[]
+  currentFolderId: string
+  menuOpen: boolean
+  isDragging: boolean
   onToggleStar: () => void
+  onOpenMenu: () => void
+  onMove: (folderId: string) => void
+  onNewFolder: () => void
+  onDragStart: () => void
+  onDragEnd: () => void
 }) {
   return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl p-5 flex flex-col gap-3 hover:border-gray-200 dark:hover:border-gray-700 transition-colors">
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className={cn(
+        'relative bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl p-5 flex flex-col gap-3',
+        'cursor-grab active:cursor-grabbing select-none',
+        'hover:border-gray-200 dark:hover:border-gray-700 transition-all duration-150',
+        isDragging && 'opacity-40 scale-[0.97]'
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           {repo.private ? (
@@ -82,6 +255,7 @@ function RepoCard({
             href={repo.html_url}
             target="_blank"
             rel="noopener noreferrer"
+            draggable={false}
             className="text-sm font-semibold text-gray-900 dark:text-gray-100 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors truncate"
           >
             {repo.name}
@@ -93,6 +267,7 @@ function RepoCard({
             <Archive size={12} className="text-amber-400 dark:text-amber-500 flex-shrink-0" />
           )}
         </div>
+
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
             onClick={onToggleStar}
@@ -102,16 +277,36 @@ function RepoCard({
                 ? 'text-amber-400 hover:text-amber-500'
                 : 'text-gray-200 dark:text-gray-700 hover:text-amber-400 dark:hover:text-amber-500'
             )}
-            aria-label={starred ? 'Unstar' : 'Star'}
           >
             <Star size={13} fill={starred ? 'currentColor' : 'none'} />
           </button>
+
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenMenu()
+              }}
+              className="p-1 rounded text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 transition-colors"
+            >
+              <MoreHorizontal size={13} />
+            </button>
+            {menuOpen && (
+              <MoveMenu
+                folders={folders}
+                currentFolderId={currentFolderId}
+                onMove={onMove}
+                onNewFolder={onNewFolder}
+              />
+            )}
+          </div>
+
           <a
             href={repo.html_url}
             target="_blank"
             rel="noopener noreferrer"
+            draggable={false}
             className="p-1 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 transition-colors"
-            aria-label={`Open ${repo.name} on GitHub`}
           >
             <ExternalLink size={13} />
           </a>
@@ -135,16 +330,13 @@ function RepoCard({
         >
           {repo.private ? 'Private' : 'Public'}
         </span>
-
         {repo.language && (
           <span className="text-xs text-gray-400 dark:text-gray-500">{repo.language}</span>
         )}
-
         <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
           <GitBranch size={11} />
           {repo.default_branch}
         </span>
-
         <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
           Updated {formatDate(repo.updated_at)}
         </span>
@@ -153,26 +345,134 @@ function RepoCard({
   )
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function RepositoriesPage() {
   const github = useGitHub()
 
+  // GitHub data
   const [repos, setRepos] = useState<GitHubUserRepo[]>([])
   const [loadingDone, setLoadingDone] = useState(false)
   const [error, setError] = useState<{ message: string; code?: string } | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
 
-  const [activeGroup, setActiveGroup] = useState<Group>('all')
+  // Folder system (localStorage-backed)
+  const [folderMap, setFolderMap] = useState<FolderMap>(() =>
+    typeof window !== 'undefined' ? lsGet<FolderMap>(LS_FOLDER_MAP, {}) : {}
+  )
+  const [customFolders, setCustomFolders] = useState<FolderDef[]>(() => {
+    if (typeof window === 'undefined') return []
+    return lsGet<{ id: string; label: string }[]>(LS_CUSTOM_FOLDERS, []).map((f) => ({
+      id: f.id,
+      label: f.label,
+      icon: <Folder size={13} />,
+      isCustom: true,
+    }))
+  })
+
+  // UI state
+  const [activeGroup, setActiveGroup] = useState('all')
   const [sortKey, setSortKey] = useState<SortKey>('updated')
   const [search, setSearch] = useState('')
   const [starredIds, setStarredIds] = useState<Set<number>>(new Set())
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [openMenuRepoId, setOpenMenuRepoId] = useState<number | null>(null)
+
+  // New folder input
+  const [newFolderVisible, setNewFolderVisible] = useState(false)
+  const [newFolderForRepoId, setNewFolderForRepoId] = useState<number | null>(null)
+  const [newFolderName, setNewFolderName] = useState('')
+  const newFolderRef = useRef<HTMLInputElement>(null)
+  const newFolderSubmittedRef = useRef(false)
+
+  // Drag state
+  const [dragRepoId, setDragRepoId] = useState<number | null>(null)
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null)
+
+  // Persist to localStorage whenever folder state changes
+  useEffect(() => {
+    localStorage.setItem(LS_FOLDER_MAP, JSON.stringify(folderMap))
+  }, [folderMap])
+
+  useEffect(() => {
+    localStorage.setItem(
+      LS_CUSTOM_FOLDERS,
+      JSON.stringify(customFolders.map(({ id, label }) => ({ id, label })))
+    )
+  }, [customFolders])
+
+  // Close card context menu on any outside click
+  useEffect(() => {
+    if (openMenuRepoId === null) return
+    const close = () => setOpenMenuRepoId(null)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [openMenuRepoId])
+
+  // Auto-focus new folder input when it appears
+  useEffect(() => {
+    if (newFolderVisible) {
+      newFolderSubmittedRef.current = false
+      requestAnimationFrame(() => newFolderRef.current?.focus())
+    }
+  }, [newFolderVisible])
+
+  // ── Derived ────────────────────────────────────────────────────────────────
 
   const notConnected =
-    !loadingDone
-      ? false
-      : error?.code === 'not_connected' || error?.code === 'token_expired'
-
+    !loadingDone ? false : error?.code === 'not_connected' || error?.code === 'token_expired'
   const loading = !loadingDone && !error
+
+  const allFolders = useMemo<FolderDef[]>(
+    () => [...DEFAULT_FOLDERS, ...customFolders],
+    [customFolders]
+  )
+
+  const groupCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const f of allFolders) counts[f.id] = 0
+    for (const repo of repos) {
+      const g = getEffectiveGroup(repo, folderMap)
+      counts[g] = (counts[g] ?? 0) + 1
+    }
+    return counts
+  }, [repos, folderMap, allFolders])
+
+  const filteredRepos = useMemo(() => {
+    const q = search.toLowerCase()
+    let result = repos.filter((repo) => {
+      if (activeGroup !== 'all' && getEffectiveGroup(repo, folderMap) !== activeGroup) return false
+      if (q && !repo.name.toLowerCase().includes(q) && !repo.description?.toLowerCase().includes(q))
+        return false
+      return true
+    })
+    return [...result].sort((a, b) =>
+      sortKey === 'name'
+        ? a.name.localeCompare(b.name)
+        : new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    )
+  }, [repos, activeGroup, search, sortKey, folderMap])
+
+  const groupedRepos = useMemo(() => {
+    if (activeGroup !== 'all') return null
+    const groups: Record<string, GitHubUserRepo[]> = {}
+    for (const repo of filteredRepos) {
+      const g = getEffectiveGroup(repo, folderMap)
+      ;(groups[g] ??= []).push(repo)
+    }
+    return groups
+  }, [activeGroup, filteredRepos, folderMap])
+
+  // Folders that have at least one repo in current filtered view
+  const sectionFolders = useMemo(
+    () => (groupedRepos ? allFolders.filter((f) => (groupedRepos[f.id]?.length ?? 0) > 0) : []),
+    [allFolders, groupedRepos]
+  )
+
+  const showSidebar = loadingDone && !error
+  const showNewRepoButton = loadingDone && !notConnected && !error
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
   const fetchRepos = useCallback(() => {
     fetch('/api/github/user-repos')
@@ -195,75 +495,87 @@ export default function RepositoriesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function handleRetry() {
+  const handleRetry = () => {
     setError(null)
     setLoadingDone(false)
     fetchRepos()
   }
 
-  function handleRepoCreated() {
+  const handleRepoCreated = () => {
     setLoadingDone(false)
     setError(null)
     fetchRepos()
   }
 
-  function toggleStar(id: number) {
+  const toggleStar = (id: number) =>
     setStarredIds((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      next.has(id) ? next.delete(id) : next.add(id)
       return next
     })
-  }
 
-  function toggleCollapse(group: string) {
+  const toggleCollapse = (group: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev)
-      if (next.has(group)) next.delete(group)
-      else next.add(group)
+      next.has(group) ? next.delete(group) : next.add(group)
       return next
     })
+
+  const moveRepo = (repoId: number, folderId: string) => {
+    setFolderMap((prev) => ({ ...prev, [String(repoId)]: folderId }))
+    setOpenMenuRepoId(null)
   }
 
-  const groupCounts = useMemo(() => {
-    const counts: Record<'active' | 'side-projects' | 'archived', number> = {
-      active: 0,
-      'side-projects': 0,
-      archived: 0,
+  const handleDrop = (folderId: string) => {
+    if (dragRepoId === null) return
+    if (folderId === 'all') {
+      // Drop on "All repos" → remove manual assignment (revert to auto)
+      setFolderMap((prev) => {
+        const next = { ...prev }
+        delete next[String(dragRepoId)]
+        return next
+      })
+    } else {
+      setFolderMap((prev) => ({ ...prev, [String(dragRepoId)]: folderId }))
     }
-    for (const repo of repos) counts[getRepoGroup(repo)]++
-    return counts
-  }, [repos])
+    setDragRepoId(null)
+    setDragOverFolderId(null)
+  }
 
-  const filteredRepos = useMemo(() => {
-    const q = search.toLowerCase()
-    let result = repos.filter((repo) => {
-      if (activeGroup !== 'all' && getRepoGroup(repo) !== activeGroup) return false
-      if (q && !repo.name.toLowerCase().includes(q) && !repo.description?.toLowerCase().includes(q))
-        return false
-      return true
-    })
-    result = [...result].sort((a, b) =>
-      sortKey === 'name'
-        ? a.name.localeCompare(b.name)
-        : new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-    )
-    return result
-  }, [repos, activeGroup, search, sortKey])
+  const openNewFolder = (forRepoId?: number) => {
+    setNewFolderForRepoId(forRepoId ?? null)
+    setOpenMenuRepoId(null)
+    setNewFolderVisible(true)
+  }
 
-  const groupedRepos = useMemo(() => {
-    if (activeGroup !== 'all') return null
-    const groups: Record<'active' | 'side-projects' | 'archived', GitHubUserRepo[]> = {
-      active: [],
-      'side-projects': [],
-      archived: [],
+  const cancelNewFolder = () => {
+    setNewFolderVisible(false)
+    setNewFolderName('')
+    setNewFolderForRepoId(null)
+  }
+
+  const confirmNewFolder = (name: string) => {
+    if (newFolderSubmittedRef.current) return
+    newFolderSubmittedRef.current = true
+
+    const trimmed = name.trim()
+    if (!trimmed) { cancelNewFolder(); return }
+
+    const id = genId()
+    setCustomFolders((prev) => [
+      ...prev,
+      { id, label: trimmed, icon: <Folder size={13} />, isCustom: true },
+    ])
+    if (newFolderForRepoId !== null) {
+      setFolderMap((prev) => ({ ...prev, [String(newFolderForRepoId)]: id }))
     }
-    for (const repo of filteredRepos) groups[getRepoGroup(repo)].push(repo)
-    return groups
-  }, [activeGroup, filteredRepos])
+    setNewFolderVisible(false)
+    setNewFolderName('')
+    setNewFolderForRepoId(null)
+    setActiveGroup(id)
+  }
 
-  const showSidebar = loadingDone && !error
-  const showNewRepoButton = loadingDone && !notConnected && !error
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -280,54 +592,75 @@ export default function RepositoriesPage() {
       />
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left filter sidebar — only when loaded */}
+
+        {/* ── Left sidebar ──────────────────────────────────────────────── */}
         {showSidebar && (
-          <nav className="w-44 shrink-0 border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 py-3 px-2 overflow-y-auto">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 px-1 mb-2">
-              Folders
-            </p>
+          <nav className="w-48 shrink-0 border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 py-3 px-2 overflow-y-auto flex flex-col gap-px">
 
-            <button
+            <SidebarItem
+              icon={<LayoutGrid size={13} />}
+              label="All repos"
+              count={repos.length}
+              active={activeGroup === 'all'}
+              dragOver={dragOverFolderId === 'all'}
               onClick={() => setActiveGroup('all')}
-              className={cn(
-                'w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-sm transition-colors',
-                activeGroup === 'all'
-                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium'
-                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-700 dark:hover:text-gray-300'
-              )}
-            >
-              <span className="flex items-center gap-2">
-                <LayoutGrid size={13} />
-                All repos
-              </span>
-              <span className="text-xs tabular-nums">{repos.length}</span>
-            </button>
+              onDragOver={(e) => { e.preventDefault(); setDragOverFolderId('all') }}
+              onDragLeave={() => setDragOverFolderId(null)}
+              onDrop={(e) => { e.preventDefault(); handleDrop('all') }}
+            />
 
-            <div className="my-2 h-px bg-gray-100 dark:bg-gray-800" />
+            <div className="my-1.5 h-px bg-gray-100 dark:bg-gray-800" />
 
-            {GROUPS.map((g) => (
-              <button
-                key={g.id}
-                onClick={() => setActiveGroup(g.id)}
-                className={cn(
-                  'w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-sm transition-colors',
-                  activeGroup === g.id
-                    ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium'
-                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-700 dark:hover:text-gray-300'
-                )}
-              >
-                <span className="flex items-center gap-2">
-                  {g.icon}
-                  {g.label}
-                </span>
-                <span className="text-xs tabular-nums">{groupCounts[g.id]}</span>
-              </button>
+            {allFolders.map((f) => (
+              <SidebarItem
+                key={f.id}
+                icon={f.icon}
+                label={f.label}
+                count={groupCounts[f.id] ?? 0}
+                active={activeGroup === f.id}
+                dragOver={dragOverFolderId === f.id}
+                onClick={() => setActiveGroup(f.id)}
+                onDragOver={(e) => { e.preventDefault(); setDragOverFolderId(f.id) }}
+                onDragLeave={() => setDragOverFolderId(null)}
+                onDrop={(e) => { e.preventDefault(); handleDrop(f.id) }}
+              />
             ))}
+
+            {/* Inline new-folder input */}
+            {newFolderVisible ? (
+              <div className="mt-1 px-0.5">
+                <input
+                  ref={newFolderRef}
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); confirmNewFolder(newFolderName) }
+                    if (e.key === 'Escape') cancelNewFolder()
+                  }}
+                  onBlur={() => confirmNewFolder(newFolderName)}
+                  placeholder="Folder name…"
+                  className="w-full px-2 py-1.5 text-sm rounded-lg border border-indigo-300 dark:border-indigo-700 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 px-1">
+                  Enter to confirm · Esc to cancel
+                </p>
+              </div>
+            ) : (
+              <button
+                onClick={() => openNewFolder()}
+                className="mt-1 w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+              >
+                <Plus size={12} />
+                New folder
+              </button>
+            )}
           </nav>
         )}
 
+        {/* ── Main content ──────────────────────────────────────────────── */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Search + sort bar — only when we have repos */}
+
+          {/* Search + sort */}
           {showSidebar && repos.length > 0 && (
             <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex-shrink-0">
               <div className="relative flex-1 max-w-xs">
@@ -338,7 +671,7 @@ export default function RepositoriesPage() {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search repositories..."
+                  placeholder="Search repositories…"
                   className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
               </div>
@@ -354,6 +687,7 @@ export default function RepositoriesPage() {
           )}
 
           <div className="flex-1 overflow-y-auto px-6 py-6">
+
             {/* Not connected */}
             {notConnected && (
               <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
@@ -362,9 +696,7 @@ export default function RepositoriesPage() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
-                    {error?.code === 'token_expired'
-                      ? 'GitHub token expired'
-                      : 'Connect your GitHub account'}
+                    {error?.code === 'token_expired' ? 'GitHub token expired' : 'Connect your GitHub account'}
                   </p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs">
                     {error?.code === 'token_expired'
@@ -397,9 +729,7 @@ export default function RepositoriesPage() {
                   <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
                     Failed to load repositories
                   </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs">
-                    {error.message}
-                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs">{error.message}</p>
                 </div>
                 <Button variant="secondary" size="sm" onClick={handleRetry}>
                   Try again
@@ -407,16 +737,14 @@ export default function RepositoriesPage() {
               </div>
             )}
 
-            {/* Loading skeletons */}
+            {/* Loading */}
             {loading && (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {Array.from({ length: 9 }).map((_, i) => (
-                  <RepoSkeleton key={i} />
-                ))}
+                {Array.from({ length: 9 }).map((_, i) => <RepoSkeleton key={i} />)}
               </div>
             )}
 
-            {/* Empty — no repos at all */}
+            {/* Empty — no repos */}
             {loadingDone && !error && repos.length === 0 && (
               <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
                 <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
@@ -437,17 +765,14 @@ export default function RepositoriesPage() {
               </div>
             )}
 
-            {/* No results from search/filter */}
+            {/* No results */}
             {loadingDone && !error && repos.length > 0 && filteredRepos.length === 0 && (
               <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
                 <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
                   No repositories match
                 </p>
                 <button
-                  onClick={() => {
-                    setSearch('')
-                    setActiveGroup('all')
-                  }}
+                  onClick={() => { setSearch(''); setActiveGroup('all') }}
                   className="text-xs text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                 >
                   Clear filters
@@ -455,34 +780,48 @@ export default function RepositoriesPage() {
               </div>
             )}
 
-            {/* Repos — grouped (all) or flat (specific group) */}
-            {loadingDone && !error && filteredRepos.length > 0 &&
-              (activeGroup === 'all' ? (
+            {/* Repos grid */}
+            {loadingDone && !error && filteredRepos.length > 0 && (
+              activeGroup === 'all' ? (
+                // Grouped sections
                 <div className="space-y-8">
-                  {GROUPS.map((g) => {
-                    const groupRepos = groupedRepos![g.id]
-                    if (groupRepos.length === 0) return null
-                    const isCollapsed = collapsed.has(g.id)
+                  {sectionFolders.map((f) => {
+                    const sectionRepos = groupedRepos![f.id] ?? []
+                    const isCollapsed = collapsed.has(f.id)
                     return (
-                      <div key={g.id}>
+                      <div key={f.id}>
                         <button
-                          onClick={() => toggleCollapse(g.id)}
+                          onClick={() => toggleCollapse(f.id)}
                           className="flex items-center gap-1.5 mb-4 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
                         >
                           {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-                          {g.label}
+                          {f.label}
                           <span className="font-normal text-gray-300 dark:text-gray-600 ml-0.5">
-                            {groupRepos.length}
+                            {sectionRepos.length}
                           </span>
                         </button>
                         {!isCollapsed && (
                           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                            {groupRepos.map((repo) => (
+                            {sectionRepos.map((repo) => (
                               <RepoCard
                                 key={repo.id}
                                 repo={repo}
                                 starred={starredIds.has(repo.id)}
+                                folders={allFolders}
+                                currentFolderId={getEffectiveGroup(repo, folderMap)}
+                                menuOpen={openMenuRepoId === repo.id}
+                                isDragging={dragRepoId === repo.id}
                                 onToggleStar={() => toggleStar(repo.id)}
+                                onOpenMenu={() =>
+                                  setOpenMenuRepoId(openMenuRepoId === repo.id ? null : repo.id)
+                                }
+                                onMove={(folderId) => moveRepo(repo.id, folderId)}
+                                onNewFolder={() => openNewFolder(repo.id)}
+                                onDragStart={() => setDragRepoId(repo.id)}
+                                onDragEnd={() => {
+                                  setDragRepoId(null)
+                                  setDragOverFolderId(null)
+                                }}
                               />
                             ))}
                           </div>
@@ -492,17 +831,34 @@ export default function RepositoriesPage() {
                   })}
                 </div>
               ) : (
+                // Flat grid for a specific folder
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                   {filteredRepos.map((repo) => (
                     <RepoCard
                       key={repo.id}
                       repo={repo}
                       starred={starredIds.has(repo.id)}
+                      folders={allFolders}
+                      currentFolderId={getEffectiveGroup(repo, folderMap)}
+                      menuOpen={openMenuRepoId === repo.id}
+                      isDragging={dragRepoId === repo.id}
                       onToggleStar={() => toggleStar(repo.id)}
+                      onOpenMenu={() =>
+                        setOpenMenuRepoId(openMenuRepoId === repo.id ? null : repo.id)
+                      }
+                      onMove={(folderId) => moveRepo(repo.id, folderId)}
+                      onNewFolder={() => openNewFolder(repo.id)}
+                      onDragStart={() => setDragRepoId(repo.id)}
+                      onDragEnd={() => {
+                        setDragRepoId(null)
+                        setDragOverFolderId(null)
+                      }}
                     />
                   ))}
                 </div>
-              ))}
+              )
+            )}
+
           </div>
         </div>
       </div>
