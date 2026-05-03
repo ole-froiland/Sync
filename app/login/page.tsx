@@ -39,6 +39,8 @@ export default function LoginPage() {
   const [forgotLoading, setForgotLoading] = useState(false)
   const [forgotSuccess, setForgotSuccess] = useState(false)
   const [forgotError, setForgotError] = useState<string | null>(null)
+  // 60-second cooldown — counts down each second; survives view toggles
+  const [cooldownLeft, setCooldownLeft] = useState(0)
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has('error')) {
@@ -46,7 +48,14 @@ export default function LoginPage() {
     }
   }, [])
 
-  // Reset forgot-password state when switching tabs or closing the view
+  // Tick down one second at a time
+  useEffect(() => {
+    if (cooldownLeft <= 0) return
+    const id = setTimeout(() => setCooldownLeft((n) => n - 1), 1000)
+    return () => clearTimeout(id)
+  }, [cooldownLeft])
+
+  // Reset per-attempt state when opening the view; cooldown intentionally persists
   function openForgot() {
     setForgotEmail('')
     setForgotSuccess(false)
@@ -77,7 +86,7 @@ export default function LoginPage() {
 
   async function sendResetLink(e: React.FormEvent) {
     e.preventDefault()
-    if (forgotLoading) return
+    if (forgotLoading || cooldownLeft > 0) return
     setForgotLoading(true)
     setForgotError(null)
     const supabase = createClient()
@@ -86,9 +95,11 @@ export default function LoginPage() {
     const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, { redirectTo })
     setForgotLoading(false)
     if (error) {
+      console.error('[auth] resetPasswordForEmail failed:', error.message, error)
       setForgotError('Something went wrong. Please try again.')
     } else {
       setForgotSuccess(true)
+      setCooldownLeft(60)
     }
   }
 
@@ -119,35 +130,45 @@ export default function LoginPage() {
                 </p>
               </div>
 
-              {forgotSuccess ? (
+              {forgotSuccess && (
                 <div className="rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700">
-                  Check your email for a password reset link.
+                  If an account exists, we sent a reset link. Check spam and wait before requesting again.
                 </div>
-              ) : (
-                <form onSubmit={sendResetLink} className="space-y-4">
-                  <div>
-                    <label htmlFor="reset-email" className={labelCls}>Email</label>
-                    <input
-                      id="reset-email"
-                      type="email"
-                      placeholder="ada@example.com"
-                      required
-                      autoComplete="email"
-                      value={forgotEmail}
-                      onChange={(e) => setForgotEmail(e.target.value)}
-                      className={inputCls}
-                    />
-                  </div>
-                  {forgotError && (
-                    <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
-                      {forgotError}
-                    </p>
-                  )}
-                  <button type="submit" disabled={forgotLoading} className={primaryBtn}>
-                    {forgotLoading ? 'Sending…' : 'Send reset link'}
-                  </button>
-                </form>
               )}
+
+              <form onSubmit={sendResetLink} className="space-y-4">
+                <div>
+                  <label htmlFor="reset-email" className={labelCls}>Email</label>
+                  <input
+                    id="reset-email"
+                    type="email"
+                    placeholder="ada@example.com"
+                    required
+                    autoComplete="email"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+                {forgotError && (
+                  <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+                    {forgotError}
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  disabled={forgotLoading || cooldownLeft > 0}
+                  className={primaryBtn}
+                >
+                  {forgotLoading
+                    ? 'Sending…'
+                    : cooldownLeft > 0
+                    ? `Resend in ${cooldownLeft}s`
+                    : forgotSuccess
+                    ? 'Resend reset link'
+                    : 'Send reset link'}
+                </button>
+              </form>
             </div>
           ) : (
             <>
