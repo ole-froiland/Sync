@@ -1,6 +1,5 @@
 'use client'
 
-import OnboardingCard from '@/components/dashboard/OnboardingCard'
 import PostCard from '@/components/dashboard/PostCard'
 import QuickActions from '@/components/dashboard/QuickActions'
 import GitHubTrending from '@/components/dashboard/GitHubTrending'
@@ -50,8 +49,6 @@ export default function FeedView({
     <div className="max-w-5xl mx-auto px-6 py-8 grid grid-cols-3 gap-8">
       {/* Left column — feed */}
       <div className="col-span-2 flex flex-col gap-5">
-        <OnboardingCard />
-
         <div className="flex items-center gap-2 pb-1 border-b border-gray-100 dark:border-gray-800">
           <Rss size={14} className="text-gray-400 dark:text-gray-500" />
           <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Feed</h2>
