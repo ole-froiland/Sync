@@ -12,6 +12,7 @@ import {
   Settings,
   LogOut,
   GitBranch,
+  Handshake,
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
 import type { Profile } from '@/types'
@@ -22,6 +23,7 @@ const nav = [
   { href: '/repositories', label: 'Repositories', icon: GitBranch },
   { href: '/chat', label: 'Chat', icon: MessageSquare },
   { href: '/people', label: 'People', icon: Users },
+  { href: '/how-to-sync', label: 'How to Sync', icon: Handshake },
 ]
 
 interface SidebarProps {
