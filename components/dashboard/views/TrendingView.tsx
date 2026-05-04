@@ -146,9 +146,6 @@ export default function TrendingView() {
         <h1 className="text-[32px] font-semibold leading-tight text-gray-950 dark:text-gray-50">
           Trending
         </h1>
-        <p className="mt-2 text-base text-gray-500 dark:text-gray-400">
-          See what the developer community is building, starring, and sharing right now.
-        </p>
       </header>
 
       <section className="overflow-hidden rounded-md border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
