@@ -5,12 +5,11 @@ import {
   Bookmark,
   BookmarkCheck,
   CheckCircle2,
-  ChevronDown,
+  ExternalLink,
   Loader2,
   Newspaper,
   Plus,
   Radio,
-  SlidersHorizontal,
   Sparkles,
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -33,7 +32,7 @@ type Article = {
   url: string
   source: Exclude<SourceFilterValue, 'All'>
   time: string
-  preview: string
+  by: string
 }
 
 type SummaryState = {
@@ -64,6 +63,20 @@ const SUMMARY_OPTIONS: { value: SummaryMode; label: string }[] = [
   { value: 'long', label: 'Long' },
 ]
 
+// Gradient covers — full Tailwind strings so the JIT compiler includes them
+const COVER_PALETTES: [string, string][] = [
+  ['from-violet-600 to-indigo-800', 'bg-violet-500'],
+  ['from-indigo-500 to-blue-700', 'bg-indigo-500'],
+  ['from-purple-600 to-violet-800', 'bg-purple-500'],
+  ['from-blue-600 to-indigo-800', 'bg-blue-500'],
+  ['from-violet-700 to-purple-900', 'bg-violet-600'],
+  ['from-indigo-600 to-violet-700', 'bg-indigo-600'],
+]
+
+function getCover(id: number): [string, string] {
+  return COVER_PALETTES[id % COVER_PALETTES.length]
+}
+
 function timeSince(unixSeconds: number): string {
   const diff = Math.max(0, Date.now() / 1000 - unixSeconds)
   if (diff < 60) return 'just now'
@@ -77,16 +90,13 @@ function getArticleUrl(item: NewsItem) {
 }
 
 function toArticle(item: NewsItem): Article {
-  const comments = item.descendants ?? 0
-  const commentLabel = comments === 1 ? 'comment' : 'comments'
-
   return {
     id: item.id,
     title: item.title,
     url: getArticleUrl(item),
     source: 'Hacker News',
     time: timeSince(item.time),
-    preview: `${item.score} points by ${item.by} with ${comments} ${commentLabel}.`,
+    by: item.by,
   }
 }
 
@@ -95,37 +105,7 @@ interface DiscoverViewProps {
   newsLoading: boolean
 }
 
-interface SummarizeControlProps {
-  value: SummaryMode
-  onChange: (value: SummaryMode) => void
-}
-
-function SummarizeControl({ value, onChange }: SummarizeControlProps) {
-  return (
-    <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5 shadow-sm dark:border-gray-800 dark:bg-gray-950">
-      {SUMMARY_OPTIONS.map((option) => {
-        const active = value === option.value
-
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(option.value)}
-            className={cn(
-              'h-8 min-w-16 rounded-[5px] px-3 text-sm font-medium transition-colors',
-              active
-                ? 'bg-indigo-600 text-white'
-                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-gray-100'
-            )}
-          >
-            {option.label}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
+// ─── Source filter ────────────────────────────────────────────────────────────
 
 interface SourceFilterProps {
   activeSources: SourceFilterValue[]
@@ -138,68 +118,320 @@ function SourceFilter({ activeSources, onChange }: SourceFilterProps) {
       onChange(['All'])
       return
     }
-
     const selected = activeSources.includes('All')
       ? [source]
       : activeSources.includes(source)
-        ? activeSources.filter((item) => item !== source)
+        ? activeSources.filter((s) => s !== source)
         : [...activeSources, source]
-
     onChange(selected.length > 0 ? selected : ['All'])
   }
 
   return (
-    <div className="flex flex-col gap-3 border-y border-gray-200 py-4 dark:border-gray-800 lg:flex-row lg:items-center">
+    <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+      {SOURCES.map((source) => {
+        const active = activeSources.includes(source)
+        return (
+          <button
+            key={source}
+            type="button"
+            aria-pressed={active}
+            onClick={() => toggleSource(source)}
+            className={cn(
+              'h-8 shrink-0 rounded-full border px-3.5 text-sm font-medium transition-colors',
+              active
+                ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-300'
+                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-900'
+            )}
+          >
+            {source}
+          </button>
+        )
+      })}
       <button
         type="button"
-        className="inline-flex h-9 w-fit items-center gap-2 rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300 dark:hover:bg-gray-900"
+        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-dashed border-gray-300 bg-white px-3 text-sm font-medium text-gray-500 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400"
       >
-        Sources
-        <ChevronDown size={14} className="text-gray-400" />
-      </button>
-
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-        {SOURCES.map((source) => {
-          const active = activeSources.includes(source)
-
-          return (
-            <button
-              key={source}
-              type="button"
-              aria-pressed={active}
-              onClick={() => toggleSource(source)}
-              className={cn(
-                'h-8 rounded-full border px-3 text-sm font-medium transition-colors',
-                active
-                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-300'
-                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400 dark:hover:border-gray-700 dark:hover:bg-gray-900'
-              )}
-            >
-              {source}
-            </button>
-          )
-        })}
-
-        <button
-          type="button"
-          className="inline-flex h-8 items-center gap-1.5 rounded-full border border-dashed border-gray-300 bg-white px-3 text-sm font-medium text-gray-600 transition-colors hover:border-indigo-300 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400 dark:hover:border-indigo-800 dark:hover:text-indigo-300"
-        >
-          <Plus size={14} />
-          Add source
-        </button>
-      </div>
-
-      <button
-        type="button"
-        className="ml-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-gray-100"
-        title="Filter settings"
-        aria-label="Filter settings"
-      >
-        <SlidersHorizontal size={16} />
+        <Plus size={13} />
+        Add
       </button>
     </div>
   )
 }
+
+// ─── Summarize mode control ───────────────────────────────────────────────────
+
+interface SummarizeControlProps {
+  value: SummaryMode
+  onChange: (value: SummaryMode) => void
+}
+
+function SummarizeControl({ value, onChange }: SummarizeControlProps) {
+  return (
+    <div className="inline-flex rounded-full border border-gray-200 bg-white p-0.5 dark:border-gray-800 dark:bg-gray-950">
+      {SUMMARY_OPTIONS.map((opt) => {
+        const active = value === opt.value
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(opt.value)}
+            className={cn(
+              'h-7 min-w-14 rounded-full px-3 text-xs font-medium transition-colors',
+              active
+                ? 'bg-indigo-600 text-white'
+                : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+            )}
+          >
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Hero article ─────────────────────────────────────────────────────────────
+
+interface HeroArticleProps {
+  article: Article
+  summary: SummaryState | undefined
+  saved: boolean
+  podcastLoading: boolean
+  onOpen: (article: Article) => void
+  onSummarize: (article: Article) => void
+  onPodcast: () => void
+  onToggleSaved: (id: number) => void
+}
+
+function HeroArticle({
+  article,
+  summary,
+  saved,
+  podcastLoading,
+  onOpen,
+  onSummarize,
+  onPodcast,
+  onToggleSaved,
+}: HeroArticleProps) {
+  const [gradient] = getCover(article.id)
+
+  return (
+    <article className="overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800">
+      {/* Cover image area */}
+      <button
+        type="button"
+        className={cn(
+          'relative block h-64 w-full cursor-pointer bg-gradient-to-br sm:h-80',
+          gradient
+        )}
+        onClick={() => onOpen(article)}
+        aria-label={`Read: ${article.title}`}
+      >
+        {/* Subtle light orbs */}
+        <div
+          className="absolute inset-0 opacity-25"
+          style={{
+            backgroundImage:
+              'radial-gradient(ellipse at 15% 40%, rgba(255,255,255,0.5) 0%, transparent 55%), radial-gradient(ellipse at 80% 15%, rgba(255,255,255,0.3) 0%, transparent 45%)',
+          }}
+        />
+        {/* Subtle grid texture */}
+        <div
+          className="absolute inset-0 opacity-10"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px)',
+            backgroundSize: '28px 28px',
+          }}
+        />
+        {/* Bottom scrim */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/15 to-transparent" />
+
+        {/* Text overlay */}
+        <div className="absolute inset-0 flex flex-col justify-end p-5 sm:p-7">
+          <span className="mb-3 inline-block w-fit rounded-full bg-white/20 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+            {article.source}
+          </span>
+          <h2 className="line-clamp-3 text-left text-2xl font-bold leading-tight text-white drop-shadow sm:text-3xl">
+            {article.title}
+          </h2>
+          <p className="mt-2 text-left text-sm text-white/65">
+            {article.by} · {article.time}
+          </p>
+        </div>
+      </button>
+
+      {/* Action bar */}
+      <div className="flex items-center gap-2 bg-white px-5 py-3.5 dark:bg-gray-950">
+        <button
+          type="button"
+          onClick={() => onOpen(article)}
+          className="inline-flex h-9 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
+        >
+          <ExternalLink size={14} />
+          Read
+        </button>
+        <button
+          type="button"
+          onClick={() => onSummarize(article)}
+          disabled={summary?.loading}
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+        >
+          {summary?.loading ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <Sparkles size={14} />
+          )}
+          Summarize
+        </button>
+        <button
+          type="button"
+          onClick={onPodcast}
+          disabled={podcastLoading}
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+        >
+          {podcastLoading ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <Radio size={14} />
+          )}
+          Podcast
+        </button>
+        <button
+          type="button"
+          onClick={() => onToggleSaved(article.id)}
+          className={cn(
+            'ml-auto inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors',
+            saved
+              ? 'border-indigo-200 bg-indigo-50 text-indigo-600 dark:border-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-300'
+              : 'border-gray-200 bg-white text-gray-400 hover:text-gray-700 dark:border-gray-800 dark:bg-gray-900 dark:hover:text-gray-200'
+          )}
+          aria-label={saved ? 'Remove bookmark' : 'Save article'}
+        >
+          {saved ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
+        </button>
+      </div>
+
+      {/* Inline summary */}
+      {(summary?.text || summary?.error) && (
+        <div className="border-t border-gray-100 bg-indigo-50/60 px-5 py-4 dark:border-gray-800 dark:bg-indigo-950/20">
+          {summary.error ? (
+            <p className="text-sm text-red-600 dark:text-red-400">{summary.error}</p>
+          ) : (
+            <p className="text-sm leading-6 text-gray-700 dark:text-gray-300">{summary.text}</p>
+          )}
+        </div>
+      )}
+    </article>
+  )
+}
+
+// ─── Featured card (2-col grid) ───────────────────────────────────────────────
+
+interface FeaturedCardProps {
+  article: Article
+  summary: SummaryState | undefined
+  saved: boolean
+  onOpen: (article: Article) => void
+  onSummarize: (article: Article) => void
+  onToggleSaved: (id: number) => void
+}
+
+function FeaturedCard({
+  article,
+  summary,
+  saved,
+  onOpen,
+  onSummarize,
+  onToggleSaved,
+}: FeaturedCardProps) {
+  const [gradient, accent] = getCover(article.id)
+
+  return (
+    <article className="group flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-shadow hover:shadow-md dark:border-gray-800 dark:bg-gray-950">
+      {/* Thumbnail */}
+      <button
+        type="button"
+        className={cn('relative h-36 w-full cursor-pointer bg-gradient-to-br', gradient)}
+        onClick={() => onOpen(article)}
+        aria-label={`Read: ${article.title}`}
+      >
+        <div
+          className="absolute inset-0 opacity-20"
+          style={{
+            backgroundImage:
+              'radial-gradient(ellipse at 25% 50%, rgba(255,255,255,0.5) 0%, transparent 60%)',
+          }}
+        />
+      </button>
+
+      {/* Content */}
+      <div className="flex flex-1 flex-col p-4">
+        <div className="mb-2 flex items-center gap-2">
+          <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', accent)} />
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            {article.source}
+          </span>
+          <span className="text-gray-300 dark:text-gray-700">·</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">{article.time}</span>
+        </div>
+
+        <button
+          type="button"
+          className="flex-1 text-left"
+          onClick={() => onOpen(article)}
+        >
+          <h3 className="line-clamp-3 text-sm font-semibold leading-5 text-gray-900 transition-colors group-hover:text-indigo-700 dark:text-gray-100 dark:group-hover:text-indigo-300">
+            {article.title}
+          </h3>
+        </button>
+
+        {summary?.loading && (
+          <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-gray-400">
+            <Loader2 size={12} className="animate-spin" /> Summarizing…
+          </p>
+        )}
+        {summary?.error && (
+          <p className="mt-3 text-xs text-red-500 dark:text-red-400">{summary.error}</p>
+        )}
+        {summary?.text && (
+          <p className="mt-3 line-clamp-3 border-l-2 border-indigo-200 pl-2.5 text-xs leading-5 text-gray-600 dark:border-indigo-800 dark:text-gray-400">
+            {summary.text}
+          </p>
+        )}
+
+        {/* Actions */}
+        <div className="mt-4 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onSummarize(article)}
+            disabled={summary?.loading}
+            className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-indigo-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-indigo-300"
+          >
+            <Sparkles size={12} />
+            Summarize
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleSaved(article.id)}
+            className={cn(
+              'ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors',
+              saved
+                ? 'text-indigo-600 dark:text-indigo-300'
+                : 'text-gray-300 hover:text-gray-600 dark:text-gray-700 dark:hover:text-gray-300'
+            )}
+            aria-label={saved ? 'Remove bookmark' : 'Save'}
+          >
+            {saved ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
+          </button>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+// ─── Compact list row ─────────────────────────────────────────────────────────
 
 interface ArticleRowProps {
   article: Article
@@ -207,7 +439,7 @@ interface ArticleRowProps {
   saved: boolean
   onOpen: (article: Article) => void
   onSummarize: (article: Article) => void
-  onToggleSaved: (articleId: number) => void
+  onToggleSaved: (id: number) => void
 }
 
 function ArticleRow({
@@ -218,84 +450,122 @@ function ArticleRow({
   onSummarize,
   onToggleSaved,
 }: ArticleRowProps) {
+  const [, accent] = getCover(article.id)
+
   return (
-    <article
-      role="link"
-      tabIndex={0}
-      onClick={() => onOpen(article)}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter') onOpen(article)
-      }}
-      className="group cursor-pointer border-b border-gray-200 px-2 py-4 transition-colors last:border-b-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-900/60 sm:px-3"
-    >
-      <div className="grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-3 sm:gap-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-orange-50 text-xs font-bold text-orange-600 ring-1 ring-orange-100 dark:bg-orange-950/40 dark:text-orange-300 dark:ring-orange-900">
-          Y
+    <article className="group flex cursor-pointer items-start gap-4 border-b border-gray-100 py-4 last:border-b-0 transition-colors hover:bg-gray-50/60 dark:border-gray-900 dark:hover:bg-gray-900/30">
+      {/* Source color stripe */}
+      <div className={cn('mt-0.5 h-8 w-1 shrink-0 rounded-full', accent)} />
+
+      {/* Text */}
+      <div className="min-w-0 flex-1" onClick={() => onOpen(article)}>
+        <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-gray-900 transition-colors group-hover:text-indigo-700 dark:text-gray-100 dark:group-hover:text-indigo-300">
+          {article.title}
+        </h3>
+        <div className="mt-1 flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+          <span>{article.source}</span>
+          <span>·</span>
+          <span>{article.time}</span>
         </div>
 
-        <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold leading-6 text-gray-950 transition-colors group-hover:text-indigo-700 dark:text-gray-100 dark:group-hover:text-indigo-300">
-            {article.title}
-          </h3>
-          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-            <span>{article.source}</span>
-            <span className="text-gray-300 dark:text-gray-700">·</span>
-            <span>{article.time}</span>
-          </div>
-          <p className="mt-1 truncate text-sm text-gray-600 dark:text-gray-400">{article.preview}</p>
+        {summary?.loading && (
+          <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-gray-400">
+            <Loader2 size={11} className="animate-spin" /> Summarizing…
+          </p>
+        )}
+        {summary?.error && (
+          <p className="mt-2 text-xs text-red-500 dark:text-red-400">{summary.error}</p>
+        )}
+        {summary?.text && (
+          <p className="mt-2 border-l-2 border-indigo-200 pl-2.5 text-xs leading-5 text-gray-600 dark:border-indigo-800 dark:text-gray-400">
+            {summary.text}
+          </p>
+        )}
+      </div>
 
-          {summary?.loading && (
-            <p className="mt-3 inline-flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-              <Loader2 size={14} className="animate-spin" />
-              Summarizing
-            </p>
+      {/* Actions (revealed on hover) */}
+      <div className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onSummarize(article)}
+          disabled={summary?.loading}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-gray-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-white hover:text-indigo-700 disabled:opacity-30 dark:hover:bg-gray-950 dark:hover:text-indigo-300"
+          aria-label="Summarize"
+        >
+          <Sparkles size={13} />
+          <span className="hidden sm:inline">Summarize</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onToggleSaved(article.id)}
+          className={cn(
+            'inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors',
+            saved
+              ? 'text-indigo-600 dark:text-indigo-300'
+              : 'text-gray-300 opacity-0 group-hover:opacity-100 hover:text-gray-600 dark:text-gray-700 dark:hover:text-gray-300'
           )}
-          {summary?.error && (
-            <p className="mt-3 text-sm text-red-600 dark:text-red-400">{summary.error}</p>
-          )}
-          {summary?.text && (
-            <p className="mt-3 border-l-2 border-indigo-200 pl-3 text-sm leading-6 text-gray-700 dark:border-indigo-800 dark:text-gray-300">
-              {summary.text}
-            </p>
-          )}
-        </div>
-
-        <div className="flex items-start gap-1">
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              onSummarize(article)
-            }}
-            className="inline-flex h-8 w-8 items-center justify-center gap-1.5 rounded-md text-sm font-medium text-gray-500 transition-colors hover:bg-white hover:text-indigo-700 dark:text-gray-400 dark:hover:bg-gray-950 dark:hover:text-indigo-300 sm:w-auto sm:px-2"
-            aria-label="Summarize article"
-            title="Summarize article"
-          >
-            <Sparkles size={14} />
-            <span className="hidden sm:inline">Summarize</span>
-          </button>
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              onToggleSaved(article.id)
-            }}
-            className={cn(
-              'inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors',
-              saved
-                ? 'text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/50'
-                : 'text-gray-400 hover:bg-white hover:text-gray-700 dark:hover:bg-gray-950 dark:hover:text-gray-200'
-            )}
-            aria-label={saved ? 'Remove bookmark' : 'Save article'}
-            title={saved ? 'Remove bookmark' : 'Save article'}
-          >
-            {saved ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
-          </button>
-        </div>
+          aria-label={saved ? 'Remove bookmark' : 'Save'}
+        >
+          {saved ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
+        </button>
       </div>
     </article>
   )
 }
+
+// ─── Loading skeleton ─────────────────────────────────────────────────────────
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* Hero skeleton */}
+      <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800">
+        <Skeleton className="h-64 w-full rounded-none sm:h-80" />
+        <div className="flex gap-2 bg-white px-5 py-3.5 dark:bg-gray-950">
+          <Skeleton className="h-9 w-20 rounded-lg" />
+          <Skeleton className="h-9 w-28 rounded-lg" />
+          <Skeleton className="h-9 w-24 rounded-lg" />
+          <Skeleton className="ml-auto h-9 w-9 rounded-lg" />
+        </div>
+      </div>
+
+      {/* Featured grid skeleton */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {[0, 1].map((i) => (
+          <div
+            key={i}
+            className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800"
+          >
+            <Skeleton className="h-36 w-full rounded-none" />
+            <div className="space-y-2 p-4">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* List skeleton */}
+      <div className="overflow-hidden rounded-xl border border-gray-100 bg-white px-4 dark:border-gray-800 dark:bg-gray-950">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="flex items-start gap-4 border-b border-gray-100 py-4 last:border-b-0 dark:border-gray-900"
+          >
+            <Skeleton className="mt-0.5 h-8 w-1 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main view ────────────────────────────────────────────────────────────────
 
 export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
   const [summaryMode, setSummaryMode] = useState<SummaryMode>('short')
@@ -311,42 +581,32 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
   const articles = useMemo(() => news.map(toArticle), [news])
   const visibleArticles = useMemo(() => {
     if (activeSources.includes('All')) return articles
-    return articles.filter((article) => activeSources.includes(article.source))
+    return articles.filter((a) => activeSources.includes(a.source))
   }, [activeSources, articles])
 
-  async function summarizeArticle(article: Article) {
-    setSummaries((current) => ({
-      ...current,
-      [article.id]: { loading: true, text: null, error: null },
-    }))
+  const [heroArticle, secondArticle, thirdArticle, ...listArticles] = visibleArticles
+  const featuredArticles = [secondArticle, thirdArticle].filter(Boolean)
 
+  async function summarizeArticle(article: Article) {
+    setSummaries((c) => ({ ...c, [article.id]: { loading: true, text: null, error: null } }))
     try {
       const response = await fetch('/api/ai/summarize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode: summaryMode,
-          article: {
-            title: article.title,
-            source: article.source,
-            preview: article.preview,
-            url: article.url,
-          },
+          article: { title: article.title, source: article.source, preview: '', url: article.url },
         }),
       })
-
       const data = (await response.json()) as { summary?: string; error?: string }
-      if (!response.ok || !data.summary) {
-        throw new Error(data.error ?? 'Summary unavailable')
-      }
-
-      setSummaries((current) => ({
-        ...current,
+      if (!response.ok || !data.summary) throw new Error(data.error ?? 'Summary unavailable')
+      setSummaries((c) => ({
+        ...c,
         [article.id]: { loading: false, text: data.summary ?? null, error: null },
       }))
     } catch {
-      setSummaries((current) => ({
-        ...current,
+      setSummaries((c) => ({
+        ...c,
         [article.id]: { loading: false, text: null, error: 'Could not summarize this article.' },
       }))
     }
@@ -354,28 +614,24 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
 
   async function makePodcast() {
     if (visibleArticles.length === 0) return
-
-    setPodcast({ status: 'loading', message: 'Preparing podcast', audioUrl: null })
-
+    setPodcast({ status: 'loading', message: 'Preparing podcast…', audioUrl: null })
     try {
       const selected = savedArticles.length
-        ? visibleArticles.filter((article) => savedArticles.includes(article.id))
+        ? visibleArticles.filter((a) => savedArticles.includes(a.id))
         : visibleArticles
       const sourceArticles = selected.length > 0 ? selected : visibleArticles
-
       const response = await fetch('/api/podcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          articles: sourceArticles.map((article) => ({
-            title: article.title,
-            source: article.source,
-            preview: article.preview,
-            url: article.url,
+          articles: sourceArticles.map((a) => ({
+            title: a.title,
+            source: a.source,
+            preview: '',
+            url: a.url,
           })),
         }),
       })
-
       const data = (await response.json()) as {
         status?: 'generating' | 'ready'
         audioUrl?: string
@@ -383,18 +639,13 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
         error?: string
       }
       if (!response.ok) throw new Error(data.error ?? 'Podcast unavailable')
-
       setPodcast({
         status: data.audioUrl ? 'ready' : 'generating',
         message: data.message ?? `Generating podcast from ${sourceArticles.length} stories.`,
         audioUrl: data.audioUrl ?? null,
       })
     } catch {
-      setPodcast({
-        status: 'error',
-        message: 'Could not start podcast generation.',
-        audioUrl: null,
-      })
+      setPodcast({ status: 'error', message: 'Could not start podcast generation.', audioUrl: null })
     }
   }
 
@@ -402,53 +653,36 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
     window.open(article.url, '_blank', 'noopener,noreferrer')
   }
 
-  function toggleSaved(articleId: number) {
-    setSavedArticles((current) =>
-      current.includes(articleId)
-        ? current.filter((id) => id !== articleId)
-        : [...current, articleId]
-    )
+  function toggleSaved(id: number) {
+    setSavedArticles((c) => (c.includes(id) ? c.filter((i) => i !== id) : [...c, id]))
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+      {/* Header */}
+      <div className="mb-5 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-normal text-gray-950 dark:text-gray-100">
-            Discover
-          </h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Read, filter, summarize, or turn stories into a podcast.
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Discover</h1>
+          <p className="mt-0.5 text-sm text-gray-400 dark:text-gray-500">
+            Your AI-powered tech briefing
           </p>
         </div>
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Summarize</span>
-            <SummarizeControl value={summaryMode} onChange={setSummaryMode} />
-          </div>
-          <button
-            type="button"
-            onClick={makePodcast}
-            disabled={newsLoading || visibleArticles.length === 0 || podcast.status === 'loading'}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:pointer-events-none disabled:opacity-50"
-          >
-            {podcast.status === 'loading' ? (
-              <Loader2 size={15} className="animate-spin" />
-            ) : (
-              <Radio size={15} />
-            )}
-            Make podcast
-          </button>
+        <div className="flex items-center gap-2 pt-0.5">
+          <span className="hidden text-sm font-medium text-gray-500 dark:text-gray-400 sm:inline">
+            Summary
+          </span>
+          <SummarizeControl value={summaryMode} onChange={setSummaryMode} />
         </div>
       </div>
 
+      {/* Source filter */}
       <SourceFilter activeSources={activeSources} onChange={setActiveSources} />
 
+      {/* Podcast status banner */}
       {podcast.status !== 'idle' && (
         <div
           className={cn(
-            'mt-4 flex items-center gap-2 rounded-md border px-3 py-2 text-sm',
+            'mt-4 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm',
             podcast.status === 'error'
               ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'
               : 'border-indigo-100 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300'
@@ -473,24 +707,10 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
         </div>
       )}
 
-      <section className="mt-5">
+      {/* Content */}
+      <div className="mt-6">
         {newsLoading ? (
-          <div>
-            {Array.from({ length: 7 }).map((_, index) => (
-              <div
-                key={index}
-                className="grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-4 border-b border-gray-200 px-2 py-4 dark:border-gray-800 sm:px-3"
-              >
-                <Skeleton className="h-8 w-8 rounded-md" />
-                <div className="min-w-0 space-y-2">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-3 w-40" />
-                  <Skeleton className="h-3 w-full" />
-                </div>
-                <Skeleton className="h-8 w-8 rounded-md" />
-              </div>
-            ))}
-          </div>
+          <LoadingSkeleton />
         ) : visibleArticles.length === 0 ? (
           <div className="py-20 text-center">
             <Newspaper size={24} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
@@ -502,21 +722,68 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
             </p>
           </div>
         ) : (
-          <div>
-            {visibleArticles.map((article) => (
-              <ArticleRow
-                key={article.id}
-                article={article}
-                summary={summaries[article.id]}
-                saved={savedArticles.includes(article.id)}
+          <div className="space-y-6">
+            {/* Hero */}
+            {heroArticle && (
+              <HeroArticle
+                article={heroArticle}
+                summary={summaries[heroArticle.id]}
+                saved={savedArticles.includes(heroArticle.id)}
+                podcastLoading={podcast.status === 'loading'}
                 onOpen={openArticle}
                 onSummarize={summarizeArticle}
+                onPodcast={makePodcast}
                 onToggleSaved={toggleSaved}
               />
-            ))}
+            )}
+
+            {/* Featured 2-col grid */}
+            {featuredArticles.length > 0 && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {featuredArticles.map((article) => (
+                  <FeaturedCard
+                    key={article.id}
+                    article={article}
+                    summary={summaries[article.id]}
+                    saved={savedArticles.includes(article.id)}
+                    onOpen={openArticle}
+                    onSummarize={summarizeArticle}
+                    onToggleSaved={toggleSaved}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* More stories divider */}
+            {listArticles.length > 0 && (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-gray-100 dark:bg-gray-800" />
+                  <span className="text-xs font-medium text-gray-400 dark:text-gray-500">
+                    More stories
+                  </span>
+                  <div className="h-px flex-1 bg-gray-100 dark:bg-gray-800" />
+                </div>
+
+                {/* Compact list */}
+                <div className="overflow-hidden rounded-xl border border-gray-100 bg-white px-4 dark:border-gray-800 dark:bg-gray-950">
+                  {listArticles.map((article) => (
+                    <ArticleRow
+                      key={article.id}
+                      article={article}
+                      summary={summaries[article.id]}
+                      saved={savedArticles.includes(article.id)}
+                      onOpen={openArticle}
+                      onSummarize={summarizeArticle}
+                      onToggleSaved={toggleSaved}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
-      </section>
+      </div>
     </div>
   )
 }
