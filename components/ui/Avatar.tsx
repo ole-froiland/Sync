@@ -15,6 +15,13 @@ const sizes = {
   lg: 'w-12 h-12 text-base',
 }
 
+const emojiSizes = {
+  xs: 'text-sm',
+  sm: 'text-xl',
+  md: 'text-2xl',
+  lg: 'text-3xl',
+}
+
 const colors = [
   'bg-indigo-100 text-indigo-700',
   'bg-blue-100 text-blue-700',
@@ -30,13 +37,52 @@ function colorFromName(name: string) {
   return colors[Math.abs(hash) % colors.length]
 }
 
+function parseGeneratedAvatar(src: string) {
+  if (!src.startsWith('data:image/svg+xml')) return null
+
+  const [, payload = ''] = src.split(',', 2)
+
+  try {
+    const svg = decodeURIComponent(payload)
+    const color = svg.match(/<circle[^>]*fill="([^"]+)"/)?.[1]
+    const emoji = svg.match(/<text[^>]*>(.*?)<\/text>/)?.[1]
+
+    if (!color || !emoji) return null
+
+    return { color, emoji }
+  } catch {
+    return null
+  }
+}
+
 export default function Avatar({ name, src, size = 'md', className }: AvatarProps) {
   if (src) {
+    const generatedAvatar = parseGeneratedAvatar(src)
+
+    if (generatedAvatar) {
+      return (
+        <div
+          className={cn(
+            'rounded-full flex shrink-0 items-center justify-center overflow-hidden',
+            sizes[size],
+            className
+          )}
+          style={{ backgroundColor: generatedAvatar.color }}
+          aria-label={name}
+          role="img"
+        >
+          <span className={cn('select-none leading-none translate-y-[0.04em]', emojiSizes[size])}>
+            {generatedAvatar.emoji}
+          </span>
+        </div>
+      )
+    }
+
     return (
       <img
         src={src}
         alt={name}
-        className={cn('rounded-full object-cover', sizes[size], className)}
+        className={cn('block rounded-full object-cover object-center', sizes[size], className)}
       />
     )
   }

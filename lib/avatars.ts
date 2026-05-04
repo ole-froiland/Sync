@@ -32,6 +32,6 @@ export function getAvatar(id: string): Avatar {
 }
 
 export function avatarToUrl(emoji: string, color: string): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40"><circle cx="20" cy="20" r="20" fill="${color}"/><text x="20" y="20" font-size="20" text-anchor="middle" dominant-baseline="central">${emoji}</text></svg>`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40"><circle cx="20" cy="20" r="20" fill="${color}"/><text x="20" y="21.5" font-size="20" text-anchor="middle" dominant-baseline="middle">${emoji}</text></svg>`
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 }
