@@ -6,15 +6,33 @@ import { cn } from '@/lib/utils'
 interface Props {
   value: string
   onChange: (id: string) => void
+  label?: string
+  showSelected?: boolean
+  className?: string
+  gridClassName?: string
 }
 
-export default function AvatarPicker({ value, onChange }: Props) {
+export default function AvatarPicker({
+  value,
+  onChange,
+  label = 'Pick your avatar',
+  showSelected = true,
+  className,
+  gridClassName,
+}: Props) {
   return (
-    <div>
-      <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-        Pick your avatar
-      </p>
-      <div className="grid grid-cols-10 gap-1.5 max-h-52 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+    <div className={className}>
+      {label && (
+        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+          {label}
+        </p>
+      )}
+      <div
+        className={cn(
+          'grid grid-cols-10 gap-1.5 max-h-52 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3',
+          gridClassName
+        )}
+      >
         {AVATARS.map((avatar) => (
           <button
             key={avatar.id}
@@ -34,16 +52,16 @@ export default function AvatarPicker({ value, onChange }: Props) {
           </button>
         ))}
       </div>
-      {value ? (
+      {showSelected && value ? (
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
           Selected:{' '}
           <span className="text-base">
             {AVATARS.find((a) => a.id === value)?.emoji}
           </span>
         </p>
-      ) : (
+      ) : showSelected ? (
         <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">No avatar selected yet.</p>
-      )}
+      ) : null}
     </div>
   )
 }

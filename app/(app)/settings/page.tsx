@@ -11,7 +11,7 @@ import AvatarPicker from '@/components/onboarding/AvatarPicker'
 import { useUser } from '@/context/UserContext'
 import { useGitHub } from '@/context/GitHubContext'
 import { avatarToUrl, getAvatar } from '@/lib/avatars'
-import { GitBranch, CheckCircle, AlertCircle, X } from 'lucide-react'
+import { GitBranch, CheckCircle, AlertCircle, X, Camera } from 'lucide-react'
 
 const TOOL_OPTIONS = [
   'Claude', 'Cursor', 'GitHub', 'Figma', 'Codex',
@@ -36,6 +36,7 @@ export default function SettingsPage() {
   const [role, setRole] = useState(profile?.role ?? '')
   const [tools, setTools] = useState<string[]>(profile?.tools_used ?? [])
   const [avatarId, setAvatarId] = useState(profile?.selected_avatar ?? '')
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [disconnecting, setDisconnecting] = useState(false)
@@ -151,14 +152,42 @@ export default function SettingsPage() {
           <Card>
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">Profile</h2>
             <div className="flex items-center gap-4 mb-5">
-              <Avatar name={name || 'User'} src={avatarUrl} size="lg" />
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setAvatarPickerOpen((open) => !open)}
+                  className="group relative block rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                  aria-expanded={avatarPickerOpen}
+                  aria-label="Change profile picture"
+                >
+                  <Avatar name={name || 'User'} src={avatarUrl} size="lg" className="h-16 w-16" />
+                  <span className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm transition-colors group-hover:text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:group-hover:text-white">
+                    <Camera size={15} />
+                  </span>
+                </button>
+                {avatarPickerOpen && (
+                  <div className="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-4rem)] rounded-xl border border-gray-200 bg-white p-3 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                    <AvatarPicker
+                      value={avatarId}
+                      onChange={(nextAvatarId) => {
+                        setAvatarId(nextAvatarId)
+                        setAvatarPickerOpen(false)
+                        setSaveError(null)
+                        setSaved(false)
+                      }}
+                      label="Choose avatar"
+                      showSelected={false}
+                      gridClassName="grid-cols-5 max-h-64 border-0 bg-transparent p-1 dark:bg-transparent"
+                    />
+                  </div>
+                )}
+              </div>
               <div>
                 <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{name || 'User'}</p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">{profile?.email}</p>
               </div>
             </div>
             <div className="flex flex-col gap-3">
-              <AvatarPicker value={avatarId} onChange={setAvatarId} />
               <Input
                 label="Display name"
                 value={name}
