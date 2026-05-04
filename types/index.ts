@@ -171,6 +171,17 @@ export type NewsItem = {
   descendants?: number
 }
 
+export type FeedItem = {
+  id: string
+  title: string
+  description: string | null
+  source: string
+  author: string | null
+  publishedAt: number
+  url: string
+  imageUrl: string | null
+}
+
 export type ModelCost = {
   model: string
   cost: string

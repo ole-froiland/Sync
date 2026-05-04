@@ -5,7 +5,7 @@ import QuickActions from '@/components/dashboard/QuickActions'
 import GitHubTrending from '@/components/dashboard/GitHubTrending'
 import { PostSkeleton, Skeleton } from '@/components/ui/Skeleton'
 import { Rss, Newspaper, DollarSign, RefreshCw } from 'lucide-react'
-import type { Post, NewsItem, ModelCost } from '@/types'
+import type { Post, FeedItem, ModelCost } from '@/types'
 
 const TIER_COLORS: Record<string, string> = {
   low: 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/50',
@@ -23,7 +23,7 @@ function timeSince(unixSeconds: number): string {
 interface FeedViewProps {
   posts: Post[]
   postsLoading: boolean
-  news: NewsItem[]
+  news: FeedItem[]
   newsLoading: boolean
   modelCosts: ModelCost[]
   onPostClick: (post: Post) => void
@@ -128,7 +128,7 @@ export default function FeedView({
                   }`}
                 >
                   <a
-                    href={item.url ?? `https://news.ycombinator.com/item?id=${item.id}`}
+                    href={item.url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs font-medium text-gray-800 dark:text-gray-200 leading-snug hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors line-clamp-2"
@@ -136,7 +136,7 @@ export default function FeedView({
                     {item.title}
                   </a>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                    {item.score} pts · {timeSince(item.time)}
+                    {item.source} · {timeSince(item.publishedAt)}
                   </p>
                 </div>
               ))

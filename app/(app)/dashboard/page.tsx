@@ -13,7 +13,7 @@ import TrendingView from '@/components/dashboard/views/TrendingView'
 import Button from '@/components/ui/Button'
 import { useUser } from '@/context/UserContext'
 import { mockPosts } from '@/lib/mock-data'
-import type { Post, NewsItem, ModelCost } from '@/types'
+import type { Post, FeedItem, ModelCost } from '@/types'
 import { GitBranch } from 'lucide-react'
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
@@ -36,7 +36,7 @@ export default function DashboardPage() {
   const [posts, setPosts] = useState<Post[]>([])
   const [postsLoading, setPostsLoading] = useState(true)
 
-  const [news, setNews] = useState<NewsItem[]>([])
+  const [news, setNews] = useState<FeedItem[]>([])
   const [newsLoading, setNewsLoading] = useState(true)
 
   const [modelCosts, setModelCosts] = useState<ModelCost[]>([])
@@ -83,7 +83,7 @@ export default function DashboardPage() {
     fetch('/api/news')
       .then((r) => r.json())
       .then((data) => {
-        setNews(Array.isArray(data) ? data.slice(0, 10) : [])
+        setNews(Array.isArray(data) ? (data as FeedItem[]) : [])
       })
       .catch(() => setNews([]))
       .finally(() => setNewsLoading(false))

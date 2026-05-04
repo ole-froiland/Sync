@@ -14,25 +14,21 @@ import {
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { cn } from '@/lib/utils'
-import type { NewsItem } from '@/types'
+import type { FeedItem } from '@/types'
+
+// ─── Local types ──────────────────────────────────────────────────────────────
 
 type SummaryMode = 'short' | 'medium' | 'long'
-type SourceFilterValue =
-  | 'All'
-  | 'TechCrunch'
-  | 'Hacker News'
-  | 'Anthropic'
-  | 'OpenAI'
-  | 'Supabase'
-  | 'Vercel'
 
 type Article = {
-  id: number
+  id: string
   title: string
   url: string
-  source: Exclude<SourceFilterValue, 'All'>
+  source: string
   time: string
-  by: string
+  by: string | null
+  description: string | null
+  imageUrl: string | null
 }
 
 type SummaryState = {
@@ -47,17 +43,25 @@ type PodcastState = {
   audioUrl: string | null
 }
 
-// imageUrl: string = loaded, null = no image / failed, undefined = still fetching
-type ImageRecord = Record<number, string | null>
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-const SOURCES: SourceFilterValue[] = [
+const SOURCES = [
   'All',
-  'TechCrunch',
   'Hacker News',
-  'Anthropic',
+  'TechCrunch',
+  'The Verge',
+  'Wired',
+  'Ars Technica',
+  'MIT Tech Review',
+  'VentureBeat',
+  'The Decoder',
   'OpenAI',
-  'Supabase',
+  'Anthropic',
+  'DeepMind',
+  'Microsoft AI',
+  'GitHub',
   'Vercel',
+  'Supabase',
 ]
 
 const SUMMARY_OPTIONS: { value: SummaryMode; label: string }[] = [
@@ -66,7 +70,10 @@ const SUMMARY_OPTIONS: { value: SummaryMode; label: string }[] = [
   { value: 'long', label: 'Long' },
 ]
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function timeSince(unixSeconds: number): string {
+  if (!unixSeconds) return ''
   const diff = Math.max(0, Date.now() / 1000 - unixSeconds)
   if (diff < 60) return 'just now'
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
@@ -74,27 +81,40 @@ function timeSince(unixSeconds: number): string {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
-function getArticleUrl(item: NewsItem) {
-  return item.url ?? `https://news.ycombinator.com/item?id=${item.id}`
-}
-
-function toArticle(item: NewsItem): Article {
+function toArticle(item: FeedItem): Article {
   return {
     id: item.id,
     title: item.title,
-    url: getArticleUrl(item),
-    source: 'Hacker News',
-    time: timeSince(item.time),
-    by: item.by,
+    url: item.url,
+    source: item.source,
+    time: timeSince(item.publishedAt),
+    by: item.author,
+    description: item.description,
+    imageUrl: item.imageUrl,
   }
 }
 
+// Effective image for an article:
+//   RSS image → use immediately (no fetch needed)
+//   no RSS image, og-image fetched → use result (string | null)
+//   no RSS image, og-image pending → undefined (show skeleton)
+function getImage(
+  article: Article,
+  ogImages: Record<string, string | null>
+): string | null | undefined {
+  if (article.imageUrl !== null) return article.imageUrl
+  if (article.id in ogImages) return ogImages[article.id]
+  return undefined
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
 interface DiscoverViewProps {
-  news: NewsItem[]
+  news: FeedItem[]
   newsLoading: boolean
 }
 
-// ─── Shared thumbnail component ───────────────────────────────────────────────
+// ─── Thumbnail ────────────────────────────────────────────────────────────────
 
 interface ThumbnailProps {
   imageUrl: string | null | undefined
@@ -103,12 +123,9 @@ interface ThumbnailProps {
 }
 
 function Thumbnail({ imageUrl, className, iconSize = 32 }: ThumbnailProps) {
-  const [failed, setFailed] = useState(false)
-
-  // Reset local error state if we get a new URL
-  useEffect(() => {
-    setFailed(false)
-  }, [imageUrl])
+  // Track which URL failed so the check is a simple comparison, not a useEffect
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  const failed = typeof imageUrl === 'string' && imageUrl === failedUrl
 
   if (imageUrl === undefined) {
     return <Skeleton className={cn('rounded-none', className)} />
@@ -116,23 +133,19 @@ function Thumbnail({ imageUrl, className, iconSize = 32 }: ThumbnailProps) {
 
   if (imageUrl === null || failed) {
     return (
-      <div
-        className={cn(
-          'flex items-center justify-center bg-gray-100 dark:bg-gray-900',
-          className
-        )}
-      >
+      <div className={cn('flex items-center justify-center bg-gray-100 dark:bg-gray-900', className)}>
         <Newspaper size={iconSize} className="text-gray-300 dark:text-gray-700" />
       </div>
     )
   }
 
   return (
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={imageUrl}
       alt=""
       className={cn('object-cover', className)}
-      onError={() => setFailed(true)}
+      onError={() => setFailedUrl(imageUrl)}
     />
   )
 }
@@ -140,12 +153,12 @@ function Thumbnail({ imageUrl, className, iconSize = 32 }: ThumbnailProps) {
 // ─── Source filter ────────────────────────────────────────────────────────────
 
 interface SourceFilterProps {
-  activeSources: SourceFilterValue[]
-  onChange: (sources: SourceFilterValue[]) => void
+  activeSources: string[]
+  onChange: (sources: string[]) => void
 }
 
 function SourceFilter({ activeSources, onChange }: SourceFilterProps) {
-  function toggleSource(source: SourceFilterValue) {
+  function toggleSource(source: string) {
     if (source === 'All') {
       onChange(['All'])
       return
@@ -190,7 +203,7 @@ function SourceFilter({ activeSources, onChange }: SourceFilterProps) {
   )
 }
 
-// ─── Summarize mode control ───────────────────────────────────────────────────
+// ─── Summary mode control ─────────────────────────────────────────────────────
 
 interface SummarizeControlProps {
   value: SummaryMode
@@ -234,7 +247,7 @@ interface HeroArticleProps {
   onOpen: (article: Article) => void
   onSummarize: (article: Article) => void
   onPodcast: () => void
-  onToggleSaved: (id: number) => void
+  onToggleSaved: (id: string) => void
 }
 
 function HeroArticle({
@@ -250,40 +263,43 @@ function HeroArticle({
 }: HeroArticleProps) {
   return (
     <article className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
-      {/* Image — full width, text NOT overlaid */}
+      {/* Full-width image — text is NOT overlaid */}
       <button
         type="button"
         className="block w-full cursor-pointer overflow-hidden"
         onClick={() => onOpen(article)}
         aria-label={`Read: ${article.title}`}
       >
-        <Thumbnail
-          imageUrl={imageUrl}
-          className="h-64 w-full sm:h-80"
-          iconSize={40}
-        />
+        <Thumbnail imageUrl={imageUrl} className="h-64 w-full sm:h-80" iconSize={40} />
       </button>
 
       {/* Text content below image */}
       <div className="px-5 pt-4 pb-3">
         <div className="mb-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-            {article.source}
-          </span>
-          <span className="text-gray-300 dark:text-gray-700">·</span>
-          <span>{article.by}</span>
-          <span className="text-gray-300 dark:text-gray-700">·</span>
-          <span>{article.time}</span>
+          <span className="font-semibold text-indigo-600 dark:text-indigo-400">{article.source}</span>
+          {article.by && (
+            <>
+              <span className="text-gray-300 dark:text-gray-700">·</span>
+              <span>{article.by}</span>
+            </>
+          )}
+          {article.time && (
+            <>
+              <span className="text-gray-300 dark:text-gray-700">·</span>
+              <span>{article.time}</span>
+            </>
+          )}
         </div>
-        <button
-          type="button"
-          className="text-left"
-          onClick={() => onOpen(article)}
-        >
+        <button type="button" className="text-left" onClick={() => onOpen(article)}>
           <h2 className="text-xl font-bold leading-snug text-gray-900 hover:text-indigo-700 dark:text-gray-100 dark:hover:text-indigo-300 sm:text-2xl">
             {article.title}
           </h2>
         </button>
+        {article.description && !summary?.text && !summary?.loading && (
+          <p className="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400 line-clamp-2">
+            {article.description}
+          </p>
+        )}
       </div>
 
       {/* Action bar */}
@@ -302,11 +318,7 @@ function HeroArticle({
           disabled={summary?.loading}
           className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-200 px-4 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-900"
         >
-          {summary?.loading ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <Sparkles size={14} />
-          )}
+          {summary?.loading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
           Summarize
         </button>
         <button
@@ -315,11 +327,7 @@ function HeroArticle({
           disabled={podcastLoading}
           className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-200 px-4 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-900"
         >
-          {podcastLoading ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <Radio size={14} />
-          )}
+          {podcastLoading ? <Loader2 size={14} className="animate-spin" /> : <Radio size={14} />}
           Podcast
         </button>
         <button
@@ -360,7 +368,7 @@ interface FeaturedCardProps {
   saved: boolean
   onOpen: (article: Article) => void
   onSummarize: (article: Article) => void
-  onToggleSaved: (id: number) => void
+  onToggleSaved: (id: string) => void
 }
 
 function FeaturedCard({
@@ -374,7 +382,6 @@ function FeaturedCard({
 }: FeaturedCardProps) {
   return (
     <article className="group flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-shadow hover:shadow-md dark:border-gray-800 dark:bg-gray-950">
-      {/* Thumbnail */}
       <button
         type="button"
         className="block w-full cursor-pointer overflow-hidden"
@@ -384,14 +391,15 @@ function FeaturedCard({
         <Thumbnail imageUrl={imageUrl} className="h-40 w-full" iconSize={24} />
       </button>
 
-      {/* Content */}
       <div className="flex flex-1 flex-col p-4">
-        <div className="mb-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <span className="font-medium text-indigo-600 dark:text-indigo-400">
-            {article.source}
-          </span>
-          <span className="text-gray-300 dark:text-gray-700">·</span>
-          <span>{article.time}</span>
+        <div className="mb-2 flex items-center gap-2 text-xs">
+          <span className="font-medium text-indigo-600 dark:text-indigo-400">{article.source}</span>
+          {article.time && (
+            <>
+              <span className="text-gray-300 dark:text-gray-700">·</span>
+              <span className="text-gray-400 dark:text-gray-500">{article.time}</span>
+            </>
+          )}
         </div>
 
         <button type="button" className="flex-1 text-left" onClick={() => onOpen(article)}>
@@ -451,29 +459,25 @@ interface ArticleRowProps {
   saved: boolean
   onOpen: (article: Article) => void
   onSummarize: (article: Article) => void
-  onToggleSaved: (id: number) => void
+  onToggleSaved: (id: string) => void
 }
 
-function ArticleRow({
-  article,
-  summary,
-  saved,
-  onOpen,
-  onSummarize,
-  onToggleSaved,
-}: ArticleRowProps) {
+function ArticleRow({ article, summary, saved, onOpen, onSummarize, onToggleSaved }: ArticleRowProps) {
   return (
     <article className="group flex cursor-pointer items-start gap-4 border-b border-gray-100 py-4 last:border-b-0 transition-colors hover:bg-gray-50/60 dark:border-gray-900 dark:hover:bg-gray-900/30">
       <div className="min-w-0 flex-1" onClick={() => onOpen(article)}>
         <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-gray-900 transition-colors group-hover:text-indigo-700 dark:text-gray-100 dark:group-hover:text-indigo-300">
           {article.title}
         </h3>
-        <div className="mt-1 flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+        <div className="mt-1 flex items-center gap-2 text-xs">
           <span className="font-medium text-indigo-500 dark:text-indigo-400">{article.source}</span>
-          <span>·</span>
-          <span>{article.time}</span>
+          {article.time && (
+            <>
+              <span className="text-gray-300 dark:text-gray-700">·</span>
+              <span className="text-gray-400 dark:text-gray-500">{article.time}</span>
+            </>
+          )}
         </div>
-
         {summary?.loading && (
           <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-gray-400">
             <Loader2 size={11} className="animate-spin" /> Summarizing…
@@ -523,10 +527,9 @@ function ArticleRow({
 function LoadingSkeleton() {
   return (
     <div className="space-y-6">
-      {/* Hero skeleton */}
       <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800">
         <Skeleton className="h-64 w-full rounded-none sm:h-80" />
-        <div className="px-5 pt-4 pb-3 space-y-2">
+        <div className="space-y-2 px-5 pt-4 pb-3">
           <Skeleton className="h-3 w-32" />
           <Skeleton className="h-6 w-full" />
           <Skeleton className="h-6 w-3/4" />
@@ -539,13 +542,9 @@ function LoadingSkeleton() {
         </div>
       </div>
 
-      {/* Featured grid skeleton */}
       <div className="grid gap-4 sm:grid-cols-2">
         {[0, 1].map((i) => (
-          <div
-            key={i}
-            className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800"
-          >
+          <div key={i} className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
             <Skeleton className="h-40 w-full rounded-none" />
             <div className="space-y-2 p-4">
               <Skeleton className="h-3 w-24" />
@@ -556,13 +555,9 @@ function LoadingSkeleton() {
         ))}
       </div>
 
-      {/* List skeleton */}
       <div className="overflow-hidden rounded-xl border border-gray-100 bg-white px-4 dark:border-gray-800 dark:bg-gray-950">
         {[0, 1, 2, 3, 4].map((i) => (
-          <div
-            key={i}
-            className="flex items-start gap-4 border-b border-gray-100 py-4 last:border-b-0 dark:border-gray-900"
-          >
+          <div key={i} className="flex items-start gap-4 border-b border-gray-100 py-4 last:border-b-0 dark:border-gray-900">
             <div className="flex-1 space-y-2">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-3 w-32" />
@@ -578,18 +573,16 @@ function LoadingSkeleton() {
 
 export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
   const [summaryMode, setSummaryMode] = useState<SummaryMode>('short')
-  const [activeSources, setActiveSources] = useState<SourceFilterValue[]>(['All'])
-  const [summaries, setSummaries] = useState<Record<number, SummaryState>>({})
-  const [savedArticles, setSavedArticles] = useState<number[]>([])
-  const [podcast, setPodcast] = useState<PodcastState>({
-    status: 'idle',
-    message: null,
-    audioUrl: null,
-  })
-  const [articleImages, setArticleImages] = useState<ImageRecord>({})
-  const fetchedIdsRef = useRef<Set<number>>(new Set())
+  const [activeSources, setActiveSources] = useState<string[]>(['All'])
+  const [summaries, setSummaries] = useState<Record<string, SummaryState>>({})
+  const [savedArticles, setSavedArticles] = useState<string[]>([])
+  const [podcast, setPodcast] = useState<PodcastState>({ status: 'idle', message: null, audioUrl: null })
+  // og-image fallback: only fetched for articles without an RSS image
+  const [ogImages, setOgImages] = useState<Record<string, string | null>>({})
+  const processedRef = useRef<Set<string>>(new Set())
 
   const articles = useMemo(() => news.map(toArticle), [news])
+
   const visibleArticles = useMemo(() => {
     if (activeSources.includes('All')) return articles
     return articles.filter((a) => activeSources.includes(a.source))
@@ -598,25 +591,22 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
   const [heroArticle, secondArticle, thirdArticle, ...listArticles] = visibleArticles
   const featuredArticles = [secondArticle, thirdArticle].filter(Boolean)
 
-  // Fetch OG images for all visible articles in parallel
+  // Fetch og:image only for articles that have no image from the RSS feed
   useEffect(() => {
     let cancelled = false
 
     for (const article of visibleArticles) {
-      if (fetchedIdsRef.current.has(article.id)) continue
-      fetchedIdsRef.current.add(article.id)
+      if (article.imageUrl !== null) continue // already has RSS image
+      if (processedRef.current.has(article.id)) continue
+      processedRef.current.add(article.id)
 
       fetch(`/api/og-image?url=${encodeURIComponent(article.url)}`)
         .then((r) => r.json() as Promise<{ imageUrl: string | null }>)
         .then((data) => {
-          if (!cancelled) {
-            setArticleImages((c) => ({ ...c, [article.id]: data.imageUrl }))
-          }
+          if (!cancelled) setOgImages((c) => ({ ...c, [article.id]: data.imageUrl }))
         })
         .catch(() => {
-          if (!cancelled) {
-            setArticleImages((c) => ({ ...c, [article.id]: null }))
-          }
+          if (!cancelled) setOgImages((c) => ({ ...c, [article.id]: null }))
         })
     }
 
@@ -633,20 +623,19 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode: summaryMode,
-          article: { title: article.title, source: article.source, preview: '', url: article.url },
+          article: {
+            title: article.title,
+            source: article.source,
+            preview: article.description ?? '',
+            url: article.url,
+          },
         }),
       })
       const data = (await response.json()) as { summary?: string; error?: string }
       if (!response.ok || !data.summary) throw new Error(data.error ?? 'Summary unavailable')
-      setSummaries((c) => ({
-        ...c,
-        [article.id]: { loading: false, text: data.summary ?? null, error: null },
-      }))
+      setSummaries((c) => ({ ...c, [article.id]: { loading: false, text: data.summary ?? null, error: null } }))
     } catch {
-      setSummaries((c) => ({
-        ...c,
-        [article.id]: { loading: false, text: null, error: 'Could not summarize this article.' },
-      }))
+      setSummaries((c) => ({ ...c, [article.id]: { loading: false, text: null, error: 'Could not summarize this article.' } }))
     }
   }
 
@@ -665,7 +654,7 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
           articles: sourceArticles.map((a) => ({
             title: a.title,
             source: a.source,
-            preview: '',
+            preview: a.description ?? '',
             url: a.url,
           })),
         }),
@@ -691,7 +680,7 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
     window.open(article.url, '_blank', 'noopener,noreferrer')
   }
 
-  function toggleSaved(id: number) {
+  function toggleSaved(id: string) {
     setSavedArticles((c) => (c.includes(id) ? c.filter((i) => i !== id) : [...c, id]))
   }
 
@@ -716,7 +705,7 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
       {/* Source filter */}
       <SourceFilter activeSources={activeSources} onChange={setActiveSources} />
 
-      {/* Podcast status banner */}
+      {/* Podcast banner */}
       {podcast.status !== 'idle' && (
         <div
           className={cn(
@@ -733,12 +722,7 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
           )}
           <span>{podcast.message}</span>
           {podcast.audioUrl && (
-            <a
-              href={podcast.audioUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ml-auto font-medium underline"
-            >
+            <a href={podcast.audioUrl} target="_blank" rel="noopener noreferrer" className="ml-auto font-medium underline">
               Open audio
             </a>
           )}
@@ -752,9 +736,7 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
         ) : visibleArticles.length === 0 ? (
           <div className="py-20 text-center">
             <Newspaper size={24} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              No articles found
-            </p>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No articles found</p>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               Try All sources or refresh the feed.
             </p>
@@ -765,7 +747,7 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
             {heroArticle && (
               <HeroArticle
                 article={heroArticle}
-                imageUrl={articleImages[heroArticle.id]}
+                imageUrl={getImage(heroArticle, ogImages)}
                 summary={summaries[heroArticle.id]}
                 saved={savedArticles.includes(heroArticle.id)}
                 podcastLoading={podcast.status === 'loading'}
@@ -783,7 +765,7 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
                   <FeaturedCard
                     key={article.id}
                     article={article}
-                    imageUrl={articleImages[article.id]}
+                    imageUrl={getImage(article, ogImages)}
                     summary={summaries[article.id]}
                     saved={savedArticles.includes(article.id)}
                     onOpen={openArticle}
@@ -804,7 +786,6 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
                   </span>
                   <div className="h-px flex-1 bg-gray-100 dark:bg-gray-800" />
                 </div>
-
                 <div className="overflow-hidden rounded-xl border border-gray-100 bg-white px-4 dark:border-gray-800 dark:bg-gray-950">
                   {listArticles.map((article) => (
                     <ArticleRow
