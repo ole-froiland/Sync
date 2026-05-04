@@ -3,18 +3,22 @@
 import { useState, useEffect } from 'react'
 import { TrendingUp, Star, ExternalLink } from 'lucide-react'
 import { Skeleton } from '@/components/ui/Skeleton'
-import type { GitHubRepo } from '@/types'
+import type { TrendingRepository, TrendingResponse } from '@/types'
+
+function isTrendingResponse(data: TrendingResponse | { error?: string }): data is TrendingResponse {
+  return 'kind' in data
+}
 
 export default function GitHubTrending() {
-  const [repos, setRepos] = useState<GitHubRepo[]>([])
+  const [repos, setRepos] = useState<TrendingRepository[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/github/repos')
+    fetch('/api/github/trending?kind=repositories&since=weekly&language=all')
       .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setRepos(data)
+      .then((data: TrendingResponse | { error?: string }) => {
+        if (isTrendingResponse(data)) setRepos(data.repositories ?? [])
         else setError(data.error ?? 'Failed to load')
       })
       .catch(() => setError('Failed to load'))
@@ -67,7 +71,7 @@ export default function GitHubTrending() {
       <div className="flex flex-col gap-0">
         {repos.slice(0, 5).map((repo, i) => (
           <div
-            key={repo.id}
+            key={repo.fullName}
             className={`flex items-start gap-3 py-3 ${
               i < Math.min(repos.length, 5) - 1
                 ? 'border-b border-gray-50 dark:border-gray-800/60'
@@ -76,12 +80,12 @@ export default function GitHubTrending() {
           >
             <div className="flex-1 min-w-0">
               <a
-                href={repo.html_url}
+                href={repo.repoUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline truncate block"
               >
-                {repo.full_name}
+                {repo.fullName}
               </a>
               {repo.description && (
                 <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1 leading-snug mt-0.5">
@@ -92,14 +96,16 @@ export default function GitHubTrending() {
                 {repo.language && (
                   <span className="text-xs text-gray-400 dark:text-gray-500">{repo.language}</span>
                 )}
-                <span className="flex items-center gap-0.5 text-xs text-amber-500">
-                  <Star size={10} />
-                  {repo.stargazers_count.toLocaleString()}
-                </span>
+                {repo.totalStars !== undefined && (
+                  <span className="flex items-center gap-0.5 text-xs text-amber-500">
+                    <Star size={10} />
+                    {repo.totalStars.toLocaleString()}
+                  </span>
+                )}
               </div>
             </div>
             <a
-              href={repo.html_url}
+              href={repo.repoUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 flex-shrink-0 mt-0.5"

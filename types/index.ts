@@ -100,6 +100,52 @@ export type GitHubRepo = {
   }
 }
 
+export type TrendingLanguage = {
+  label: string
+  slug: string
+}
+
+export type TrendingBuiltByUser = {
+  username: string
+  avatarUrl?: string
+  profileUrl: string
+}
+
+export type TrendingRepository = {
+  rank: number
+  owner: string
+  name: string
+  fullName: string
+  description?: string
+  language?: string
+  totalStars?: number
+  forks?: number
+  starsThisPeriod?: number
+  builtBy?: TrendingBuiltByUser[]
+  repoUrl: string
+}
+
+export type TrendingDeveloper = {
+  rank: number
+  avatarUrl?: string
+  name?: string
+  username: string
+  popularRepo?: string
+  popularRepoUrl?: string
+  repoDescription?: string
+  profileUrl: string
+}
+
+export type TrendingResponse = {
+  kind: 'repositories' | 'developers'
+  since: 'daily' | 'weekly' | 'monthly'
+  language: string
+  sourceUrl: string
+  languages: TrendingLanguage[]
+  repositories?: TrendingRepository[]
+  developers?: TrendingDeveloper[]
+}
+
 export type GitHubUserRepo = {
   id: number
   name: string
