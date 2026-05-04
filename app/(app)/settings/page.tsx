@@ -1,13 +1,16 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
 import Card from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import Avatar from '@/components/ui/Avatar'
+import AvatarPicker from '@/components/onboarding/AvatarPicker'
 import { useUser } from '@/context/UserContext'
 import { useGitHub } from '@/context/GitHubContext'
+import { avatarToUrl, getAvatar } from '@/lib/avatars'
 import { GitBranch, CheckCircle, AlertCircle, X } from 'lucide-react'
 
 const TOOL_OPTIONS = [
@@ -25,14 +28,22 @@ const GITHUB_ERROR_MESSAGES: Record<string, string> = {
 }
 
 export default function SettingsPage() {
+  const router = useRouter()
   const profile = useUser()
   const github = useGitHub()
 
   const [name, setName] = useState(profile?.name ?? '')
   const [role, setRole] = useState(profile?.role ?? '')
   const [tools, setTools] = useState<string[]>(profile?.tools_used ?? [])
+  const [avatarId, setAvatarId] = useState(profile?.selected_avatar ?? '')
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [disconnecting, setDisconnecting] = useState(false)
+
+  const selectedAvatar = avatarId ? getAvatar(avatarId) : null
+  const avatarUrl = selectedAvatar
+    ? avatarToUrl(selectedAvatar.emoji, selectedAvatar.color)
+    : profile?.avatar_url ?? null
 
   // Read URL params once on mount to set the initial flash — no useEffect setState needed
   const [flash, setFlash] = useState<{ type: 'success' | 'error'; message: string } | null>(() => {
@@ -72,14 +83,29 @@ export default function SettingsPage() {
     e.preventDefault()
     if (!profile) return
 
+    setSaveError(null)
+
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
-      await supabase
+      const { error } = await supabase
         .from('profiles')
-        .update({ name, role: role || null, tools_used: tools })
+        .update({
+          name,
+          role: role || null,
+          tools_used: tools,
+          selected_avatar: avatarId || profile.selected_avatar,
+          avatar_url: avatarUrl,
+        })
         .eq('id', profile.id)
-    } catch {}
+
+      if (error) throw error
+
+      router.refresh()
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Could not save profile changes.')
+      return
+    }
 
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
@@ -125,13 +151,14 @@ export default function SettingsPage() {
           <Card>
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">Profile</h2>
             <div className="flex items-center gap-4 mb-5">
-              <Avatar name={name || 'User'} src={profile?.avatar_url} size="lg" />
+              <Avatar name={name || 'User'} src={avatarUrl} size="lg" />
               <div>
                 <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{name || 'User'}</p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">{profile?.email}</p>
               </div>
             </div>
             <div className="flex flex-col gap-3">
+              <AvatarPicker value={avatarId} onChange={setAvatarId} />
               <Input
                 label="Display name"
                 value={name}
@@ -244,13 +271,19 @@ export default function SettingsPage() {
           </Card>
 
           <div className="flex items-center justify-between">
-            <p
-              className={`text-sm transition-opacity ${
-                saved ? 'text-emerald-600 dark:text-emerald-400 opacity-100' : 'opacity-0'
-              }`}
-            >
-              ✓ Saved
-            </p>
+            <div className="min-w-0 flex-1">
+              {saveError ? (
+                <p className="truncate text-sm text-red-600 dark:text-red-400">{saveError}</p>
+              ) : (
+                <p
+                  className={`text-sm transition-opacity ${
+                    saved ? 'text-emerald-600 dark:text-emerald-400 opacity-100' : 'opacity-0'
+                  }`}
+                >
+                  ✓ Saved
+                </p>
+              )}
+            </div>
             <Button type="submit">Save changes</Button>
           </div>
         </form>
