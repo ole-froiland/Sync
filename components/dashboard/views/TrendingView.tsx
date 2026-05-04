@@ -44,7 +44,7 @@ const LANGUAGE_DOT_COLORS: Record<string, string> = {
 }
 
 const TIMEFRAME_LABELS: Record<Timeframe, string> = {
-  daily: 'Daily',
+  daily: 'Today',
   weekly: 'Weekly',
   monthly: 'Monthly',
 }
@@ -58,6 +58,11 @@ const PERIOD_LABELS: Record<Timeframe, string> = {
 const formatCount = (value: number) =>
   Intl.NumberFormat('en', { notation: 'compact' }).format(value)
 
+const TRENDING_ENDPOINT =
+  process.env.NODE_ENV === 'production'
+    ? '/.netlify/functions/trending'
+    : '/api/github/trending'
+
 function isTrendingResponse(data: TrendingResponse | { error?: string }): data is TrendingResponse {
   return 'kind' in data
 }
@@ -67,11 +72,11 @@ export default function TrendingView() {
   const [developers, setDevelopers] = useState<TrendingDeveloper[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [timeframe, setTimeframe] = useState<Timeframe>('weekly')
+  const [timeframe, setTimeframe] = useState<Timeframe>('daily')
   const [kind, setKind] = useState<TrendingKind>('repositories')
   const [language, setLanguage] = useState('all')
   const [languages, setLanguages] = useState<TrendingLanguage[]>([])
-  const [sourceUrl, setSourceUrl] = useState('https://github.com/trending?since=weekly')
+  const [sourceUrl, setSourceUrl] = useState('https://github.com/trending?since=daily')
 
   useEffect(() => {
     const controller = new AbortController()
@@ -81,7 +86,10 @@ export default function TrendingView() {
       language,
     })
 
-    fetch(`/api/github/trending?${params.toString()}`, { signal: controller.signal })
+    fetch(`${TRENDING_ENDPOINT}?${params.toString()}`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
       .then((r) => r.json())
       .then((data: TrendingResponse | { error?: string }) => {
         if (isTrendingResponse(data)) {

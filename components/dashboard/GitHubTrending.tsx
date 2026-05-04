@@ -5,6 +5,11 @@ import { TrendingUp, Star, ExternalLink } from 'lucide-react'
 import { Skeleton } from '@/components/ui/Skeleton'
 import type { TrendingRepository, TrendingResponse } from '@/types'
 
+const TRENDING_ENDPOINT =
+  process.env.NODE_ENV === 'production'
+    ? '/.netlify/functions/trending'
+    : '/api/github/trending'
+
 function isTrendingResponse(data: TrendingResponse | { error?: string }): data is TrendingResponse {
   return 'kind' in data
 }
@@ -15,7 +20,9 @@ export default function GitHubTrending() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/github/trending?kind=repositories&since=weekly&language=all')
+    fetch(`${TRENDING_ENDPOINT}?kind=repositories&since=weekly&language=all`, {
+      cache: 'no-store',
+    })
       .then((r) => r.json())
       .then((data: TrendingResponse | { error?: string }) => {
         if (isTrendingResponse(data)) setRepos(data.repositories ?? [])
