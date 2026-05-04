@@ -83,9 +83,9 @@ export default function DashboardPage() {
     fetch('/api/news')
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) setNews(data.slice(0, 10))
+        setNews(Array.isArray(data) ? data.slice(0, 10) : [])
       })
-      .catch(() => {})
+      .catch(() => setNews([]))
       .finally(() => setNewsLoading(false))
   }, [])
 
@@ -195,9 +195,7 @@ export default function DashboardPage() {
               onInviteMember={() => setInviteModalOpen(true)}
             />
           )}
-          {activeTab === 'discover' && (
-            <DiscoverView news={news} newsLoading={newsLoading} onFetchNews={fetchNews} />
-          )}
+          {activeTab === 'discover' && <DiscoverView news={news} newsLoading={newsLoading} />}
           {activeTab === 'trending' && <TrendingView />}
         </div>
       </div>
