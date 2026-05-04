@@ -142,12 +142,6 @@ export default function TrendingView() {
 
   return (
     <div className="mx-auto max-w-[1012px] px-4 pb-10 pt-7 sm:px-6">
-      <header className="mb-5 text-center">
-        <h1 className="text-[32px] font-semibold leading-tight text-gray-950 dark:text-gray-50">
-          Trending
-        </h1>
-      </header>
-
       <section className="overflow-hidden rounded-md border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
         <div className="flex flex-col gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-900/40 lg:flex-row lg:items-center lg:justify-between">
           <div className="inline-flex w-full rounded-md border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950 lg:w-auto">
