@@ -38,7 +38,9 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
     <aside className="w-60 flex-shrink-0 h-screen sticky top-0 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex flex-col">
       {/* Logo */}
       <div className="px-5 py-5 border-b border-gray-100 dark:border-gray-800">
-        <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-purple-500 to-fuchsia-500 bg-clip-text text-transparent">Sync</span>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-purple-500 to-fuchsia-500 bg-clip-text text-transparent">Sync</span>
+        </div>
       </div>
 
       {/* Nav */}
