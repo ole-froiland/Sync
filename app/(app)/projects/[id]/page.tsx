@@ -172,7 +172,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <p className="text-gray-400 mb-4">This project does not exist.</p>
-            <Link href="/projects" className="text-indigo-600 text-sm hover:underline">
+            <Link href="/projects" className="text-purple-600 text-sm hover:underline">
               ← Back to projects
             </Link>
           </div>
@@ -294,7 +294,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                   value={msgInput}
                   onChange={(e) => setMsgInput(e.target.value)}
                   placeholder="Send a message..."
-                  className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-800 dark:text-gray-100"
+                  className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white dark:bg-gray-800 dark:text-gray-100"
                 />
                 <Button type="submit" size="sm">
                   <Send size={14} />

@@ -70,7 +70,7 @@ function TaskCard({
             {nextStatus[task.status] && (
               <button
                 onClick={() => onMove(task.id, nextStatus[task.status]!)}
-                className="text-xs text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium opacity-0 group-hover:opacity-100 transition-opacity"
+                className="text-xs text-purple-500 hover:text-purple-700 dark:hover:text-purple-300 font-medium opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 Move →
               </button>
@@ -235,7 +235,7 @@ export default function KanbanBoard({
             <select
               value={newStatus}
               onChange={(e) => setNewStatus(e.target.value as Task['status'])}
-              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
             >
               <option value="todo">To do</option>
               <option value="in_progress">In progress</option>
@@ -250,7 +250,7 @@ export default function KanbanBoard({
               <select
                 value={newAssignee}
                 onChange={(e) => setNewAssignee(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
                 <option value="">Unassigned</option>
                 {members.map((m) => (

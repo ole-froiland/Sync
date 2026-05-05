@@ -184,7 +184,7 @@ function SourceFilter({ activeSources, onChange }: SourceFilterProps) {
             className={cn(
               'h-8 shrink-0 rounded-full border px-3.5 text-sm font-medium transition-colors',
               active
-                ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-300'
+                ? 'border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900 dark:bg-purple-950/50 dark:text-purple-300'
                 : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-900'
             )}
           >
@@ -194,7 +194,7 @@ function SourceFilter({ activeSources, onChange }: SourceFilterProps) {
       })}
       <button
         type="button"
-        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-dashed border-gray-300 bg-white px-3 text-sm font-medium text-gray-500 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400"
+        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-dashed border-gray-300 bg-white px-3 text-sm font-medium text-gray-500 transition-colors hover:border-purple-300 hover:text-purple-600 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400"
       >
         <Plus size={13} />
         Add
@@ -224,7 +224,7 @@ function SummarizeControl({ value, onChange }: SummarizeControlProps) {
             className={cn(
               'h-7 min-w-14 rounded-full px-3 text-xs font-medium transition-colors',
               active
-                ? 'bg-indigo-600 text-white'
+                ? 'bg-purple-600 text-white'
                 : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
             )}
           >
@@ -276,7 +276,7 @@ function HeroArticle({
       {/* Text content below image */}
       <div className="px-5 pt-4 pb-3">
         <div className="mb-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <span className="font-semibold text-indigo-600 dark:text-indigo-400">{article.source}</span>
+          <span className="font-semibold text-purple-600 dark:text-purple-400">{article.source}</span>
           {article.by && (
             <>
               <span className="text-gray-300 dark:text-gray-700">·</span>
@@ -291,7 +291,7 @@ function HeroArticle({
           )}
         </div>
         <button type="button" className="text-left" onClick={() => onOpen(article)}>
-          <h2 className="text-xl font-bold leading-snug text-gray-900 hover:text-indigo-700 dark:text-gray-100 dark:hover:text-indigo-300 sm:text-2xl">
+          <h2 className="text-xl font-bold leading-snug text-gray-900 hover:text-purple-700 dark:text-gray-100 dark:hover:text-purple-300 sm:text-2xl">
             {article.title}
           </h2>
         </button>
@@ -307,7 +307,7 @@ function HeroArticle({
         <button
           type="button"
           onClick={() => onOpen(article)}
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
+          className="inline-flex h-9 items-center gap-2 rounded-lg bg-purple-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
         >
           <ExternalLink size={14} />
           Read
@@ -336,7 +336,7 @@ function HeroArticle({
           className={cn(
             'ml-auto inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors',
             saved
-              ? 'border-indigo-200 bg-indigo-50 text-indigo-600 dark:border-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-300'
+              ? 'border-purple-200 bg-purple-50 text-purple-600 dark:border-purple-900 dark:bg-purple-950/50 dark:text-purple-300'
               : 'border-gray-200 text-gray-400 hover:text-gray-700 dark:border-gray-800 dark:hover:text-gray-200'
           )}
           aria-label={saved ? 'Remove bookmark' : 'Save article'}
@@ -393,7 +393,7 @@ function FeaturedCard({
 
       <div className="flex flex-1 flex-col p-4">
         <div className="mb-2 flex items-center gap-2 text-xs">
-          <span className="font-medium text-indigo-600 dark:text-indigo-400">{article.source}</span>
+          <span className="font-medium text-purple-600 dark:text-purple-400">{article.source}</span>
           {article.time && (
             <>
               <span className="text-gray-300 dark:text-gray-700">·</span>
@@ -403,7 +403,7 @@ function FeaturedCard({
         </div>
 
         <button type="button" className="flex-1 text-left" onClick={() => onOpen(article)}>
-          <h3 className="line-clamp-3 text-sm font-semibold leading-5 text-gray-900 transition-colors group-hover:text-indigo-700 dark:text-gray-100 dark:group-hover:text-indigo-300">
+          <h3 className="line-clamp-3 text-sm font-semibold leading-5 text-gray-900 transition-colors group-hover:text-purple-700 dark:text-gray-100 dark:group-hover:text-purple-300">
             {article.title}
           </h3>
         </button>
@@ -417,7 +417,7 @@ function FeaturedCard({
           <p className="mt-3 text-xs text-red-500 dark:text-red-400">{summary.error}</p>
         )}
         {summary?.text && (
-          <p className="mt-3 line-clamp-3 border-l-2 border-indigo-200 pl-2.5 text-xs leading-5 text-gray-600 dark:border-indigo-800 dark:text-gray-400">
+          <p className="mt-3 line-clamp-3 border-l-2 border-purple-200 pl-2.5 text-xs leading-5 text-gray-600 dark:border-purple-800 dark:text-gray-400">
             {summary.text}
           </p>
         )}
@@ -427,7 +427,7 @@ function FeaturedCard({
             type="button"
             onClick={() => onSummarize(article)}
             disabled={summary?.loading}
-            className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-indigo-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-indigo-300"
+            className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-purple-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-purple-300"
           >
             <Sparkles size={12} />
             Summarize
@@ -438,7 +438,7 @@ function FeaturedCard({
             className={cn(
               'ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors',
               saved
-                ? 'text-indigo-600 dark:text-indigo-300'
+                ? 'text-purple-600 dark:text-purple-300'
                 : 'text-gray-300 hover:text-gray-600 dark:text-gray-700 dark:hover:text-gray-300'
             )}
             aria-label={saved ? 'Remove bookmark' : 'Save'}
@@ -466,11 +466,11 @@ function ArticleRow({ article, summary, saved, onOpen, onSummarize, onToggleSave
   return (
     <article className="group flex cursor-pointer items-start gap-4 border-b border-gray-100 py-4 last:border-b-0 transition-colors hover:bg-gray-50/60 dark:border-gray-900 dark:hover:bg-gray-900/30">
       <div className="min-w-0 flex-1" onClick={() => onOpen(article)}>
-        <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-gray-900 transition-colors group-hover:text-indigo-700 dark:text-gray-100 dark:group-hover:text-indigo-300">
+        <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-gray-900 transition-colors group-hover:text-purple-700 dark:text-gray-100 dark:group-hover:text-purple-300">
           {article.title}
         </h3>
         <div className="mt-1 flex items-center gap-2 text-xs">
-          <span className="font-medium text-indigo-500 dark:text-indigo-400">{article.source}</span>
+          <span className="font-medium text-purple-500 dark:text-purple-400">{article.source}</span>
           {article.time && (
             <>
               <span className="text-gray-300 dark:text-gray-700">·</span>
@@ -487,7 +487,7 @@ function ArticleRow({ article, summary, saved, onOpen, onSummarize, onToggleSave
           <p className="mt-2 text-xs text-red-500 dark:text-red-400">{summary.error}</p>
         )}
         {summary?.text && (
-          <p className="mt-2 border-l-2 border-indigo-200 pl-2.5 text-xs leading-5 text-gray-600 dark:border-indigo-800 dark:text-gray-400">
+          <p className="mt-2 border-l-2 border-purple-200 pl-2.5 text-xs leading-5 text-gray-600 dark:border-purple-800 dark:text-gray-400">
             {summary.text}
           </p>
         )}
@@ -498,7 +498,7 @@ function ArticleRow({ article, summary, saved, onOpen, onSummarize, onToggleSave
           type="button"
           onClick={() => onSummarize(article)}
           disabled={summary?.loading}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-gray-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-white hover:text-indigo-700 disabled:opacity-30 dark:hover:bg-gray-950 dark:hover:text-indigo-300"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-gray-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-white hover:text-purple-700 disabled:opacity-30 dark:hover:bg-gray-950 dark:hover:text-purple-300"
           aria-label="Summarize"
         >
           <Sparkles size={13} />
@@ -510,7 +510,7 @@ function ArticleRow({ article, summary, saved, onOpen, onSummarize, onToggleSave
           className={cn(
             'inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors',
             saved
-              ? 'text-indigo-600 dark:text-indigo-300'
+              ? 'text-purple-600 dark:text-purple-300'
               : 'text-gray-300 opacity-0 group-hover:opacity-100 hover:text-gray-600 dark:text-gray-700 dark:hover:text-gray-300'
           )}
           aria-label={saved ? 'Remove bookmark' : 'Save'}
@@ -712,7 +712,7 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
             'mt-4 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm',
             podcast.status === 'error'
               ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'
-              : 'border-indigo-100 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300'
+              : 'border-purple-100 bg-purple-50 text-purple-700 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-300'
           )}
         >
           {podcast.status === 'loading' ? (

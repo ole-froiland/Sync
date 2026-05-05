@@ -11,12 +11,12 @@ const oauthErrors: Record<string, string> = {
 
 // Shared primitive styles — always light mode, no dark: variants
 const inputCls =
-  'w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400 disabled:opacity-50'
+  'w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 disabled:opacity-50'
 
 const labelCls = 'block text-sm font-medium text-gray-700 mb-1.5'
 
 const primaryBtn =
-  'w-full flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white text-sm font-medium px-4 py-2.5 transition-colors disabled:opacity-60'
+  'w-full flex items-center justify-center rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 hover:from-purple-600 hover:to-fuchsia-600 active:from-purple-700 active:to-fuchsia-700 text-white text-sm font-medium px-4 py-2.5 transition-all disabled:opacity-60'
 
 export default function LoginPage() {
   const [tab, setTab] = useState<'signup' | 'login'>('signup')
@@ -108,8 +108,9 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
 
         {/* Logo */}
-        <div className="flex justify-center mb-10">
-          <span className="text-3xl font-semibold tracking-tight text-violet-600">Sync</span>
+        <div className="flex flex-col items-center mb-10 gap-1">
+          <span className="text-3xl font-bold tracking-tight bg-gradient-to-r from-purple-500 to-fuchsia-500 bg-clip-text text-transparent">Sync</span>
+          <span className="text-sm text-gray-400">Co-op made easy</span>
         </div>
 
         <div className="bg-white border border-gray-200 rounded-2xl shadow-[0_2px_20px_0_rgba(0,0,0,0.07)] overflow-hidden">
@@ -120,7 +121,7 @@ export default function LoginPage() {
               <div>
                 <button
                   onClick={closeForgot}
-                  className="text-xs text-gray-400 hover:text-violet-600 transition-colors mb-4 flex items-center gap-1"
+                  className="text-xs text-gray-400 hover:text-purple-600 transition-colors mb-4 flex items-center gap-1"
                 >
                   ← Back to log in
                 </button>
@@ -180,7 +181,7 @@ export default function LoginPage() {
                     onClick={() => setTab(t)}
                     className={`py-3.5 text-sm font-medium transition-colors focus:outline-none ${
                       tab === t
-                        ? 'text-violet-600 border-b-2 border-violet-500'
+                        ? 'text-purple-600 border-b-2 border-purple-500'
                         : 'text-gray-400 hover:text-gray-600'
                     }`}
                   >
@@ -238,7 +239,7 @@ export default function LoginPage() {
                         <button
                           type="button"
                           onClick={openForgot}
-                          className="text-xs text-gray-400 hover:text-violet-600 transition-colors"
+                          className="text-xs text-gray-400 hover:text-purple-600 transition-colors"
                         >
                           Forgot password?
                         </button>

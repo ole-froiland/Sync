@@ -135,7 +135,7 @@ export default function CreateProjectModal({
             onChange={(e) => setTechInput(e.target.value)}
             onKeyDown={addTech}
             placeholder="Type and press Enter to add..."
-            className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
           />
           {techStack.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-1">

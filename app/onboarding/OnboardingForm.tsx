@@ -6,7 +6,7 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import AvatarPicker from '@/components/onboarding/AvatarPicker'
 import { createClient } from '@/lib/supabase/client'
-import { Zap, Eye, EyeOff, CheckCircle, XCircle } from 'lucide-react'
+import { Eye, EyeOff, CheckCircle, XCircle } from 'lucide-react'
 
 const PASSWORD_RULES = [
   {
@@ -78,8 +78,8 @@ export default function OnboardingForm({ defaultFirst, defaultLast }: Props) {
       <div className="w-full max-w-lg">
         {/* Header */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center mb-4 shadow-sm">
-            <Zap size={22} className="text-white" />
+          <div className="mb-4">
+            <span className="text-4xl font-bold tracking-tight bg-gradient-to-r from-purple-500 to-fuchsia-500 bg-clip-text text-transparent">Sync</span>
           </div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight">
             Welcome to Sync
@@ -134,7 +134,7 @@ export default function OnboardingForm({ defaultFirst, defaultLast }: Props) {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   autoComplete="new-password"
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 pr-10 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50"
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 pr-10 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50"
                 />
                 <button
                   type="button"

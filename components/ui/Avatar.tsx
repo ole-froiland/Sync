@@ -23,7 +23,7 @@ const emojiSizes = {
 }
 
 const colors = [
-  'bg-indigo-100 text-indigo-700',
+  'bg-purple-100 text-purple-700',
   'bg-blue-100 text-blue-700',
   'bg-violet-100 text-violet-700',
   'bg-teal-100 text-teal-700',

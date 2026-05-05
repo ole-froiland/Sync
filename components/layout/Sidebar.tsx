@@ -8,7 +8,6 @@ import {
   FolderKanban,
   MessageSquare,
   Users,
-  Zap,
   Settings,
   LogOut,
   GitBranch,
@@ -39,11 +38,9 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
     <aside className="w-60 flex-shrink-0 h-screen sticky top-0 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex flex-col">
       {/* Logo */}
       <div className="px-5 py-5 border-b border-gray-100 dark:border-gray-800">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center">
-            <Zap size={15} className="text-white" />
-          </div>
-          <span className="text-base font-semibold text-gray-900 dark:text-gray-100 tracking-tight">Sync</span>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-purple-500 to-fuchsia-500 bg-clip-text text-transparent">Sync</span>
+          <span className="text-[10px] text-gray-400 dark:text-gray-500 leading-none">Co-op made easy</span>
         </div>
       </div>
 
@@ -58,7 +55,7 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
               className={cn(
                 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200',
                 active
-                  ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400'
+                  ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-400'
                   : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
               )}
             >

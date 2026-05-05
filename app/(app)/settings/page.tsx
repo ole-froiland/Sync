@@ -156,7 +156,7 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => setAvatarPickerOpen((open) => !open)}
-                  className="group relative block rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                  className="group relative block rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
                   aria-expanded={avatarPickerOpen}
                   aria-label="Change profile picture"
                 >
@@ -289,7 +289,7 @@ export default function SettingsPage() {
                   onClick={() => toggleTool(tool)}
                   className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
                     tools.includes(tool)
-                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      ? 'bg-purple-600 border-purple-600 text-white'
                       : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                   }`}
                 >

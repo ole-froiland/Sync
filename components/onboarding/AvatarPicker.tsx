@@ -39,9 +39,9 @@ export default function AvatarPicker({
             type="button"
             onClick={() => onChange(avatar.id)}
             className={cn(
-              'w-8 h-8 rounded-full flex items-center justify-center text-base transition-all duration-150 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1',
+              'w-8 h-8 rounded-full flex items-center justify-center text-base transition-all duration-150 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-1',
               value === avatar.id
-                ? 'ring-2 ring-indigo-500 ring-offset-2 scale-110'
+                ? 'ring-2 ring-purple-500 ring-offset-2 scale-110'
                 : 'opacity-75 hover:opacity-100'
             )}
             style={{ backgroundColor: avatar.color }}

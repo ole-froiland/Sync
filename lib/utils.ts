@@ -41,7 +41,7 @@ export const STATUS_COLORS: Record<string, string> = {
 }
 
 export const POST_TYPE_COLORS: Record<string, string> = {
-  update: 'bg-indigo-100 text-indigo-700',
+  update: 'bg-purple-100 text-purple-700',
   news: 'bg-sky-100 text-sky-700',
   question: 'bg-violet-100 text-violet-700',
   resource: 'bg-teal-100 text-teal-700',

@@ -9,7 +9,7 @@ interface QuickActionsProps {
 }
 
 const actions = [
-  { icon: FolderPlus, label: 'New project', key: 'project' as const, color: 'text-indigo-600 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60' },
+  { icon: FolderPlus, label: 'New project', key: 'project' as const, color: 'text-purple-600 bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60' },
   { icon: PenLine, label: 'New post', key: 'post' as const, color: 'text-blue-600 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60' },
   { icon: UserPlus, label: 'Invite member', key: 'invite' as const, color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/60 hover:bg-violet-100 dark:hover:bg-violet-900/60' },
 ]

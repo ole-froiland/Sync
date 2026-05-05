@@ -118,7 +118,7 @@ export default function CreateGitHubRepoModal({
             href={created.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+            className="inline-flex items-center gap-2 text-sm font-medium text-purple-600 dark:text-purple-400 hover:underline"
           >
             {created.name}
             <ExternalLink size={13} />
@@ -130,7 +130,7 @@ export default function CreateGitHubRepoModal({
       ) : statusLoading ? (
         /* Checking connection */
         <div className="flex flex-col items-center gap-3 py-8">
-          <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-xs text-gray-400 dark:text-gray-500">Checking GitHub connection…</p>
         </div>
       ) : !connected ? (

@@ -116,7 +116,7 @@ export default function PeoplePage() {
                       <div className="flex flex-col gap-1">
                         {userProjects.map((p) => (
                           <div key={p.id} className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-purple-400 flex-shrink-0" />
                             <span className="text-xs text-gray-700 dark:text-gray-300 truncate">
                               {p.name}
                             </span>

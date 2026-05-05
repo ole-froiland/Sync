@@ -82,8 +82,8 @@ export default function HowToSyncPage() {
 
           {/* ── Hero ── */}
           <div className="text-center mb-16">
-            <div className="inline-flex items-center justify-center w-12 h-12 bg-indigo-50 dark:bg-indigo-950/50 rounded-2xl mb-6">
-              <Handshake size={22} className="text-indigo-500" />
+            <div className="inline-flex items-center justify-center w-12 h-12 bg-purple-50 dark:bg-purple-950/50 rounded-2xl mb-6">
+              <Handshake size={22} className="text-purple-500" />
             </div>
             <h1 className="text-3xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight mb-3">
               How to Sync
@@ -103,8 +103,8 @@ export default function HowToSyncPage() {
                 <span className="text-3xl font-bold text-gray-100 dark:text-gray-800 leading-none select-none">
                   {step.number}
                 </span>
-                <div className="w-9 h-9 bg-indigo-50 dark:bg-indigo-950/50 rounded-xl flex items-center justify-center">
-                  <step.icon size={17} className="text-indigo-500" />
+                <div className="w-9 h-9 bg-purple-50 dark:bg-purple-950/50 rounded-xl flex items-center justify-center">
+                  <step.icon size={17} className="text-purple-500" />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -166,7 +166,7 @@ export default function HowToSyncPage() {
                     <div
                       className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 ${
                         activeFlow === i
-                          ? 'bg-indigo-50 dark:bg-indigo-950/60 scale-110 shadow-sm'
+                          ? 'bg-purple-50 dark:bg-purple-950/60 scale-110 shadow-sm'
                           : 'bg-gray-50 dark:bg-gray-800/60 scale-100'
                       }`}
                     >
@@ -174,7 +174,7 @@ export default function HowToSyncPage() {
                         size={19}
                         className={`transition-colors duration-500 ${
                           activeFlow === i
-                            ? 'text-indigo-500'
+                            ? 'text-purple-500'
                             : 'text-gray-300 dark:text-gray-600'
                         }`}
                       />
@@ -195,7 +195,7 @@ export default function HowToSyncPage() {
                       size={14}
                       className={`flex-shrink-0 transition-colors duration-500 ${
                         activeFlow === i
-                          ? 'text-indigo-300 dark:text-indigo-700'
+                          ? 'text-purple-300 dark:text-purple-700'
                           : 'text-gray-200 dark:text-gray-800'
                       }`}
                     />

@@ -90,7 +90,7 @@ export default function GitHubTrending() {
                 href={repo.repoUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline truncate block"
+                className="text-xs font-semibold text-purple-600 dark:text-purple-400 hover:underline truncate block"
               >
                 {repo.fullName}
               </a>

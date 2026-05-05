@@ -6,8 +6,8 @@ import { ThemeProvider } from "@/context/ThemeContext";
 const geist = Geist({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Sync – Private Developer Workspace",
-  description: "Collaborate, build, and stay updated with your team.",
+  title: "Sync – Co-op made easy",
+  description: "The collaborative workspace for co-op teams.",
 };
 
 const themeScript = `

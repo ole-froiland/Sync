@@ -131,7 +131,7 @@ export default function FeedView({
                     href={item.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs font-medium text-gray-800 dark:text-gray-200 leading-snug hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors line-clamp-2"
+                    className="text-xs font-medium text-gray-800 dark:text-gray-200 leading-snug hover:text-purple-600 dark:hover:text-purple-400 transition-colors line-clamp-2"
                   >
                     {item.title}
                   </a>

@@ -142,7 +142,7 @@ function SidebarItem({
           ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium'
           : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-700 dark:hover:text-gray-300',
         dragOver &&
-          'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 ring-1 ring-inset ring-indigo-200 dark:ring-indigo-800'
+          'bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 ring-1 ring-inset ring-purple-200 dark:ring-purple-800'
       )}
     >
       {/* pointer-events-none prevents dragleave firing on child elements */}
@@ -187,7 +187,7 @@ function MoveMenu({
             {f.label}
           </span>
           {currentFolderId === f.id && (
-            <Check size={12} className="text-indigo-500 flex-shrink-0 ml-2" />
+            <Check size={12} className="text-purple-500 flex-shrink-0 ml-2" />
           )}
         </button>
       ))}
@@ -256,7 +256,7 @@ function RepoCard({
             target="_blank"
             rel="noopener noreferrer"
             draggable={false}
-            className="text-sm font-semibold text-gray-900 dark:text-gray-100 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors truncate"
+            className="text-sm font-semibold text-gray-900 dark:text-gray-100 hover:text-purple-600 dark:hover:text-purple-400 transition-colors truncate"
           >
             {repo.name}
           </a>
@@ -647,7 +647,7 @@ export default function RepositoriesPage() {
                   }}
                   onBlur={() => confirmNewFolder(newFolderName)}
                   placeholder="Folder name…"
-                  className="w-full px-2 py-1.5 text-sm rounded-lg border border-indigo-300 dark:border-indigo-700 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-2 py-1.5 text-sm rounded-lg border border-purple-300 dark:border-purple-700 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
                 <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 px-1">
                   Enter to confirm · Esc to cancel
@@ -680,13 +680,13 @@ export default function RepositoriesPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search repositories…"
-                  className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
               <select
                 value={sortKey}
                 onChange={(e) => setSortKey(e.target.value as SortKey)}
-                className="text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               >
                 <option value="updated">Last updated</option>
                 <option value="name">Name A–Z</option>
@@ -781,7 +781,7 @@ export default function RepositoriesPage() {
                 </p>
                 <button
                   onClick={() => { setSearch(''); setActiveGroup('all') }}
-                  className="text-xs text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  className="text-xs text-purple-500 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
                 >
                   Clear filters
                 </button>

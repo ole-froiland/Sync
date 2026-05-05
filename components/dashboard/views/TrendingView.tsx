@@ -33,7 +33,7 @@ const LANGUAGE_DOT_COLORS: Record<string, string> = {
   Kotlin: 'bg-violet-500',
   C: 'bg-gray-500',
   'C#': 'bg-green-600',
-  PHP: 'bg-indigo-400',
+  PHP: 'bg-purple-400',
   Scala: 'bg-red-600',
   Dart: 'bg-sky-500',
   Elixir: 'bg-purple-400',
@@ -173,7 +173,7 @@ export default function TrendingView() {
                 <select
                   value={language}
                   onChange={(e) => handleLanguageChange(e.target.value)}
-                  className="h-8 w-full appearance-none rounded-md border border-gray-200 bg-white pl-3 pr-8 text-sm text-gray-700 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200"
+                  className="h-8 w-full appearance-none rounded-md border border-gray-200 bg-white pl-3 pr-8 text-sm text-gray-700 outline-none transition-colors focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200"
                 >
                   <option value="all">Any</option>
                   {languages.map((item) => (
@@ -195,7 +195,7 @@ export default function TrendingView() {
                 <select
                   value={timeframe}
                   onChange={(e) => handleTimeframeChange(e.target.value as Timeframe)}
-                  className="h-8 w-full appearance-none rounded-md border border-gray-200 bg-white pl-3 pr-8 text-sm text-gray-700 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200"
+                  className="h-8 w-full appearance-none rounded-md border border-gray-200 bg-white pl-3 pr-8 text-sm text-gray-700 outline-none transition-colors focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200"
                 >
                   {(['daily', 'weekly', 'monthly'] as Timeframe[]).map((item) => (
                     <option key={item} value={item}>
@@ -263,7 +263,7 @@ export default function TrendingView() {
                       href={repo.repoUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="min-w-0 truncate text-xl font-semibold leading-tight text-indigo-600 hover:underline dark:text-indigo-400"
+                      className="min-w-0 truncate text-xl font-semibold leading-tight text-purple-600 hover:underline dark:text-purple-400"
                     >
                       {repo.fullName}
                     </a>
@@ -370,7 +370,7 @@ export default function TrendingView() {
                       href={developer.profileUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block truncate text-xl font-semibold leading-tight text-gray-900 hover:text-indigo-600 hover:underline dark:text-gray-100 dark:hover:text-indigo-400"
+                      className="block truncate text-xl font-semibold leading-tight text-gray-900 hover:text-purple-600 hover:underline dark:text-gray-100 dark:hover:text-purple-400"
                     >
                       {developer.name ?? developer.username}
                     </a>
@@ -387,7 +387,7 @@ export default function TrendingView() {
                           href={developer.popularRepoUrl ?? developer.profileUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="mt-1 inline-flex min-w-0 items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                          className="mt-1 inline-flex min-w-0 items-center gap-1.5 text-sm font-semibold text-purple-600 hover:underline dark:text-purple-400"
                         >
                           <BookOpen
                             size={14}
