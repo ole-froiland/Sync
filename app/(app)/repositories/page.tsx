@@ -393,6 +393,7 @@ function FolderTreeItem({
   const dragOver = dragOverNode === `folder:${folder.id}`
   const repoCount = repoCounts[folder.id] ?? 0
   const childCount = childFolderCounts[folder.id] ?? 0
+  const itemCount = repoCount + childCount
   const menuOpen = openFolderMenuId === folder.id
 
   return (
@@ -455,9 +456,9 @@ function FolderTreeItem({
               <span className="truncate">{folder.label}</span>
             )}
           </span>
-          <span className="ml-2 text-[11px] tabular-nums text-inherit/70">
-            {repoCount}/{childCount}
-          </span>
+          {itemCount > 0 ? (
+            <span className="ml-2 text-[11px] tabular-nums text-inherit/70">{itemCount}</span>
+          ) : null}
         </button>
 
         {!isEditing && (
@@ -1212,7 +1213,7 @@ export default function RepositoriesPage() {
 
       <div className="flex flex-1 overflow-hidden">
         {showSidebar && (
-          <nav className="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto border-r border-gray-100 bg-white px-3 py-4 dark:border-gray-800 dark:bg-gray-900">
+          <nav className="flex w-64 shrink-0 flex-col overflow-y-auto border-r border-gray-100 bg-white px-3 py-4 dark:border-gray-800 dark:bg-gray-900">
             <SidebarItem
               icon={<Home size={13} />}
               label="Home"
@@ -1231,7 +1232,7 @@ export default function RepositoriesPage() {
               }}
             />
 
-            <div className="space-y-0.5">
+            <div className="mt-1 space-y-0.5">
               {ROOT_SECTIONS.map((sectionId) => (
                 <SidebarItem
                   key={sectionId}
@@ -1245,105 +1246,81 @@ export default function RepositoriesPage() {
               ))}
             </div>
 
-            <div className="rounded-2xl border border-gray-100 p-2 dark:border-gray-800">
-              <div className="mb-2 flex items-center justify-between px-1">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-                    Folders
-                  </p>
-                  <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
-                    Nested, draggable, Finder-style
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    openFolderComposer(currentFolderId, null)
+            <div className="my-3 h-px bg-gray-100 dark:bg-gray-800" />
+
+            <div className="space-y-0.5">
+              {(foldersByParent.get(null) ?? []).map((folder) => (
+                <FolderTreeItem
+                  key={folder.id}
+                  folder={folder}
+                  depth={0}
+                  foldersByParent={foldersByParent}
+                  activeFolderId={currentFolderId}
+                  collapsed={collapsedFolders}
+                  dragOverNode={dragOverNode}
+                  repoCounts={directRepoCounts}
+                  childFolderCounts={childFolderCounts}
+                  editingFolderId={editingFolderId}
+                  editingValue={editingFolderName}
+                  onEditingChange={setEditingFolderName}
+                  onEditingSubmit={submitFolderRename}
+                  onEditingCancel={cancelFolderRename}
+                  openFolderMenuId={openFolderMenuId}
+                  onToggleCollapse={toggleFolderCollapse}
+                  onSelect={(folderId) => setActiveView(`folder:${folderId}`)}
+                  onAddSubfolder={(folderId) => openFolderComposer(folderId)}
+                  onStartRename={startRenameFolder}
+                  onDelete={deleteFolder}
+                  onMoveToRoot={moveFolderToRoot}
+                  onOpenMenu={setOpenFolderMenuId}
+                  onDragStart={(folderId) => setDragItem({ type: 'folder', folderId })}
+                  onDragEnd={() => {
+                    setDragItem(null)
+                    setDragOverNode(null)
                   }}
-                  className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-                  title="+ New folder"
-                >
-                  <Plus size={14} />
-                </button>
-              </div>
-
-              <div className="space-y-0.5">
-                {(foldersByParent.get(null) ?? []).length === 0 && !folderComposerOpen ? (
-                  <p className="px-2 py-3 text-xs text-gray-400 dark:text-gray-500">
-                    Create folders to structure repositories like a file explorer.
-                  </p>
-                ) : (
-                  (foldersByParent.get(null) ?? []).map((folder) => (
-                    <FolderTreeItem
-                      key={folder.id}
-                      folder={folder}
-                      depth={0}
-                      foldersByParent={foldersByParent}
-                      activeFolderId={currentFolderId}
-                      collapsed={collapsedFolders}
-                      dragOverNode={dragOverNode}
-                      repoCounts={directRepoCounts}
-                      childFolderCounts={childFolderCounts}
-                      editingFolderId={editingFolderId}
-                      editingValue={editingFolderName}
-                      onEditingChange={setEditingFolderName}
-                      onEditingSubmit={submitFolderRename}
-                      onEditingCancel={cancelFolderRename}
-                      openFolderMenuId={openFolderMenuId}
-                      onToggleCollapse={toggleFolderCollapse}
-                      onSelect={(folderId) => setActiveView(`folder:${folderId}`)}
-                      onAddSubfolder={(folderId) => openFolderComposer(folderId)}
-                      onStartRename={startRenameFolder}
-                      onDelete={deleteFolder}
-                      onMoveToRoot={moveFolderToRoot}
-                      onOpenMenu={setOpenFolderMenuId}
-                      onDragStart={(folderId) => setDragItem({ type: 'folder', folderId })}
-                      onDragEnd={() => {
-                        setDragItem(null)
-                        setDragOverNode(null)
-                      }}
-                      onDragOver={(e, folderId) => {
-                        e.preventDefault()
-                        setDragOverNode(`folder:${folderId}`)
-                      }}
-                      onDragLeave={() => setDragOverNode(null)}
-                      onDrop={(e, folderId) => {
-                        e.preventDefault()
-                        handleDropOnFolder(folderId)
-                      }}
-                    />
-                  ))
-                )}
-              </div>
-
-              {folderComposerOpen && (
-                <div className="mt-2 rounded-xl border border-dashed border-purple-200 bg-purple-50/70 p-2 dark:border-purple-900 dark:bg-purple-950/20">
-                  <div className="mb-2 flex items-center gap-2 text-xs text-purple-600 dark:text-purple-300">
-                    <FolderPlus size={12} />
-                    {pendingParentFolderId && folderMap.get(pendingParentFolderId)
-                      ? `New folder inside ${folderMap.get(pendingParentFolderId)?.label}`
-                      : 'New root folder'}
-                  </div>
-                  <input
-                    ref={folderComposerRef}
-                    value={folderComposerName}
-                    onChange={(e) => setFolderComposerName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        confirmFolderComposer()
-                      }
-                      if (e.key === 'Escape') {
-                        e.preventDefault()
-                        closeFolderComposer()
-                      }
-                    }}
-                    onBlur={confirmFolderComposer}
-                    placeholder="Folder name..."
-                    className="w-full rounded-lg border border-purple-200 bg-white px-2.5 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-purple-500 dark:border-purple-800 dark:bg-gray-900 dark:text-gray-100"
-                  />
-                </div>
-              )}
+                  onDragOver={(e, folderId) => {
+                    e.preventDefault()
+                    setDragOverNode(`folder:${folderId}`)
+                  }}
+                  onDragLeave={() => setDragOverNode(null)}
+                  onDrop={(e, folderId) => {
+                    e.preventDefault()
+                    handleDropOnFolder(folderId)
+                  }}
+                />
+              ))}
             </div>
+
+            {folderComposerOpen && (
+              <div className="mt-2 px-1">
+                <input
+                  ref={folderComposerRef}
+                  value={folderComposerName}
+                  onChange={(e) => setFolderComposerName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      confirmFolderComposer()
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault()
+                      closeFolderComposer()
+                    }
+                  }}
+                  onBlur={confirmFolderComposer}
+                  placeholder="New folder"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm text-gray-900 outline-none focus:border-transparent focus:ring-2 focus:ring-purple-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                />
+              </div>
+            )}
+
+            <button
+              onClick={() => openFolderComposer(null, null)}
+              className="mt-2 flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/60 dark:hover:text-gray-200"
+            >
+              <Plus size={13} />
+              New folder
+            </button>
           </nav>
         )}
 
@@ -1404,7 +1381,12 @@ export default function RepositoriesPage() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => openFolderComposer(currentFolderId, null)}
+                    onClick={() =>
+                      openFolderComposer(
+                        resolvedActiveView.startsWith('folder:') ? currentFolderId : null,
+                        null
+                      )
+                    }
                   >
                     <FolderPlus size={14} />
                     New folder
