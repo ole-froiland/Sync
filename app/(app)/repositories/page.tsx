@@ -6,13 +6,14 @@ import {
   useCallback,
   useMemo,
   useRef,
-  type ReactNode,
+  type DragEvent,
 } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
 import CreateGitHubRepoModal from '@/components/dashboard/CreateGitHubRepoModal'
 import { useGitHub } from '@/context/GitHubContext'
+import { useUser } from '@/context/UserContext'
 import { cn, formatDate } from '@/lib/utils'
 import type { GitHubUserRepo } from '@/types'
 import {
@@ -26,6 +27,7 @@ import {
   Search,
   Star,
   Folder,
+  FolderOpen,
   Zap,
   ChevronDown,
   ChevronRight,
@@ -34,35 +36,46 @@ import {
   Check,
   Plus,
   FolderPlus,
+  Pencil,
+  Trash2,
+  Home,
 } from 'lucide-react'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type SortKey = 'updated' | 'name'
-// Keys are String(repo.id) — JSON always serialises numeric keys as strings
-type FolderMap = Record<string, string>
+type RootSectionId = 'favorites' | 'active' | 'side-projects' | 'archived' | 'private'
+type ViewId = 'home' | RootSectionId | `folder:${string}`
+type RepoLocationMap = Record<string, { folderId: string | null }>
+type FolderNodeId = 'home' | `folder:${string}`
 
 interface FolderDef {
   id: string
   label: string
-  icon: ReactNode
-  isCustom?: boolean
+  parentId: string | null
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+interface PathSegment {
+  id: ViewId
+  label: string
+}
+
+type DragItem = { type: 'repo'; repoId: number } | { type: 'folder'; folderId: string } | null
 
 const ACTIVE_THRESHOLD_MS = 14 * 24 * 60 * 60 * 1000
-
-const DEFAULT_FOLDERS: FolderDef[] = [
-  { id: 'active', label: 'Active', icon: <Zap size={13} /> },
-  { id: 'side-projects', label: 'Side projects', icon: <Folder size={13} /> },
-  { id: 'archived', label: 'Archived', icon: <Archive size={13} /> },
+const ROOT_SECTIONS: RootSectionId[] = [
+  'favorites',
+  'active',
+  'side-projects',
+  'archived',
+  'private',
 ]
 
-const LS_FOLDER_MAP = 'sync_repo_folder_map'
-const LS_CUSTOM_FOLDERS = 'sync_custom_folders'
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const ROOT_SECTION_META: Record<RootSectionId, { label: string; icon: React.ReactNode }> = {
+  favorites: { label: 'Favorites', icon: <Star size={13} /> },
+  active: { label: 'Active', icon: <Zap size={13} /> },
+  'side-projects': { label: 'Side projects', icon: <Folder size={13} /> },
+  archived: { label: 'Archived', icon: <Archive size={13} /> },
+  private: { label: 'Private', icon: <Lock size={13} /> },
+}
 
 function lsGet<T>(key: string, fallback: T): T {
   try {
@@ -73,31 +86,116 @@ function lsGet<T>(key: string, fallback: T): T {
   }
 }
 
-function getAutoGroup(repo: GitHubUserRepo): string {
+function makeStorageKey(userId: string | null | undefined, suffix: string): string {
+  return `sync_repositories_${suffix}_${userId ?? 'anon'}`
+}
+
+function genId(): string {
+  return Math.random().toString(36).slice(2, 10)
+}
+
+function getAutoSection(repo: GitHubUserRepo): Exclude<RootSectionId, 'favorites'> {
+  if (repo.private) return 'private'
   if (repo.archived) return 'archived'
   if (Date.now() - new Date(repo.updated_at).getTime() <= ACTIVE_THRESHOLD_MS) return 'active'
   return 'side-projects'
 }
 
-function getEffectiveGroup(repo: GitHubUserRepo, folderMap: FolderMap): string {
-  return folderMap[String(repo.id)] ?? getAutoGroup(repo)
+function isRootSectionView(view: ViewId): view is RootSectionId {
+  return view !== 'home' && !view.startsWith('folder:')
 }
 
-function genId(): string {
-  return Math.random().toString(36).slice(2, 9)
+function sortRepos(repos: GitHubUserRepo[], sortKey: SortKey): GitHubUserRepo[] {
+  return [...repos].sort((a, b) =>
+    sortKey === 'name'
+      ? a.name.localeCompare(b.name)
+      : new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+  )
 }
 
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
+function matchesRepoSearch(repo: GitHubUserRepo, query: string): boolean {
+  if (!query) return true
+  const haystack = `${repo.name} ${repo.full_name} ${repo.description ?? ''} ${repo.language ?? ''}`.toLowerCase()
+  return haystack.includes(query)
+}
+
+function getViewFolderId(view: ViewId): string | null {
+  return view.startsWith('folder:') ? view.slice('folder:'.length) : null
+}
+
+function getRepoFolderId(
+  repoId: number,
+  locations: RepoLocationMap,
+  folderMap: Map<string, FolderDef>
+): string | null {
+  const folderId = locations[String(repoId)]?.folderId ?? null
+  return folderId && folderMap.has(folderId) ? folderId : null
+}
+
+function buildFolderMap(folders: FolderDef[]): Map<string, FolderDef> {
+  return new Map(folders.map((folder) => [folder.id, folder]))
+}
+
+function getFolderPath(folderId: string, folderMap: Map<string, FolderDef>): FolderDef[] {
+  const path: FolderDef[] = []
+  let current = folderMap.get(folderId) ?? null
+
+  while (current) {
+    path.unshift(current)
+    current = current.parentId ? (folderMap.get(current.parentId) ?? null) : null
+  }
+
+  return path
+}
+
+function isFolderDescendant(
+  folderId: string,
+  possibleParentId: string,
+  folderMap: Map<string, FolderDef>
+): boolean {
+  let current = folderMap.get(possibleParentId) ?? null
+
+  while (current) {
+    if (current.parentId === folderId) return true
+    current = current.parentId ? (folderMap.get(current.parentId) ?? null) : null
+  }
+
+  return false
+}
+
+function collectDescendantIds(folderId: string, folders: FolderDef[]): string[] {
+  const descendants = new Set<string>([folderId])
+  let changed = true
+
+  while (changed) {
+    changed = false
+    for (const folder of folders) {
+      if (!descendants.has(folder.id) && folder.parentId && descendants.has(folder.parentId)) {
+        descendants.add(folder.id)
+        changed = true
+      }
+    }
+  }
+
+  return [...descendants]
+}
+
+function countReposInSubtree(folderId: string, folders: FolderDef[], locations: RepoLocationMap): number {
+  const descendants = new Set(collectDescendantIds(folderId, folders))
+  return Object.values(locations).reduce((count, location) => {
+    return location.folderId && descendants.has(location.folderId) ? count + 1 : count
+  }, 0)
+}
 
 function RepoSkeleton() {
   return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl p-5">
-      <div className="flex items-start justify-between gap-3 mb-2">
+    <div className="rounded-2xl border border-gray-100 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+      <div className="mb-2 flex items-start justify-between gap-3">
         <Skeleton className="h-4 w-40" />
         <Skeleton className="h-5 w-14 rounded-full" />
       </div>
-      <Skeleton className="h-3 w-full mb-1" />
-      <Skeleton className="h-3 w-2/3 mb-4" />
+      <Skeleton className="mb-1 h-3 w-full" />
+      <Skeleton className="mb-4 h-3 w-2/3" />
       <div className="flex items-center gap-4">
         <Skeleton className="h-3 w-16" />
         <Skeleton className="h-3 w-12" />
@@ -106,8 +204,6 @@ function RepoSkeleton() {
     </div>
   )
 }
-
-// ─── Sidebar item (drag-drop target) ─────────────────────────────────────────
 
 function SidebarItem({
   icon,
@@ -120,15 +216,15 @@ function SidebarItem({
   onDragLeave,
   onDrop,
 }: {
-  icon: ReactNode
+  icon: React.ReactNode
   label: string
   count: number
   active: boolean
   dragOver: boolean
   onClick: () => void
-  onDragOver: (e: React.DragEvent) => void
-  onDragLeave: () => void
-  onDrop: (e: React.DragEvent) => void
+  onDragOver?: (e: DragEvent<HTMLButtonElement>) => void
+  onDragLeave?: () => void
+  onDrop?: (e: DragEvent<HTMLButtonElement>) => void
 }) {
   return (
     <button
@@ -137,25 +233,21 @@ function SidebarItem({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       className={cn(
-        'w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-sm transition-all duration-100',
+        'flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-sm transition-all duration-150',
         active
-          ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium'
-          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-700 dark:hover:text-gray-300',
-        dragOver &&
-          'bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 ring-1 ring-inset ring-purple-200 dark:ring-purple-800'
+          ? 'bg-purple-50 text-purple-700 ring-1 ring-inset ring-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:ring-purple-900'
+          : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/60 dark:hover:text-gray-200',
+        dragOver && 'bg-purple-100 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300'
       )}
     >
-      {/* pointer-events-none prevents dragleave firing on child elements */}
-      <span className="flex items-center gap-2 pointer-events-none">
+      <span className="pointer-events-none flex items-center gap-2">
         {icon}
         {label}
       </span>
-      <span className="text-xs tabular-nums pointer-events-none">{count}</span>
+      <span className="pointer-events-none text-xs tabular-nums text-inherit/70">{count}</span>
     </button>
   )
 }
-
-// ─── Move-to dropdown ─────────────────────────────────────────────────────────
 
 function MoveMenu({
   folders,
@@ -163,38 +255,47 @@ function MoveMenu({
   onMove,
   onNewFolder,
 }: {
-  folders: FolderDef[]
-  currentFolderId: string
-  onMove: (folderId: string) => void
+  folders: Array<{ id: string; label: string; depth: number }>
+  currentFolderId: string | null
+  onMove: (folderId: string | null) => void
   onNewFolder: () => void
 }) {
   return (
     <div
-      className="absolute right-0 top-full mt-1 z-50 min-w-[172px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg shadow-black/5 dark:shadow-black/30 py-1"
+      className="absolute right-0 top-full z-50 mt-1 min-w-[220px] rounded-2xl border border-gray-200 bg-white py-1 shadow-lg shadow-black/5 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/30"
       onClick={(e) => e.stopPropagation()}
     >
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 px-3 pt-1.5 pb-1">
+      <p className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
         Move to folder
       </p>
-      {folders.map((f) => (
+      <button
+        onClick={() => onMove(null)}
+        className="flex w-full items-center justify-between px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+      >
+        <span className="flex items-center gap-2">
+          <Home size={13} className="text-gray-400 dark:text-gray-500" />
+          Home
+        </span>
+        {currentFolderId === null && <Check size={12} className="ml-2 text-purple-500" />}
+      </button>
+      {folders.map((folder) => (
         <button
-          key={f.id}
-          onClick={() => onMove(f.id)}
-          className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm text-gray-700 dark:text-gray-300"
+          key={folder.id}
+          onClick={() => onMove(folder.id)}
+          className="flex w-full items-center justify-between px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
         >
           <span className="flex items-center gap-2">
-            <span className="text-gray-400 dark:text-gray-500">{f.icon}</span>
-            {f.label}
+            <span style={{ width: folder.depth * 12 }} aria-hidden />
+            <Folder size={13} className="text-gray-400 dark:text-gray-500" />
+            {folder.label}
           </span>
-          {currentFolderId === f.id && (
-            <Check size={12} className="text-purple-500 flex-shrink-0 ml-2" />
-          )}
+          {currentFolderId === folder.id && <Check size={12} className="ml-2 text-purple-500" />}
         </button>
       ))}
-      <div className="my-1 mx-2 h-px bg-gray-100 dark:bg-gray-800" />
+      <div className="mx-2 my-1 h-px bg-gray-100 dark:bg-gray-800" />
       <button
         onClick={onNewFolder}
-        className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm text-gray-500 dark:text-gray-400"
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800"
       >
         <FolderPlus size={13} />
         New folder
@@ -203,7 +304,324 @@ function MoveMenu({
   )
 }
 
-// ─── Repo card ────────────────────────────────────────────────────────────────
+function FolderMenu({
+  canMoveToRoot,
+  onRename,
+  onDelete,
+  onMoveToRoot,
+}: {
+  canMoveToRoot: boolean
+  onRename: () => void
+  onDelete: () => void
+  onMoveToRoot: () => void
+}) {
+  return (
+    <div
+      className="absolute right-0 top-full z-50 mt-1 min-w-[168px] rounded-2xl border border-gray-200 bg-white py-1 shadow-lg shadow-black/5 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/30"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        onClick={onRename}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+      >
+        <Pencil size={13} />
+        Rename
+      </button>
+      {canMoveToRoot && (
+        <button
+          onClick={onMoveToRoot}
+          className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+        >
+          <Home size={13} />
+          Move to root
+        </button>
+      )}
+      <div className="mx-2 my-1 h-px bg-gray-100 dark:bg-gray-800" />
+      <button
+        onClick={onDelete}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-950/30"
+      >
+        <Trash2 size={13} />
+        Delete
+      </button>
+    </div>
+  )
+}
+
+function FolderTreeItem({
+  folder,
+  depth,
+  foldersByParent,
+  activeFolderId,
+  collapsed,
+  dragOverNode,
+  counts,
+  editingFolderId,
+  editingValue,
+  onEditingChange,
+  onEditingSubmit,
+  onEditingCancel,
+  openFolderMenuId,
+  onToggleCollapse,
+  onSelect,
+  onStartRename,
+  onDelete,
+  onMoveToRoot,
+  onOpenMenu,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: {
+  folder: FolderDef
+  depth: number
+  foldersByParent: Map<string | null, FolderDef[]>
+  activeFolderId: string | null
+  collapsed: Set<string>
+  dragOverNode: FolderNodeId | null
+  counts: Record<string, number>
+  editingFolderId: string | null
+  editingValue: string
+  onEditingChange: (value: string) => void
+  onEditingSubmit: (folderId: string) => void
+  onEditingCancel: () => void
+  openFolderMenuId: string | null
+  onToggleCollapse: (folderId: string) => void
+  onSelect: (folderId: string) => void
+  onStartRename: (folder: FolderDef) => void
+  onDelete: (folderId: string) => void
+  onMoveToRoot: (folderId: string) => void
+  onOpenMenu: (folderId: string | null) => void
+  onDragStart: (folderId: string) => void
+  onDragEnd: () => void
+  onDragOver: (e: DragEvent<HTMLDivElement>, folderId: string) => void
+  onDragLeave: () => void
+  onDrop: (e: DragEvent<HTMLDivElement>, folderId: string) => void
+}) {
+  const children = foldersByParent.get(folder.id) ?? []
+  const isCollapsed = collapsed.has(folder.id)
+  const isActive = activeFolderId === folder.id
+  const isEditing = editingFolderId === folder.id
+  const dragOver = dragOverNode === `folder:${folder.id}`
+  const count = counts[folder.id] ?? 0
+  const menuOpen = openFolderMenuId === folder.id
+
+  return (
+    <div>
+      <div
+        onDragOver={(e) => onDragOver(e, folder.id)}
+        onDragLeave={onDragLeave}
+        onDrop={(e) => onDrop(e, folder.id)}
+        className={cn(
+          'group relative flex items-center gap-1 rounded-xl pr-1 transition-colors',
+          dragOver && 'bg-purple-50 dark:bg-purple-950/40'
+        )}
+        style={{ paddingLeft: depth * 14 }}
+      >
+        <button
+          onClick={() => (children.length > 0 ? onToggleCollapse(folder.id) : onSelect(folder.id))}
+          className="flex h-6 w-6 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+        >
+          {children.length > 0 ? (
+            isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />
+          ) : (
+            <span className="h-3 w-3" />
+          )}
+        </button>
+
+        <button
+          draggable={!isEditing}
+          onDragStart={() => onDragStart(folder.id)}
+          onDragEnd={onDragEnd}
+          onClick={() => onSelect(folder.id)}
+          className={cn(
+            'flex min-w-0 flex-1 items-center justify-between rounded-xl px-2 py-1.5 text-sm transition-colors',
+            isActive
+              ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300'
+              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/50 dark:hover:text-gray-200'
+          )}
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            {isCollapsed ? <Folder size={13} /> : <FolderOpen size={13} />}
+            {isEditing ? (
+              <input
+                autoFocus
+                value={editingValue}
+                onChange={(e) => onEditingChange(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    onEditingSubmit(folder.id)
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    onEditingCancel()
+                  }
+                }}
+                onBlur={() => onEditingSubmit(folder.id)}
+                className="min-w-0 rounded-md border border-purple-300 bg-transparent px-1.5 py-0.5 text-sm text-gray-900 outline-none ring-0 dark:border-purple-700 dark:text-gray-100"
+              />
+            ) : (
+              <span className="truncate">{folder.label}</span>
+            )}
+          </span>
+          <span className="ml-2 text-xs tabular-nums text-inherit/70">{count}</span>
+        </button>
+
+        {!isEditing && (
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenMenu(menuOpen ? null : folder.id)
+              }}
+              className="rounded-md p-1 text-gray-300 opacity-0 transition-all hover:text-gray-500 group-hover:opacity-100 dark:text-gray-600 dark:hover:text-gray-400"
+            >
+              <MoreHorizontal size={13} />
+            </button>
+            {menuOpen && (
+              <FolderMenu
+                canMoveToRoot={folder.parentId !== null}
+                onRename={() => onStartRename(folder)}
+                onDelete={() => onDelete(folder.id)}
+                onMoveToRoot={() => onMoveToRoot(folder.id)}
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      <div
+        className={cn(
+          'grid transition-[grid-template-rows,opacity] duration-200 ease-out',
+          isCollapsed ? 'grid-rows-[0fr] opacity-50' : 'grid-rows-[1fr] opacity-100'
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="mt-0.5 space-y-0.5">
+            {children.map((child) => (
+              <FolderTreeItem
+                key={child.id}
+                folder={child}
+                depth={depth + 1}
+                foldersByParent={foldersByParent}
+                activeFolderId={activeFolderId}
+                collapsed={collapsed}
+                dragOverNode={dragOverNode}
+                counts={counts}
+                editingFolderId={editingFolderId}
+                editingValue={editingValue}
+                onEditingChange={onEditingChange}
+                onEditingSubmit={onEditingSubmit}
+                onEditingCancel={onEditingCancel}
+                openFolderMenuId={openFolderMenuId}
+                onToggleCollapse={onToggleCollapse}
+                onSelect={onSelect}
+                onStartRename={onStartRename}
+                onDelete={onDelete}
+                onMoveToRoot={onMoveToRoot}
+                onOpenMenu={onOpenMenu}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onDrop={onDrop}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FolderCard({
+  folder,
+  repoCount,
+  childCount,
+  onOpen,
+  menuOpen,
+  onOpenMenu,
+  onRename,
+  onDelete,
+  onMoveToRoot,
+  draggable,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  dragOver,
+}: {
+  folder: FolderDef
+  repoCount: number
+  childCount: number
+  onOpen: () => void
+  menuOpen: boolean
+  onOpenMenu: () => void
+  onRename: () => void
+  onDelete: () => void
+  onMoveToRoot: () => void
+  draggable: boolean
+  onDragStart: () => void
+  onDragEnd: () => void
+  onDragOver: (e: DragEvent<HTMLButtonElement>) => void
+  onDragLeave: () => void
+  onDrop: (e: DragEvent<HTMLButtonElement>) => void
+  dragOver: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        'group relative flex items-center justify-between rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition-all hover:border-purple-200 hover:bg-purple-50/50 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-900 dark:hover:bg-purple-950/20',
+        dragOver && 'border-purple-300 bg-purple-50 dark:border-purple-700 dark:bg-purple-950/30'
+      )}
+    >
+      <button
+        draggable={draggable}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        onClick={onOpen}
+        className="min-w-0 flex-1"
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+            <Folder size={15} className="text-purple-500" />
+            <span className="truncate">{folder.label}</span>
+          </div>
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            {repoCount} repos · {childCount} folders
+          </p>
+        </div>
+      </button>
+      <div className="relative ml-3 flex items-center">
+        <ChevronRight size={15} className="mr-2 text-gray-300 dark:text-gray-600" />
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenMenu()
+          }}
+          className="rounded-md p-1 text-gray-300 opacity-0 transition-all hover:text-gray-500 group-hover:opacity-100 dark:text-gray-600 dark:hover:text-gray-400"
+        >
+          <MoreHorizontal size={13} />
+        </button>
+        {menuOpen && (
+          <FolderMenu
+            canMoveToRoot={folder.parentId !== null}
+            onRename={onRename}
+            onDelete={onDelete}
+            onMoveToRoot={onMoveToRoot}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
 
 function RepoCard({
   repo,
@@ -221,13 +639,13 @@ function RepoCard({
 }: {
   repo: GitHubUserRepo
   starred: boolean
-  folders: FolderDef[]
-  currentFolderId: string
+  folders: Array<{ id: string; label: string; depth: number }>
+  currentFolderId: string | null
   menuOpen: boolean
   isDragging: boolean
   onToggleStar: () => void
   onOpenMenu: () => void
-  onMove: (folderId: string) => void
+  onMove: (folderId: string | null) => void
   onNewFolder: () => void
   onDragStart: () => void
   onDragEnd: () => void
@@ -238,44 +656,42 @@ function RepoCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       className={cn(
-        'relative bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl p-5 flex flex-col gap-3',
-        'cursor-grab active:cursor-grabbing select-none',
-        'hover:border-gray-200 dark:hover:border-gray-700 transition-all duration-150',
-        isDragging && 'opacity-40 scale-[0.97]'
+        'relative flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-5 transition-all duration-150 hover:border-gray-200 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700',
+        'cursor-grab select-none active:cursor-grabbing',
+        isDragging && 'scale-[0.98] opacity-40'
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
           {repo.private ? (
-            <Lock size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+            <Lock size={13} className="flex-shrink-0 text-gray-400 dark:text-gray-500" />
           ) : (
-            <Globe size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+            <Globe size={13} className="flex-shrink-0 text-gray-400 dark:text-gray-500" />
           )}
           <a
             href={repo.html_url}
             target="_blank"
             rel="noopener noreferrer"
             draggable={false}
-            className="text-sm font-semibold text-gray-900 dark:text-gray-100 hover:text-purple-600 dark:hover:text-purple-400 transition-colors truncate"
+            className="truncate text-sm font-semibold text-gray-900 transition-colors hover:text-purple-600 dark:text-gray-100 dark:hover:text-purple-400"
           >
             {repo.name}
           </a>
-          {repo.fork && (
-            <GitFork size={12} className="text-gray-300 dark:text-gray-600 flex-shrink-0" />
-          )}
+          {repo.fork && <GitFork size={12} className="flex-shrink-0 text-gray-300 dark:text-gray-600" />}
           {repo.archived && (
-            <Archive size={12} className="text-amber-400 dark:text-amber-500 flex-shrink-0" />
+            <Archive size={12} className="flex-shrink-0 text-amber-400 dark:text-amber-500" />
           )}
         </div>
 
-        <div className="flex items-center gap-0.5 flex-shrink-0">
+        <div className="flex flex-shrink-0 items-center gap-0.5">
           <button
             onClick={onToggleStar}
+            title={starred ? 'Remove from favorites' : 'Add to favorites'}
             className={cn(
-              'p-1 rounded transition-colors',
+              'rounded p-1 transition-colors',
               starred
                 ? 'text-amber-400 hover:text-amber-500'
-                : 'text-gray-200 dark:text-gray-700 hover:text-amber-400 dark:hover:text-amber-500'
+                : 'text-gray-200 hover:text-amber-400 dark:text-gray-700 dark:hover:text-amber-500'
             )}
           >
             <Star size={13} fill={starred ? 'currentColor' : 'none'} />
@@ -287,7 +703,7 @@ function RepoCard({
                 e.stopPropagation()
                 onOpenMenu()
               }}
-              className="p-1 rounded text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 transition-colors"
+              className="rounded p-1 text-gray-300 transition-colors hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400"
             >
               <MoreHorizontal size={13} />
             </button>
@@ -306,7 +722,7 @@ function RepoCard({
             target="_blank"
             rel="noopener noreferrer"
             draggable={false}
-            className="p-1 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 transition-colors"
+            className="p-1 text-gray-300 transition-colors hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400"
           >
             <ExternalLink size={13} />
           </a>
@@ -314,30 +730,28 @@ function RepoCard({
       </div>
 
       {repo.description && (
-        <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-2">
+        <p className="line-clamp-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
           {repo.description}
         </p>
       )}
 
-      <div className="flex items-center gap-3 flex-wrap mt-auto">
+      <div className="mt-auto flex flex-wrap items-center gap-3">
         <span
           className={cn(
-            'text-xs font-medium px-2 py-0.5 rounded-full',
+            'rounded-full px-2 py-0.5 text-xs font-medium',
             repo.private
-              ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
-              : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400'
+              ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+              : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
           )}
         >
           {repo.private ? 'Private' : 'Public'}
         </span>
-        {repo.language && (
-          <span className="text-xs text-gray-400 dark:text-gray-500">{repo.language}</span>
-        )}
+        {repo.language && <span className="text-xs text-gray-400 dark:text-gray-500">{repo.language}</span>}
         <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
           <GitBranch size={11} />
           {repo.default_branch}
         </span>
-        <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
+        <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
           Updated {formatDate(repo.updated_at)}
         </span>
       </div>
@@ -345,134 +759,172 @@ function RepoCard({
   )
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
 export default function RepositoriesPage() {
   const github = useGitHub()
+  const user = useUser()
 
-  // GitHub data
   const [repos, setRepos] = useState<GitHubUserRepo[]>([])
   const [loadingDone, setLoadingDone] = useState(false)
   const [error, setError] = useState<{ message: string; code?: string } | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
 
-  // Folder system (localStorage-backed)
-  const [folderMap, setFolderMap] = useState<FolderMap>(() =>
-    typeof window !== 'undefined' ? lsGet<FolderMap>(LS_FOLDER_MAP, {}) : {}
+  const [folders, setFolders] = useState<FolderDef[]>(() =>
+    typeof window === 'undefined' ? [] : lsGet<FolderDef[]>(makeStorageKey(user?.id, 'folders'), [])
   )
-  const [customFolders, setCustomFolders] = useState<FolderDef[]>(() => {
-    if (typeof window === 'undefined') return []
-    return lsGet<{ id: string; label: string }[]>(LS_CUSTOM_FOLDERS, []).map((f) => ({
-      id: f.id,
-      label: f.label,
-      icon: <Folder size={13} />,
-      isCustom: true,
-    }))
-  })
+  const [repoLocations, setRepoLocations] = useState<RepoLocationMap>(() =>
+    typeof window === 'undefined'
+      ? {}
+      : lsGet<RepoLocationMap>(makeStorageKey(user?.id, 'repo_locations'), {})
+  )
+  const [starredIds, setStarredIds] = useState<Set<number>>(() =>
+    typeof window === 'undefined'
+      ? new Set()
+      : new Set(lsGet<number[]>(makeStorageKey(user?.id, 'starred'), []))
+  )
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() =>
+    typeof window === 'undefined'
+      ? new Set()
+      : new Set(lsGet<string[]>(makeStorageKey(user?.id, 'collapsed_folders'), []))
+  )
 
-  // UI state
-  const [activeGroup, setActiveGroup] = useState('all')
+  const [activeView, setActiveView] = useState<ViewId>('home')
   const [sortKey, setSortKey] = useState<SortKey>('updated')
   const [search, setSearch] = useState('')
-  const [starredIds, setStarredIds] = useState<Set<number>>(new Set())
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
-  const [openMenuRepoId, setOpenMenuRepoId] = useState<number | null>(null)
+  const [openRepoMenuId, setOpenRepoMenuId] = useState<number | null>(null)
+  const [openFolderMenuId, setOpenFolderMenuId] = useState<string | null>(null)
 
-  // New folder input
-  const [newFolderVisible, setNewFolderVisible] = useState(false)
-  const [newFolderForRepoId, setNewFolderForRepoId] = useState<number | null>(null)
-  const [newFolderName, setNewFolderName] = useState('')
-  const newFolderRef = useRef<HTMLInputElement>(null)
-  const newFolderSubmittedRef = useRef(false)
+  const [folderComposerOpen, setFolderComposerOpen] = useState(false)
+  const [folderComposerName, setFolderComposerName] = useState('')
+  const folderComposerRef = useRef<HTMLInputElement>(null)
+  const folderComposerSubmittedRef = useRef(false)
+  const [pendingAssignRepoId, setPendingAssignRepoId] = useState<number | null>(null)
 
-  // Drag state
-  const [dragRepoId, setDragRepoId] = useState<number | null>(null)
-  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null)
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null)
+  const [editingFolderName, setEditingFolderName] = useState('')
 
-  // Persist to localStorage whenever folder state changes
-  useEffect(() => {
-    localStorage.setItem(LS_FOLDER_MAP, JSON.stringify(folderMap))
-  }, [folderMap])
+  const [dragItem, setDragItem] = useState<DragItem>(null)
+  const [dragOverNode, setDragOverNode] = useState<FolderNodeId | null>(null)
 
-  useEffect(() => {
-    localStorage.setItem(
-      LS_CUSTOM_FOLDERS,
-      JSON.stringify(customFolders.map(({ id, label }) => ({ id, label })))
-    )
-  }, [customFolders])
+  const storageKeys = useMemo(
+    () => ({
+      folders: makeStorageKey(user?.id, 'folders'),
+      locations: makeStorageKey(user?.id, 'repo_locations'),
+      stars: makeStorageKey(user?.id, 'starred'),
+      collapsed: makeStorageKey(user?.id, 'collapsed_folders'),
+    }),
+    [user?.id]
+  )
 
-  // Close card context menu on any outside click
-  useEffect(() => {
-    if (openMenuRepoId === null) return
-    const close = () => setOpenMenuRepoId(null)
-    document.addEventListener('click', close)
-    return () => document.removeEventListener('click', close)
-  }, [openMenuRepoId])
+  const folderMap = useMemo(() => buildFolderMap(folders), [folders])
 
-  // Auto-focus new folder input when it appears
-  useEffect(() => {
-    if (newFolderVisible) {
-      newFolderSubmittedRef.current = false
-      requestAnimationFrame(() => newFolderRef.current?.focus())
+  const foldersByParent = useMemo(() => {
+    const map = new Map<string | null, FolderDef[]>()
+
+    for (const folder of folders) {
+      const siblings = map.get(folder.parentId) ?? []
+      siblings.push(folder)
+      map.set(folder.parentId, siblings)
     }
-  }, [newFolderVisible])
 
-  // ── Derived ────────────────────────────────────────────────────────────────
+    for (const [parentId, list] of map) {
+      map.set(
+        parentId,
+        [...list].sort((a, b) => a.label.localeCompare(b.label))
+      )
+    }
+
+    return map
+  }, [folders])
+
+  const flattenedFolders = useMemo(() => {
+    const items: Array<{ id: string; label: string; depth: number }> = []
+
+    const walk = (parentId: string | null, depth: number) => {
+      for (const folder of foldersByParent.get(parentId) ?? []) {
+        items.push({ id: folder.id, label: folder.label, depth })
+        walk(folder.id, depth + 1)
+      }
+    }
+
+    walk(null, 0)
+    return items
+  }, [foldersByParent])
+
+  const folderCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const folder of folders) {
+      counts[folder.id] = countReposInSubtree(folder.id, folders, repoLocations)
+    }
+    return counts
+  }, [folders, repoLocations])
+
+  const childFolderCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const folder of folders) {
+      counts[folder.id] = foldersByParent.get(folder.id)?.length ?? 0
+    }
+    return counts
+  }, [folders, foldersByParent])
+
+  const directRepoCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const location of Object.values(repoLocations)) {
+      if (!location.folderId) continue
+      counts[location.folderId] = (counts[location.folderId] ?? 0) + 1
+    }
+    return counts
+  }, [repoLocations])
+
+  const rootCounts = useMemo(() => {
+    return {
+      home: repos.filter((repo) => getRepoFolderId(repo.id, repoLocations, folderMap) === null).length,
+      favorites: repos.filter((repo) => starredIds.has(repo.id)).length,
+      active: repos.filter((repo) => getAutoSection(repo) === 'active').length,
+      'side-projects': repos.filter((repo) => getAutoSection(repo) === 'side-projects').length,
+      archived: repos.filter((repo) => getAutoSection(repo) === 'archived').length,
+      private: repos.filter((repo) => getAutoSection(repo) === 'private').length,
+    }
+  }, [folderMap, repoLocations, repos, starredIds])
 
   const notConnected =
     !loadingDone ? false : error?.code === 'not_connected' || error?.code === 'token_expired'
   const loading = !loadingDone && !error
-
-  const allFolders = useMemo<FolderDef[]>(
-    () => [...DEFAULT_FOLDERS, ...customFolders],
-    [customFolders]
-  )
-
-  const groupCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
-    for (const f of allFolders) counts[f.id] = 0
-    for (const repo of repos) {
-      const g = getEffectiveGroup(repo, folderMap)
-      counts[g] = (counts[g] ?? 0) + 1
-    }
-    return counts
-  }, [repos, folderMap, allFolders])
-
-  const filteredRepos = useMemo(() => {
-    const q = search.toLowerCase()
-    const result = repos.filter((repo) => {
-      if (activeGroup !== 'all' && getEffectiveGroup(repo, folderMap) !== activeGroup) return false
-      if (q && !repo.name.toLowerCase().includes(q) && !repo.description?.toLowerCase().includes(q))
-        return false
-      return true
-    })
-    return [...result].sort((a, b) =>
-      sortKey === 'name'
-        ? a.name.localeCompare(b.name)
-        : new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-    )
-  }, [repos, activeGroup, search, sortKey, folderMap])
-
-  const groupedRepos = useMemo(() => {
-    if (activeGroup !== 'all') return null
-    const groups: Record<string, GitHubUserRepo[]> = {}
-    for (const repo of filteredRepos) {
-      const g = getEffectiveGroup(repo, folderMap)
-      ;(groups[g] ??= []).push(repo)
-    }
-    return groups
-  }, [activeGroup, filteredRepos, folderMap])
-
-  // Folders that have at least one repo in current filtered view
-  const sectionFolders = useMemo(
-    () => (groupedRepos ? allFolders.filter((f) => (groupedRepos[f.id]?.length ?? 0) > 0) : []),
-    [allFolders, groupedRepos]
-  )
-
   const showSidebar = loadingDone && !error
   const showNewRepoButton = loadingDone && !notConnected && !error
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    localStorage.setItem(storageKeys.folders, JSON.stringify(folders))
+  }, [folders, storageKeys])
+
+  useEffect(() => {
+    localStorage.setItem(storageKeys.locations, JSON.stringify(repoLocations))
+  }, [repoLocations, storageKeys])
+
+  useEffect(() => {
+    localStorage.setItem(storageKeys.collapsed, JSON.stringify([...collapsedFolders]))
+  }, [collapsedFolders, storageKeys])
+
+  useEffect(() => {
+    localStorage.setItem(storageKeys.stars, JSON.stringify([...starredIds]))
+  }, [starredIds, storageKeys])
+
+  useEffect(() => {
+    if (openRepoMenuId === null && openFolderMenuId === null) return
+
+    const close = () => {
+      setOpenRepoMenuId(null)
+      setOpenFolderMenuId(null)
+    }
+
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [openRepoMenuId, openFolderMenuId])
+
+  useEffect(() => {
+    if (!folderComposerOpen) return
+    folderComposerSubmittedRef.current = false
+    requestAnimationFrame(() => folderComposerRef.current?.focus())
+  }, [folderComposerOpen])
 
   const fetchRepos = useCallback(() => {
     fetch('/api/github/user-repos')
@@ -492,8 +944,7 @@ export default function RepositoriesPage() {
 
   useEffect(() => {
     fetchRepos()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [fetchRepos])
 
   const handleRetry = () => {
     setError(null)
@@ -507,83 +958,226 @@ export default function RepositoriesPage() {
     fetchRepos()
   }
 
-  const toggleStar = (id: number) =>
+  const toggleStar = (id: number) => {
     setStarredIds((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
-
-  const toggleCollapse = (group: string) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev)
-      if (next.has(group)) {
-        next.delete(group)
-      } else {
-        next.add(group)
-      }
-      return next
-    })
-
-  const moveRepo = (repoId: number, folderId: string) => {
-    setFolderMap((prev) => ({ ...prev, [String(repoId)]: folderId }))
-    setOpenMenuRepoId(null)
   }
 
-  const handleDrop = (folderId: string) => {
-    if (dragRepoId === null) return
-    if (folderId === 'all') {
-      // Drop on "All repos" → remove manual assignment (revert to auto)
-      setFolderMap((prev) => {
-        const next = { ...prev }
-        delete next[String(dragRepoId)]
-        return next
-      })
-    } else {
-      setFolderMap((prev) => ({ ...prev, [String(dragRepoId)]: folderId }))
-    }
-    setDragRepoId(null)
-    setDragOverFolderId(null)
-  }
-
-  const openNewFolder = (forRepoId?: number) => {
-    setNewFolderForRepoId(forRepoId ?? null)
-    setOpenMenuRepoId(null)
-    setNewFolderVisible(true)
-  }
-
-  const cancelNewFolder = () => {
-    setNewFolderVisible(false)
-    setNewFolderName('')
-    setNewFolderForRepoId(null)
-  }
-
-  const confirmNewFolder = (name: string) => {
-    if (newFolderSubmittedRef.current) return
-    newFolderSubmittedRef.current = true
+  const createFolder = (name: string, assignRepoId?: number | null) => {
+    if (folderComposerSubmittedRef.current) return
+    folderComposerSubmittedRef.current = true
 
     const trimmed = name.trim()
-    if (!trimmed) { cancelNewFolder(); return }
-
-    const id = genId()
-    setCustomFolders((prev) => [
-      ...prev,
-      { id, label: trimmed, icon: <Folder size={13} />, isCustom: true },
-    ])
-    if (newFolderForRepoId !== null) {
-      setFolderMap((prev) => ({ ...prev, [String(newFolderForRepoId)]: id }))
+    if (!trimmed) {
+      setFolderComposerOpen(false)
+      setFolderComposerName('')
+      setPendingAssignRepoId(null)
+      return
     }
-    setNewFolderVisible(false)
-    setNewFolderName('')
-    setNewFolderForRepoId(null)
-    setActiveGroup(id)
+
+    const currentFolderId = getViewFolderId(activeView)
+    const id = genId()
+    const nextFolder: FolderDef = {
+      id,
+      label: trimmed,
+      parentId: currentFolderId,
+    }
+
+    setFolders((prev) => [...prev, nextFolder])
+    if (assignRepoId !== null && assignRepoId !== undefined) {
+      setRepoLocations((prev) => ({ ...prev, [String(assignRepoId)]: { folderId: id } }))
+    }
+
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev)
+      if (currentFolderId) next.delete(currentFolderId)
+      return next
+    })
+    setFolderComposerOpen(false)
+    setFolderComposerName('')
+    setPendingAssignRepoId(null)
+    setActiveView(`folder:${id}`)
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  const confirmFolderComposer = () => createFolder(folderComposerName, pendingAssignRepoId)
+
+  const moveRepoToFolder = (repoId: number, folderId: string | null) => {
+    setRepoLocations((prev) => ({ ...prev, [String(repoId)]: { folderId } }))
+    setOpenRepoMenuId(null)
+  }
+
+  const startRenameFolder = (folder: FolderDef) => {
+    setEditingFolderId(folder.id)
+    setEditingFolderName(folder.label)
+    setOpenFolderMenuId(null)
+  }
+
+  const submitFolderRename = (folderId: string) => {
+    const trimmed = editingFolderName.trim()
+    if (!trimmed) {
+      setEditingFolderId(null)
+      setEditingFolderName('')
+      return
+    }
+
+    setFolders((prev) =>
+      prev.map((folder) => (folder.id === folderId ? { ...folder, label: trimmed } : folder))
+    )
+    setEditingFolderId(null)
+    setEditingFolderName('')
+  }
+
+  const cancelFolderRename = () => {
+    setEditingFolderId(null)
+    setEditingFolderName('')
+  }
+
+  const deleteFolder = (folderId: string) => {
+    const deletedIds = new Set(collectDescendantIds(folderId, folders))
+
+    setFolders((prev) => prev.filter((folder) => !deletedIds.has(folder.id)))
+    setRepoLocations((prev) => {
+      const next: RepoLocationMap = {}
+      for (const [repoId, location] of Object.entries(prev)) {
+        next[repoId] =
+          location.folderId && deletedIds.has(location.folderId) ? { folderId: null } : location
+      }
+      return next
+    })
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev)
+      for (const id of deletedIds) next.delete(id)
+      return next
+    })
+    if (activeView === `folder:${folderId}`) setActiveView('home')
+    setOpenFolderMenuId(null)
+  }
+
+  const moveFolderToRoot = (folderId: string) => {
+    setFolders((prev) =>
+      prev.map((folder) => (folder.id === folderId ? { ...folder, parentId: null } : folder))
+    )
+    setOpenFolderMenuId(null)
+  }
+
+  const toggleFolderCollapse = (folderId: string) => {
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev)
+      if (next.has(folderId)) next.delete(folderId)
+      else next.add(folderId)
+      return next
+    })
+  }
+
+  const handleDropOnHome = () => {
+    if (!dragItem) return
+
+    if (dragItem.type === 'repo') {
+      moveRepoToFolder(dragItem.repoId, null)
+    } else {
+      setFolders((prev) =>
+        prev.map((folder) => (folder.id === dragItem.folderId ? { ...folder, parentId: null } : folder))
+      )
+    }
+
+    setDragItem(null)
+    setDragOverNode(null)
+  }
+
+  const handleDropOnFolder = (folderId: string) => {
+    if (!dragItem) return
+
+    if (dragItem.type === 'repo') {
+      moveRepoToFolder(dragItem.repoId, folderId)
+    } else if (dragItem.folderId !== folderId && !isFolderDescendant(dragItem.folderId, folderId, folderMap)) {
+      setFolders((prev) =>
+        prev.map((folder) => (folder.id === dragItem.folderId ? { ...folder, parentId: folderId } : folder))
+      )
+      setCollapsedFolders((prev) => {
+        const next = new Set(prev)
+        next.delete(folderId)
+        return next
+      })
+    }
+
+    setDragItem(null)
+    setDragOverNode(null)
+  }
+
+  const resolvedActiveView: ViewId =
+    activeView.startsWith('folder:') && !folderMap.has(activeView.slice('folder:'.length))
+      ? 'home'
+      : activeView
+
+  const currentFolderId = getViewFolderId(resolvedActiveView)
+  const currentFolder = currentFolderId ? (folderMap.get(currentFolderId) ?? null) : null
+  const currentPath = useMemo(
+    () => (currentFolder ? getFolderPath(currentFolder.id, folderMap) : []),
+    [currentFolder, folderMap]
+  )
+
+  const pathSegments = useMemo<PathSegment[]>(() => {
+    if (resolvedActiveView === 'home') return [{ id: 'home', label: 'Home' }]
+    if (isRootSectionView(resolvedActiveView)) {
+      return [
+        { id: 'home', label: 'Home' },
+        { id: resolvedActiveView, label: ROOT_SECTION_META[resolvedActiveView].label },
+      ]
+    }
+
+    return [
+      { id: 'home', label: 'Home' },
+      ...currentPath.map((folder) => ({ id: `folder:${folder.id}` as ViewId, label: folder.label })),
+    ]
+  }, [currentPath, resolvedActiveView])
+
+  const currentRepos = useMemo(() => {
+    const query = search.trim().toLowerCase()
+
+    const filtered = repos.filter((repo) => {
+      const folderId = getRepoFolderId(repo.id, repoLocations, folderMap)
+
+      if (resolvedActiveView === 'home' && folderId !== null) return false
+      if (resolvedActiveView === 'favorites' && !starredIds.has(repo.id)) return false
+      if (resolvedActiveView === 'active' && getAutoSection(repo) !== 'active') return false
+      if (resolvedActiveView === 'side-projects' && getAutoSection(repo) !== 'side-projects') return false
+      if (resolvedActiveView === 'archived' && getAutoSection(repo) !== 'archived') return false
+      if (resolvedActiveView === 'private' && getAutoSection(repo) !== 'private') return false
+      if (resolvedActiveView.startsWith('folder:') && folderId !== currentFolderId) return false
+      if (!matchesRepoSearch(repo, query)) return false
+      return true
+    })
+
+    return sortRepos(filtered, sortKey)
+  }, [currentFolderId, folderMap, repoLocations, repos, resolvedActiveView, search, sortKey, starredIds])
+
+  const visibleChildFolders = useMemo(() => {
+    if (resolvedActiveView !== 'home' && !resolvedActiveView.startsWith('folder:')) return []
+
+    const query = search.trim().toLowerCase()
+    const parentId = currentFolderId
+    const childFolders = foldersByParent.get(parentId) ?? []
+
+    return childFolders.filter((folder) => !query || folder.label.toLowerCase().includes(query))
+  }, [currentFolderId, foldersByParent, resolvedActiveView, search])
+
+  const currentTitle = useMemo(() => {
+    if (resolvedActiveView === 'home') return 'Repositories'
+    if (isRootSectionView(resolvedActiveView)) return ROOT_SECTION_META[resolvedActiveView].label
+    return currentFolder?.label ?? 'Folder'
+  }, [currentFolder, resolvedActiveView])
+
+  const currentSubtitle = useMemo(() => {
+    if (resolvedActiveView === 'home') return 'Organize repositories with folders, favorites, and private views.'
+    if (resolvedActiveView === 'favorites') return 'Starred repositories live here without duplicating the source repo.'
+    if (resolvedActiveView === 'private') return 'Private repositories are scoped to your account and hidden from other users.'
+    if (resolvedActiveView.startsWith('folder:')) return 'Nested folders behave like a lightweight file system for your repos.'
+    return 'Smart sections keep the repo list easy to scan.'
+  }, [resolvedActiveView])
 
   return (
     <>
@@ -599,114 +1193,223 @@ export default function RepositoriesPage() {
         }
       />
 
-      <div className="flex-1 flex overflow-hidden">
-
-        {/* ── Left sidebar ──────────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden">
         {showSidebar && (
-          <nav className="w-48 shrink-0 border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 py-3 px-2 overflow-y-auto flex flex-col gap-px">
-
+          <nav className="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto border-r border-gray-100 bg-white px-3 py-4 dark:border-gray-800 dark:bg-gray-900">
             <SidebarItem
               icon={<LayoutGrid size={13} />}
-              label="All repos"
-              count={repos.length}
-              active={activeGroup === 'all'}
-              dragOver={dragOverFolderId === 'all'}
-              onClick={() => setActiveGroup('all')}
-              onDragOver={(e) => { e.preventDefault(); setDragOverFolderId('all') }}
-              onDragLeave={() => setDragOverFolderId(null)}
-              onDrop={(e) => { e.preventDefault(); handleDrop('all') }}
+              label="Home"
+              count={rootCounts.home}
+              active={resolvedActiveView === 'home'}
+              dragOver={dragOverNode === 'home'}
+              onClick={() => setActiveView('home')}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDragOverNode('home')
+              }}
+              onDragLeave={() => setDragOverNode(null)}
+              onDrop={(e) => {
+                e.preventDefault()
+                handleDropOnHome()
+              }}
             />
 
-            <div className="my-1.5 h-px bg-gray-100 dark:bg-gray-800" />
-
-            {allFolders.map((f) => (
-              <SidebarItem
-                key={f.id}
-                icon={f.icon}
-                label={f.label}
-                count={groupCounts[f.id] ?? 0}
-                active={activeGroup === f.id}
-                dragOver={dragOverFolderId === f.id}
-                onClick={() => setActiveGroup(f.id)}
-                onDragOver={(e) => { e.preventDefault(); setDragOverFolderId(f.id) }}
-                onDragLeave={() => setDragOverFolderId(null)}
-                onDrop={(e) => { e.preventDefault(); handleDrop(f.id) }}
-              />
-            ))}
-
-            {/* Inline new-folder input */}
-            {newFolderVisible ? (
-              <div className="mt-1 px-0.5">
-                <input
-                  ref={newFolderRef}
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); confirmNewFolder(newFolderName) }
-                    if (e.key === 'Escape') cancelNewFolder()
-                  }}
-                  onBlur={() => confirmNewFolder(newFolderName)}
-                  placeholder="Folder name…"
-                  className="w-full px-2 py-1.5 text-sm rounded-lg border border-purple-300 dark:border-purple-700 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            <div className="space-y-0.5 rounded-2xl bg-gray-50/70 p-2 dark:bg-gray-950/50">
+              {ROOT_SECTIONS.map((sectionId) => (
+                <SidebarItem
+                  key={sectionId}
+                  icon={ROOT_SECTION_META[sectionId].icon}
+                  label={ROOT_SECTION_META[sectionId].label}
+                  count={rootCounts[sectionId]}
+                  active={resolvedActiveView === sectionId}
+                  dragOver={false}
+                  onClick={() => setActiveView(sectionId)}
                 />
-                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 px-1">
-                  Enter to confirm · Esc to cancel
-                </p>
+              ))}
+            </div>
+
+            <div className="rounded-2xl border border-gray-100 p-2 dark:border-gray-800">
+              <div className="mb-2 flex items-center justify-between px-1">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                    Folders
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                    Nested, draggable, Finder-style
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setFolderComposerOpen((prev) => !prev)
+                    setPendingAssignRepoId(null)
+                    setFolderComposerName('')
+                  }}
+                  className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                  title="+ New folder"
+                >
+                  <Plus size={14} />
+                </button>
               </div>
-            ) : (
-              <button
-                onClick={() => openNewFolder()}
-                className="mt-1 w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-              >
-                <Plus size={12} />
-                New folder
-              </button>
-            )}
+
+              <div className="space-y-0.5">
+                {(foldersByParent.get(null) ?? []).length === 0 && !folderComposerOpen ? (
+                  <p className="px-2 py-3 text-xs text-gray-400 dark:text-gray-500">
+                    Create folders to structure repositories like a file explorer.
+                  </p>
+                ) : (
+                  (foldersByParent.get(null) ?? []).map((folder) => (
+                    <FolderTreeItem
+                      key={folder.id}
+                      folder={folder}
+                      depth={0}
+                      foldersByParent={foldersByParent}
+                      activeFolderId={currentFolderId}
+                      collapsed={collapsedFolders}
+                      dragOverNode={dragOverNode}
+                      counts={folderCounts}
+                      editingFolderId={editingFolderId}
+                      editingValue={editingFolderName}
+                      onEditingChange={setEditingFolderName}
+                      onEditingSubmit={submitFolderRename}
+                      onEditingCancel={cancelFolderRename}
+                      openFolderMenuId={openFolderMenuId}
+                      onToggleCollapse={toggleFolderCollapse}
+                      onSelect={(folderId) => setActiveView(`folder:${folderId}`)}
+                      onStartRename={startRenameFolder}
+                      onDelete={deleteFolder}
+                      onMoveToRoot={moveFolderToRoot}
+                      onOpenMenu={setOpenFolderMenuId}
+                      onDragStart={(folderId) => setDragItem({ type: 'folder', folderId })}
+                      onDragEnd={() => {
+                        setDragItem(null)
+                        setDragOverNode(null)
+                      }}
+                      onDragOver={(e, folderId) => {
+                        e.preventDefault()
+                        setDragOverNode(`folder:${folderId}`)
+                      }}
+                      onDragLeave={() => setDragOverNode(null)}
+                      onDrop={(e, folderId) => {
+                        e.preventDefault()
+                        handleDropOnFolder(folderId)
+                      }}
+                    />
+                  ))
+                )}
+              </div>
+
+              {folderComposerOpen && (
+                <div className="mt-2 rounded-xl border border-dashed border-purple-200 bg-purple-50/70 p-2 dark:border-purple-900 dark:bg-purple-950/20">
+                  <div className="mb-2 flex items-center gap-2 text-xs text-purple-600 dark:text-purple-300">
+                    <FolderPlus size={12} />
+                    {currentFolder ? `New folder inside ${currentFolder.label}` : 'New root folder'}
+                  </div>
+                  <input
+                    ref={folderComposerRef}
+                    value={folderComposerName}
+                    onChange={(e) => setFolderComposerName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        confirmFolderComposer()
+                      }
+                      if (e.key === 'Escape') {
+                        e.preventDefault()
+                        setFolderComposerOpen(false)
+                        setFolderComposerName('')
+                        setPendingAssignRepoId(null)
+                      }
+                    }}
+                    onBlur={confirmFolderComposer}
+                    placeholder="Folder name..."
+                    className="w-full rounded-lg border border-purple-200 bg-white px-2.5 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-purple-500 dark:border-purple-800 dark:bg-gray-900 dark:text-gray-100"
+                  />
+                </div>
+              )}
+            </div>
           </nav>
         )}
 
-        {/* ── Main content ──────────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-
-          {/* Search + sort */}
+        <div className="flex flex-1 flex-col overflow-hidden">
           {showSidebar && repos.length > 0 && (
-            <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex-shrink-0">
-              <div className="relative flex-1 max-w-xs">
-                <Search
-                  size={13}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none"
-                />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search repositories…"
-                  className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                />
+            <div className="border-b border-gray-100 bg-white px-6 py-4 dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <div className="min-w-0">
+                  <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
+                    {pathSegments.map((segment, index) => (
+                      <div key={segment.id} className="flex items-center gap-1.5">
+                        {index > 0 && <span>/</span>}
+                        <button
+                          onClick={() => setActiveView(segment.id)}
+                          className={cn(
+                            'rounded-md px-1.5 py-0.5 transition-colors',
+                            index === pathSegments.length - 1
+                              ? 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-300'
+                              : 'hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300'
+                          )}
+                        >
+                          {segment.label}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{currentTitle}</h2>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{currentSubtitle}</p>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="relative min-w-0 flex-1 sm:w-80">
+                    <Search
+                      size={13}
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                    />
+                    <input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder={
+                        resolvedActiveView === 'home' || resolvedActiveView.startsWith('folder:')
+                          ? 'Search folders and repositories...'
+                          : 'Search repositories...'
+                      }
+                      className="w-full rounded-xl border border-gray-200 bg-transparent py-2 pl-8 pr-3 text-sm text-gray-900 outline-none focus:border-transparent focus:ring-2 focus:ring-purple-500 dark:border-gray-700 dark:text-gray-100"
+                    />
+                  </div>
+                  <select
+                    value={sortKey}
+                    onChange={(e) => setSortKey(e.target.value as SortKey)}
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-purple-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+                  >
+                    <option value="updated">Last updated</option>
+                    <option value="name">Name A-Z</option>
+                  </select>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setFolderComposerOpen(true)
+                      setPendingAssignRepoId(null)
+                      setFolderComposerName('')
+                    }}
+                  >
+                    <FolderPlus size={14} />
+                    New folder
+                  </Button>
+                </div>
               </div>
-              <select
-                value={sortKey}
-                onChange={(e) => setSortKey(e.target.value as SortKey)}
-                className="text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              >
-                <option value="updated">Last updated</option>
-                <option value="name">Name A–Z</option>
-              </select>
             </div>
           )}
 
           <div className="flex-1 overflow-y-auto px-6 py-6">
-
-            {/* Not connected */}
             {notConnected && (
-              <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+              <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800">
                   <GitBranch size={26} className="text-gray-400 dark:text-gray-500" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                  <p className="mb-1 text-sm font-semibold text-gray-800 dark:text-gray-200">
                     {error?.code === 'token_expired' ? 'GitHub token expired' : 'Connect your GitHub account'}
                   </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs">
+                  <p className="max-w-xs text-xs text-gray-400 dark:text-gray-500">
                     {error?.code === 'token_expired'
                       ? 'Your GitHub token has expired or been revoked. Please reconnect.'
                       : 'Link your GitHub to view and manage your repositories directly from Sync. Your token is stored securely server-side.'}
@@ -720,24 +1423,23 @@ export default function RepositoriesPage() {
                 </a>
                 <p className="text-xs text-gray-300 dark:text-gray-600">
                   You can also connect in{' '}
-                  <a href="/settings" className="underline hover:text-gray-400 transition-colors">
+                  <a href="/settings" className="underline transition-colors hover:text-gray-400">
                     Settings → Connected accounts
                   </a>
                 </p>
               </div>
             )}
 
-            {/* Generic error */}
             {loadingDone && error && !notConnected && (
-              <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-950/30 flex items-center justify-center">
+              <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 dark:bg-red-950/30">
                   <AlertCircle size={24} className="text-red-400 dark:text-red-500" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                  <p className="mb-1 text-sm font-semibold text-gray-800 dark:text-gray-200">
                     Failed to load repositories
                   </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs">{error.message}</p>
+                  <p className="max-w-xs text-xs text-gray-400 dark:text-gray-500">{error.message}</p>
                 </div>
                 <Button variant="secondary" size="sm" onClick={handleRetry}>
                   Try again
@@ -745,21 +1447,21 @@ export default function RepositoriesPage() {
               </div>
             )}
 
-            {/* Loading */}
             {loading && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {Array.from({ length: 9 }).map((_, i) => <RepoSkeleton key={i} />)}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <RepoSkeleton key={i} />
+                ))}
               </div>
             )}
 
-            {/* Empty — no repos */}
             {loadingDone && !error && repos.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+              <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800">
                   <GitBranch size={26} className="text-gray-400 dark:text-gray-500" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                  <p className="mb-1 text-sm font-semibold text-gray-800 dark:text-gray-200">
                     No repositories yet
                   </p>
                   <p className="text-xs text-gray-400 dark:text-gray-500">
@@ -773,100 +1475,116 @@ export default function RepositoriesPage() {
               </div>
             )}
 
-            {/* No results */}
-            {loadingDone && !error && repos.length > 0 && filteredRepos.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
-                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                  No repositories match
-                </p>
-                <button
-                  onClick={() => { setSearch(''); setActiveGroup('all') }}
-                  className="text-xs text-purple-500 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
-                >
-                  Clear filters
-                </button>
+            {loadingDone && !error && repos.length > 0 && (
+              <div className="space-y-6">
+                {visibleChildFolders.length > 0 && (
+                  <section>
+                    <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                      <Folder size={12} />
+                      Folders
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {visibleChildFolders.map((folder) => (
+                        <FolderCard
+                          key={folder.id}
+                          folder={folder}
+                          repoCount={directRepoCounts[folder.id] ?? 0}
+                          childCount={childFolderCounts[folder.id] ?? 0}
+                          onOpen={() => setActiveView(`folder:${folder.id}`)}
+                          menuOpen={openFolderMenuId === folder.id}
+                          onOpenMenu={() =>
+                            setOpenFolderMenuId(openFolderMenuId === folder.id ? null : folder.id)
+                          }
+                          onRename={() => startRenameFolder(folder)}
+                          onDelete={() => deleteFolder(folder.id)}
+                          onMoveToRoot={() => moveFolderToRoot(folder.id)}
+                          draggable
+                          onDragStart={() => setDragItem({ type: 'folder', folderId: folder.id })}
+                          onDragEnd={() => {
+                            setDragItem(null)
+                            setDragOverNode(null)
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            setDragOverNode(`folder:${folder.id}`)
+                          }}
+                          onDragLeave={() => setDragOverNode(null)}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            handleDropOnFolder(folder.id)
+                          }}
+                          dragOver={dragOverNode === `folder:${folder.id}`}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {currentRepos.length === 0 && visibleChildFolders.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                      {search
+                        ? 'No folders or repositories match your search.'
+                        : resolvedActiveView === 'favorites'
+                          ? 'No favorites yet.'
+                          : resolvedActiveView.startsWith('folder:')
+                            ? 'This folder is empty.'
+                            : 'No repositories match this view.'}
+                    </p>
+                    <button
+                      onClick={() => {
+                        setSearch('')
+                        if (resolvedActiveView !== 'home' && !resolvedActiveView.startsWith('folder:')) {
+                          setActiveView('home')
+                        }
+                      }}
+                      className="text-xs text-purple-500 transition-colors hover:text-purple-600 dark:hover:text-purple-400"
+                    >
+                      Clear filters
+                    </button>
+                  </div>
+                ) : (
+                  currentRepos.length > 0 && (
+                    <section>
+                      <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                        <GitBranch size={12} />
+                        Repositories
+                        <span className="text-gray-300 dark:text-gray-600">{currentRepos.length}</span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {currentRepos.map((repo) => (
+                          <RepoCard
+                            key={repo.id}
+                            repo={repo}
+                            starred={starredIds.has(repo.id)}
+                            folders={flattenedFolders}
+                            currentFolderId={repoLocations[String(repo.id)]?.folderId ?? null}
+                            menuOpen={openRepoMenuId === repo.id}
+                            isDragging={dragItem?.type === 'repo' && dragItem.repoId === repo.id}
+                            onToggleStar={() => toggleStar(repo.id)}
+                            onOpenMenu={() =>
+                              setOpenRepoMenuId(openRepoMenuId === repo.id ? null : repo.id)
+                            }
+                            onMove={(folderId) => moveRepoToFolder(repo.id, folderId)}
+                            onNewFolder={() => {
+                              setFolderComposerOpen(true)
+                              setPendingAssignRepoId(repo.id)
+                              setFolderComposerName('')
+                              setOpenRepoMenuId(null)
+                            }}
+                            onDragStart={() => setDragItem({ type: 'repo', repoId: repo.id })}
+                            onDragEnd={() => {
+                              setDragItem(null)
+                              setDragOverNode(null)
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  )
+                )}
               </div>
             )}
-
-            {/* Repos grid */}
-            {loadingDone && !error && filteredRepos.length > 0 && (
-              activeGroup === 'all' ? (
-                // Grouped sections
-                <div className="space-y-8">
-                  {sectionFolders.map((f) => {
-                    const sectionRepos = groupedRepos![f.id] ?? []
-                    const isCollapsed = collapsed.has(f.id)
-                    return (
-                      <div key={f.id}>
-                        <button
-                          onClick={() => toggleCollapse(f.id)}
-                          className="flex items-center gap-1.5 mb-4 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                        >
-                          {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-                          {f.label}
-                          <span className="font-normal text-gray-300 dark:text-gray-600 ml-0.5">
-                            {sectionRepos.length}
-                          </span>
-                        </button>
-                        {!isCollapsed && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                            {sectionRepos.map((repo) => (
-                              <RepoCard
-                                key={repo.id}
-                                repo={repo}
-                                starred={starredIds.has(repo.id)}
-                                folders={allFolders}
-                                currentFolderId={getEffectiveGroup(repo, folderMap)}
-                                menuOpen={openMenuRepoId === repo.id}
-                                isDragging={dragRepoId === repo.id}
-                                onToggleStar={() => toggleStar(repo.id)}
-                                onOpenMenu={() =>
-                                  setOpenMenuRepoId(openMenuRepoId === repo.id ? null : repo.id)
-                                }
-                                onMove={(folderId) => moveRepo(repo.id, folderId)}
-                                onNewFolder={() => openNewFolder(repo.id)}
-                                onDragStart={() => setDragRepoId(repo.id)}
-                                onDragEnd={() => {
-                                  setDragRepoId(null)
-                                  setDragOverFolderId(null)
-                                }}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                // Flat grid for a specific folder
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {filteredRepos.map((repo) => (
-                    <RepoCard
-                      key={repo.id}
-                      repo={repo}
-                      starred={starredIds.has(repo.id)}
-                      folders={allFolders}
-                      currentFolderId={getEffectiveGroup(repo, folderMap)}
-                      menuOpen={openMenuRepoId === repo.id}
-                      isDragging={dragRepoId === repo.id}
-                      onToggleStar={() => toggleStar(repo.id)}
-                      onOpenMenu={() =>
-                        setOpenMenuRepoId(openMenuRepoId === repo.id ? null : repo.id)
-                      }
-                      onMove={(folderId) => moveRepo(repo.id, folderId)}
-                      onNewFolder={() => openNewFolder(repo.id)}
-                      onDragStart={() => setDragRepoId(repo.id)}
-                      onDragEnd={() => {
-                        setDragRepoId(null)
-                        setDragOverFolderId(null)
-                      }}
-                    />
-                  ))}
-                </div>
-              )
-            )}
-
           </div>
         </div>
       </div>
