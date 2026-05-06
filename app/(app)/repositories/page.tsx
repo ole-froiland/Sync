@@ -28,10 +28,8 @@ import {
   Star,
   Folder,
   FolderOpen,
-  Zap,
   ChevronDown,
   ChevronRight,
-  LayoutGrid,
   MoreHorizontal,
   Check,
   Plus,
@@ -42,7 +40,7 @@ import {
 } from 'lucide-react'
 
 type SortKey = 'updated' | 'name'
-type RootSectionId = 'favorites' | 'active' | 'side-projects' | 'archived' | 'private'
+type RootSectionId = 'favorites' | 'private'
 type ViewId = 'home' | RootSectionId | `folder:${string}`
 type RepoLocationMap = Record<string, { folderId: string | null }>
 type FolderNodeId = 'home' | `folder:${string}`
@@ -60,20 +58,10 @@ interface PathSegment {
 
 type DragItem = { type: 'repo'; repoId: number } | { type: 'folder'; folderId: string } | null
 
-const ACTIVE_THRESHOLD_MS = 14 * 24 * 60 * 60 * 1000
-const ROOT_SECTIONS: RootSectionId[] = [
-  'favorites',
-  'active',
-  'side-projects',
-  'archived',
-  'private',
-]
+const ROOT_SECTIONS: RootSectionId[] = ['favorites', 'private']
 
 const ROOT_SECTION_META: Record<RootSectionId, { label: string; icon: React.ReactNode }> = {
   favorites: { label: 'Favorites', icon: <Star size={13} /> },
-  active: { label: 'Active', icon: <Zap size={13} /> },
-  'side-projects': { label: 'Side projects', icon: <Folder size={13} /> },
-  archived: { label: 'Archived', icon: <Archive size={13} /> },
   private: { label: 'Private', icon: <Lock size={13} /> },
 }
 
@@ -92,13 +80,6 @@ function makeStorageKey(userId: string | null | undefined, suffix: string): stri
 
 function genId(): string {
   return Math.random().toString(36).slice(2, 10)
-}
-
-function getAutoSection(repo: GitHubUserRepo): Exclude<RootSectionId, 'favorites'> {
-  if (repo.private) return 'private'
-  if (repo.archived) return 'archived'
-  if (Date.now() - new Date(repo.updated_at).getTime() <= ACTIVE_THRESHOLD_MS) return 'active'
-  return 'side-projects'
 }
 
 function isRootSectionView(view: ViewId): view is RootSectionId {
@@ -178,13 +159,6 @@ function collectDescendantIds(folderId: string, folders: FolderDef[]): string[] 
   }
 
   return [...descendants]
-}
-
-function countReposInSubtree(folderId: string, folders: FolderDef[], locations: RepoLocationMap): number {
-  const descendants = new Set(collectDescendantIds(folderId, folders))
-  return Object.values(locations).reduce((count, location) => {
-    return location.folderId && descendants.has(location.folderId) ? count + 1 : count
-  }, 0)
 }
 
 function RepoSkeleton() {
@@ -305,11 +279,13 @@ function MoveMenu({
 }
 
 function FolderMenu({
+  onAddSubfolder,
   canMoveToRoot,
   onRename,
   onDelete,
   onMoveToRoot,
 }: {
+  onAddSubfolder: () => void
   canMoveToRoot: boolean
   onRename: () => void
   onDelete: () => void
@@ -320,6 +296,13 @@ function FolderMenu({
       className="absolute right-0 top-full z-50 mt-1 min-w-[168px] rounded-2xl border border-gray-200 bg-white py-1 shadow-lg shadow-black/5 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/30"
       onClick={(e) => e.stopPropagation()}
     >
+      <button
+        onClick={onAddSubfolder}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+      >
+        <FolderPlus size={13} />
+        Add subfolder
+      </button>
       <button
         onClick={onRename}
         className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
@@ -355,7 +338,8 @@ function FolderTreeItem({
   activeFolderId,
   collapsed,
   dragOverNode,
-  counts,
+  repoCounts,
+  childFolderCounts,
   editingFolderId,
   editingValue,
   onEditingChange,
@@ -364,6 +348,7 @@ function FolderTreeItem({
   openFolderMenuId,
   onToggleCollapse,
   onSelect,
+  onAddSubfolder,
   onStartRename,
   onDelete,
   onMoveToRoot,
@@ -380,7 +365,8 @@ function FolderTreeItem({
   activeFolderId: string | null
   collapsed: Set<string>
   dragOverNode: FolderNodeId | null
-  counts: Record<string, number>
+  repoCounts: Record<string, number>
+  childFolderCounts: Record<string, number>
   editingFolderId: string | null
   editingValue: string
   onEditingChange: (value: string) => void
@@ -389,6 +375,7 @@ function FolderTreeItem({
   openFolderMenuId: string | null
   onToggleCollapse: (folderId: string) => void
   onSelect: (folderId: string) => void
+  onAddSubfolder: (folderId: string) => void
   onStartRename: (folder: FolderDef) => void
   onDelete: (folderId: string) => void
   onMoveToRoot: (folderId: string) => void
@@ -404,7 +391,8 @@ function FolderTreeItem({
   const isActive = activeFolderId === folder.id
   const isEditing = editingFolderId === folder.id
   const dragOver = dragOverNode === `folder:${folder.id}`
-  const count = counts[folder.id] ?? 0
+  const repoCount = repoCounts[folder.id] ?? 0
+  const childCount = childFolderCounts[folder.id] ?? 0
   const menuOpen = openFolderMenuId === folder.id
 
   return (
@@ -467,11 +455,23 @@ function FolderTreeItem({
               <span className="truncate">{folder.label}</span>
             )}
           </span>
-          <span className="ml-2 text-xs tabular-nums text-inherit/70">{count}</span>
+          <span className="ml-2 text-[11px] tabular-nums text-inherit/70">
+            {repoCount}/{childCount}
+          </span>
         </button>
 
         {!isEditing && (
-          <div className="relative">
+          <div className="relative flex items-center gap-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onAddSubfolder(folder.id)
+              }}
+              className="rounded-md p-1 text-gray-300 opacity-0 transition-all hover:text-gray-500 group-hover:opacity-100 dark:text-gray-600 dark:hover:text-gray-400"
+              title="Add subfolder"
+            >
+              <Plus size={12} />
+            </button>
             <button
               onClick={(e) => {
                 e.stopPropagation()
@@ -483,6 +483,7 @@ function FolderTreeItem({
             </button>
             {menuOpen && (
               <FolderMenu
+                onAddSubfolder={() => onAddSubfolder(folder.id)}
                 canMoveToRoot={folder.parentId !== null}
                 onRename={() => onStartRename(folder)}
                 onDelete={() => onDelete(folder.id)}
@@ -510,7 +511,8 @@ function FolderTreeItem({
                 activeFolderId={activeFolderId}
                 collapsed={collapsed}
                 dragOverNode={dragOverNode}
-                counts={counts}
+                repoCounts={repoCounts}
+                childFolderCounts={childFolderCounts}
                 editingFolderId={editingFolderId}
                 editingValue={editingValue}
                 onEditingChange={onEditingChange}
@@ -519,6 +521,7 @@ function FolderTreeItem({
                 openFolderMenuId={openFolderMenuId}
                 onToggleCollapse={onToggleCollapse}
                 onSelect={onSelect}
+                onAddSubfolder={onAddSubfolder}
                 onStartRename={onStartRename}
                 onDelete={onDelete}
                 onMoveToRoot={onMoveToRoot}
@@ -544,6 +547,7 @@ function FolderCard({
   onOpen,
   menuOpen,
   onOpenMenu,
+  onAddSubfolder,
   onRename,
   onDelete,
   onMoveToRoot,
@@ -561,6 +565,7 @@ function FolderCard({
   onOpen: () => void
   menuOpen: boolean
   onOpenMenu: () => void
+  onAddSubfolder: () => void
   onRename: () => void
   onDelete: () => void
   onMoveToRoot: () => void
@@ -575,7 +580,7 @@ function FolderCard({
   return (
     <div
       className={cn(
-        'group relative flex items-center justify-between rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition-all hover:border-purple-200 hover:bg-purple-50/50 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-900 dark:hover:bg-purple-950/20',
+        'group relative flex items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2 text-left transition-all dark:border-gray-800 dark:bg-gray-900',
         dragOver && 'border-purple-300 bg-purple-50 dark:border-purple-700 dark:bg-purple-950/30'
       )}
     >
@@ -589,18 +594,30 @@ function FolderCard({
         onClick={onOpen}
         className="min-w-0 flex-1"
       >
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-            <Folder size={15} className="text-purple-500" />
-            <span className="truncate">{folder.label}</span>
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+              <Folder size={15} className="text-gray-500 dark:text-gray-400" />
+              <span className="truncate">{folder.label}</span>
+            </div>
+            <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+              {repoCount} repos · {childCount} folders
+            </p>
           </div>
-          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-            {repoCount} repos · {childCount} folders
-          </p>
+          <ChevronRight size={15} className="text-gray-300 dark:text-gray-600" />
         </div>
       </button>
-      <div className="relative ml-3 flex items-center">
-        <ChevronRight size={15} className="mr-2 text-gray-300 dark:text-gray-600" />
+      <div className="relative ml-3 flex items-center gap-1">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onAddSubfolder()
+          }}
+          className="rounded-md p-1 text-gray-300 opacity-0 transition-all hover:text-gray-500 group-hover:opacity-100 dark:text-gray-600 dark:hover:text-gray-400"
+          title="Add subfolder"
+        >
+          <Plus size={12} />
+        </button>
         <button
           onClick={(e) => {
             e.stopPropagation()
@@ -612,6 +629,7 @@ function FolderCard({
         </button>
         {menuOpen && (
           <FolderMenu
+            onAddSubfolder={onAddSubfolder}
             canMoveToRoot={folder.parentId !== null}
             onRename={onRename}
             onDelete={onDelete}
@@ -798,6 +816,7 @@ export default function RepositoriesPage() {
   const folderComposerRef = useRef<HTMLInputElement>(null)
   const folderComposerSubmittedRef = useRef(false)
   const [pendingAssignRepoId, setPendingAssignRepoId] = useState<number | null>(null)
+  const [pendingParentFolderId, setPendingParentFolderId] = useState<string | null>(null)
 
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null)
   const [editingFolderName, setEditingFolderName] = useState('')
@@ -850,14 +869,6 @@ export default function RepositoriesPage() {
     return items
   }, [foldersByParent])
 
-  const folderCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
-    for (const folder of folders) {
-      counts[folder.id] = countReposInSubtree(folder.id, folders, repoLocations)
-    }
-    return counts
-  }, [folders, repoLocations])
-
   const childFolderCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const folder of folders) {
@@ -879,10 +890,7 @@ export default function RepositoriesPage() {
     return {
       home: repos.filter((repo) => getRepoFolderId(repo.id, repoLocations, folderMap) === null).length,
       favorites: repos.filter((repo) => starredIds.has(repo.id)).length,
-      active: repos.filter((repo) => getAutoSection(repo) === 'active').length,
-      'side-projects': repos.filter((repo) => getAutoSection(repo) === 'side-projects').length,
-      archived: repos.filter((repo) => getAutoSection(repo) === 'archived').length,
-      private: repos.filter((repo) => getAutoSection(repo) === 'private').length,
+      private: repos.filter((repo) => repo.private).length,
     }
   }, [folderMap, repoLocations, repos, starredIds])
 
@@ -967,24 +975,37 @@ export default function RepositoriesPage() {
     })
   }
 
-  const createFolder = (name: string, assignRepoId?: number | null) => {
+  const openFolderComposer = (parentFolderId: string | null, assignRepoId?: number | null) => {
+    setFolderComposerOpen(true)
+    setPendingParentFolderId(parentFolderId)
+    setPendingAssignRepoId(assignRepoId ?? null)
+    setFolderComposerName('')
+    setOpenFolderMenuId(null)
+    setOpenRepoMenuId(null)
+  }
+
+  const closeFolderComposer = () => {
+    setFolderComposerOpen(false)
+    setFolderComposerName('')
+    setPendingParentFolderId(null)
+    setPendingAssignRepoId(null)
+  }
+
+  const createFolder = (name: string, parentFolderId: string | null, assignRepoId?: number | null) => {
     if (folderComposerSubmittedRef.current) return
     folderComposerSubmittedRef.current = true
 
     const trimmed = name.trim()
     if (!trimmed) {
-      setFolderComposerOpen(false)
-      setFolderComposerName('')
-      setPendingAssignRepoId(null)
+      closeFolderComposer()
       return
     }
 
-    const currentFolderId = getViewFolderId(activeView)
     const id = genId()
     const nextFolder: FolderDef = {
       id,
       label: trimmed,
-      parentId: currentFolderId,
+      parentId: parentFolderId,
     }
 
     setFolders((prev) => [...prev, nextFolder])
@@ -994,16 +1015,15 @@ export default function RepositoriesPage() {
 
     setCollapsedFolders((prev) => {
       const next = new Set(prev)
-      if (currentFolderId) next.delete(currentFolderId)
+      if (parentFolderId) next.delete(parentFolderId)
       return next
     })
-    setFolderComposerOpen(false)
-    setFolderComposerName('')
-    setPendingAssignRepoId(null)
+    closeFolderComposer()
     setActiveView(`folder:${id}`)
   }
 
-  const confirmFolderComposer = () => createFolder(folderComposerName, pendingAssignRepoId)
+  const confirmFolderComposer = () =>
+    createFolder(folderComposerName, pendingParentFolderId, pendingAssignRepoId)
 
   const moveRepoToFolder = (repoId: number, folderId: string | null) => {
     setRepoLocations((prev) => ({ ...prev, [String(repoId)]: { folderId } }))
@@ -1143,10 +1163,7 @@ export default function RepositoriesPage() {
 
       if (resolvedActiveView === 'home' && folderId !== null) return false
       if (resolvedActiveView === 'favorites' && !starredIds.has(repo.id)) return false
-      if (resolvedActiveView === 'active' && getAutoSection(repo) !== 'active') return false
-      if (resolvedActiveView === 'side-projects' && getAutoSection(repo) !== 'side-projects') return false
-      if (resolvedActiveView === 'archived' && getAutoSection(repo) !== 'archived') return false
-      if (resolvedActiveView === 'private' && getAutoSection(repo) !== 'private') return false
+      if (resolvedActiveView === 'private' && !repo.private) return false
       if (resolvedActiveView.startsWith('folder:') && folderId !== currentFolderId) return false
       if (!matchesRepoSearch(repo, query)) return false
       return true
@@ -1176,7 +1193,7 @@ export default function RepositoriesPage() {
     if (resolvedActiveView === 'favorites') return 'Starred repositories live here without duplicating the source repo.'
     if (resolvedActiveView === 'private') return 'Private repositories are scoped to your account and hidden from other users.'
     if (resolvedActiveView.startsWith('folder:')) return 'Nested folders behave like a lightweight file system for your repos.'
-    return 'Smart sections keep the repo list easy to scan.'
+    return ''
   }, [resolvedActiveView])
 
   return (
@@ -1197,7 +1214,7 @@ export default function RepositoriesPage() {
         {showSidebar && (
           <nav className="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto border-r border-gray-100 bg-white px-3 py-4 dark:border-gray-800 dark:bg-gray-900">
             <SidebarItem
-              icon={<LayoutGrid size={13} />}
+              icon={<Home size={13} />}
               label="Home"
               count={rootCounts.home}
               active={resolvedActiveView === 'home'}
@@ -1214,7 +1231,7 @@ export default function RepositoriesPage() {
               }}
             />
 
-            <div className="space-y-0.5 rounded-2xl bg-gray-50/70 p-2 dark:bg-gray-950/50">
+            <div className="space-y-0.5">
               {ROOT_SECTIONS.map((sectionId) => (
                 <SidebarItem
                   key={sectionId}
@@ -1240,9 +1257,7 @@ export default function RepositoriesPage() {
                 </div>
                 <button
                   onClick={() => {
-                    setFolderComposerOpen((prev) => !prev)
-                    setPendingAssignRepoId(null)
-                    setFolderComposerName('')
+                    openFolderComposer(currentFolderId, null)
                   }}
                   className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
                   title="+ New folder"
@@ -1266,7 +1281,8 @@ export default function RepositoriesPage() {
                       activeFolderId={currentFolderId}
                       collapsed={collapsedFolders}
                       dragOverNode={dragOverNode}
-                      counts={folderCounts}
+                      repoCounts={directRepoCounts}
+                      childFolderCounts={childFolderCounts}
                       editingFolderId={editingFolderId}
                       editingValue={editingFolderName}
                       onEditingChange={setEditingFolderName}
@@ -1275,6 +1291,7 @@ export default function RepositoriesPage() {
                       openFolderMenuId={openFolderMenuId}
                       onToggleCollapse={toggleFolderCollapse}
                       onSelect={(folderId) => setActiveView(`folder:${folderId}`)}
+                      onAddSubfolder={(folderId) => openFolderComposer(folderId)}
                       onStartRename={startRenameFolder}
                       onDelete={deleteFolder}
                       onMoveToRoot={moveFolderToRoot}
@@ -1302,7 +1319,9 @@ export default function RepositoriesPage() {
                 <div className="mt-2 rounded-xl border border-dashed border-purple-200 bg-purple-50/70 p-2 dark:border-purple-900 dark:bg-purple-950/20">
                   <div className="mb-2 flex items-center gap-2 text-xs text-purple-600 dark:text-purple-300">
                     <FolderPlus size={12} />
-                    {currentFolder ? `New folder inside ${currentFolder.label}` : 'New root folder'}
+                    {pendingParentFolderId && folderMap.get(pendingParentFolderId)
+                      ? `New folder inside ${folderMap.get(pendingParentFolderId)?.label}`
+                      : 'New root folder'}
                   </div>
                   <input
                     ref={folderComposerRef}
@@ -1315,9 +1334,7 @@ export default function RepositoriesPage() {
                       }
                       if (e.key === 'Escape') {
                         e.preventDefault()
-                        setFolderComposerOpen(false)
-                        setFolderComposerName('')
-                        setPendingAssignRepoId(null)
+                        closeFolderComposer()
                       }
                     }}
                     onBlur={confirmFolderComposer}
@@ -1354,7 +1371,9 @@ export default function RepositoriesPage() {
                     ))}
                   </div>
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{currentTitle}</h2>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{currentSubtitle}</p>
+                  {currentSubtitle ? (
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{currentSubtitle}</p>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -1385,11 +1404,7 @@ export default function RepositoriesPage() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => {
-                      setFolderComposerOpen(true)
-                      setPendingAssignRepoId(null)
-                      setFolderComposerName('')
-                    }}
+                    onClick={() => openFolderComposer(currentFolderId, null)}
                   >
                     <FolderPlus size={14} />
                     New folder
@@ -1481,9 +1496,9 @@ export default function RepositoriesPage() {
                   <section>
                     <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
                       <Folder size={12} />
-                      Folders
+                      Subfolders
                     </div>
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="space-y-2">
                       {visibleChildFolders.map((folder) => (
                         <FolderCard
                           key={folder.id}
@@ -1495,6 +1510,7 @@ export default function RepositoriesPage() {
                           onOpenMenu={() =>
                             setOpenFolderMenuId(openFolderMenuId === folder.id ? null : folder.id)
                           }
+                          onAddSubfolder={() => openFolderComposer(folder.id)}
                           onRename={() => startRenameFolder(folder)}
                           onDelete={() => deleteFolder(folder.id)}
                           onMoveToRoot={() => moveFolderToRoot(folder.id)}
@@ -1566,12 +1582,7 @@ export default function RepositoriesPage() {
                               setOpenRepoMenuId(openRepoMenuId === repo.id ? null : repo.id)
                             }
                             onMove={(folderId) => moveRepoToFolder(repo.id, folderId)}
-                            onNewFolder={() => {
-                              setFolderComposerOpen(true)
-                              setPendingAssignRepoId(repo.id)
-                              setFolderComposerName('')
-                              setOpenRepoMenuId(null)
-                            }}
+                            onNewFolder={() => openFolderComposer(currentFolderId, repo.id)}
                             onDragStart={() => setDragItem({ type: 'repo', repoId: repo.id })}
                             onDragEnd={() => {
                               setDragItem(null)
