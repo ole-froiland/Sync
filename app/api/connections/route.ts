@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-export type ConnectionState = 'none' | 'following' | 'pending' | 'synced'
+export type ConnectionState =
+  | 'none'
+  | 'following'
+  | 'pending'
+  | 'request_received'
+  | 'synced'
 
 export type ConnectionMap = Record<string, ConnectionState>
 
@@ -38,9 +43,7 @@ export async function GET() {
     if (row.status === 'accepted') {
       map[otherId] = 'synced'
     } else if (map[otherId] !== 'synced') {
-      // Pending only counts as a "request sent" from the current user's POV
-      // when they are the requester. Otherwise leave at follow/none state.
-      if (row.requester_id === user.id) map[otherId] = 'pending'
+      map[otherId] = row.requester_id === user.id ? 'pending' : 'request_received'
     }
   }
 

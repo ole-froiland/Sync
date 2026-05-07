@@ -1,166 +1,357 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useUser } from '@/context/UserContext'
 import { mockProjects, mockMessages } from '@/lib/mock-data'
 import { formatDate, cn } from '@/lib/utils'
-import { Hash, Send } from 'lucide-react'
-import type { Message, Project } from '@/types'
+import {
+  Hash,
+  Send,
+  Book,
+  Check,
+  X as XIcon,
+  ExternalLink,
+  Inbox,
+} from 'lucide-react'
+import type { Message, Profile, Project } from '@/types'
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
+
+type RepoSharePayload = {
+  full_name?: string
+  name?: string
+  url?: string
+  owner?: string
+  description?: string | null
+  language?: string | null
+}
+
+type DirectMessage = {
+  id: string
+  sender_id: string
+  receiver_id: string
+  type: 'text' | 'repo_share'
+  body: string | null
+  payload: RepoSharePayload | null
+  state: 'sent' | 'accepted' | 'rejected'
+  created_at: string
+  updated_at: string
+  sender?: { id: string; name: string; avatar_url: string | null }
+}
+
+type ActiveTarget =
+  | { kind: 'project'; project: Project }
+  | { kind: 'dm'; user: Profile }
+
+type Toast = { id: number; tone: 'success' | 'error'; message: string }
 
 export default function ChatPage() {
   const profile = useUser()
 
   const [projects, setProjects] = useState<Project[]>([])
   const [projectsLoading, setProjectsLoading] = useState(true)
-  const [activeProjectId, setActiveProjectId] = useState<string>('')
-  const [messages, setMessages] = useState<Message[]>([])
+  const [synced, setSynced] = useState<Profile[]>([])
+  const [syncedLoading, setSyncedLoading] = useState(true)
+  const [active, setActive] = useState<ActiveTarget | null>(null)
+
+  const [projectMessages, setProjectMessages] = useState<Message[]>([])
+  const [directMessages, setDirectMessages] = useState<DirectMessage[]>([])
   const [messagesLoading, setMessagesLoading] = useState(false)
+  const [respondingId, setRespondingId] = useState<string | null>(null)
+
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+  const [toasts, setToasts] = useState<Toast[]>([])
 
-  // Fetch messages for active project
-  const fetchMessages = useCallback((projectId: string) => {
-    if (!projectId) return
+  const showToast = useCallback((message: string, tone: 'success' | 'error' = 'success') => {
+    const id = Date.now() + Math.random()
+    setToasts((prev) => [...prev, { id, tone, message }])
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 2400)
+  }, [])
+
+  const fetchProjectMessages = useCallback((projectId: string) => {
     if (!SUPABASE_CONFIGURED) {
       queueMicrotask(() => {
-        setMessages(mockMessages.filter((m) => m.project_id === projectId))
+        setProjectMessages(mockMessages.filter((m) => m.project_id === projectId))
       })
       return
     }
     setMessagesLoading(true)
     fetch(`/api/messages?project_id=${projectId}`)
       .then((r) => r.json())
-      .then((data) => setMessages(Array.isArray(data) ? data : []))
-      .catch(() => setMessages([]))
+      .then((data) => setProjectMessages(Array.isArray(data) ? data : []))
+      .catch(() => setProjectMessages([]))
       .finally(() => setMessagesLoading(false))
   }, [])
 
-  // Load projects
-  useEffect(() => {
-    if (!SUPABASE_CONFIGURED) {
-      queueMicrotask(() => {
-        const firstProjectId = mockProjects[0]?.id ?? ''
-        setProjects(mockProjects)
-        setActiveProjectId(firstProjectId)
-        setMessages(mockMessages.filter((m) => m.project_id === firstProjectId))
-        setProjectsLoading(false)
-      })
-      return
-    }
-    fetch('/api/projects')
+  const fetchDirectMessages = useCallback((userId: string) => {
+    setMessagesLoading(true)
+    fetch(`/api/direct-messages?with=${encodeURIComponent(userId)}`)
       .then((r) => r.json())
-      .then((data) => {
-        const list = Array.isArray(data) ? data : mockProjects
-        const firstProjectId = list[0]?.id ?? ''
+      .then((data) => setDirectMessages(Array.isArray(data) ? data : []))
+      .catch(() => setDirectMessages([]))
+      .finally(() => setMessagesLoading(false))
+  }, [])
+
+  // Initial load: projects + synced people
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      try {
+        if (!SUPABASE_CONFIGURED) {
+          if (cancelled) return
+          const firstProject = mockProjects[0] ?? null
+          setProjects(mockProjects)
+          setSynced([])
+          if (firstProject) {
+            setActive({ kind: 'project', project: firstProject })
+            setProjectMessages(mockMessages.filter((m) => m.project_id === firstProject.id))
+          }
+          setProjectsLoading(false)
+          setSyncedLoading(false)
+          return
+        }
+
+        const [projRes, peopleRes, connRes] = await Promise.all([
+          fetch('/api/projects'),
+          fetch('/api/people'),
+          fetch('/api/connections'),
+        ])
+
+        const projectList = projRes.ok ? ((await projRes.json()) as Project[]) : []
+        const peopleList = peopleRes.ok ? ((await peopleRes.json()) as Profile[]) : []
+        const connData = connRes.ok
+          ? ((await connRes.json()) as { userId: string; connections: Record<string, string> })
+          : { userId: null, connections: {} as Record<string, string> }
+
+        if (cancelled) return
+
+        const list = Array.isArray(projectList) ? projectList : []
         setProjects(list)
-        setActiveProjectId(firstProjectId)
-        fetchMessages(firstProjectId)
-      })
-      .catch(() => {
-        const firstProjectId = mockProjects[0]?.id ?? ''
-        setProjects(mockProjects)
-        setActiveProjectId(firstProjectId)
-        fetchMessages(firstProjectId)
-      })
-      .finally(() => setProjectsLoading(false))
-  }, [fetchMessages])
 
-  function handleProjectSelect(projectId: string) {
-    setActiveProjectId(projectId)
-    fetchMessages(projectId)
-  }
+        const syncedIds = new Set(
+          Object.entries(connData.connections ?? {})
+            .filter(([, state]) => state === 'synced')
+            .map(([id]) => id)
+        )
+        const syncedPeople = peopleList.filter((p) => syncedIds.has(p.id))
+        setSynced(syncedPeople)
 
-  // Scroll to bottom when messages change
+        if (list[0]) {
+          setActive({ kind: 'project', project: list[0] })
+          fetchProjectMessages(list[0].id)
+        } else if (syncedPeople[0]) {
+          setActive({ kind: 'dm', user: syncedPeople[0] })
+          fetchDirectMessages(syncedPeople[0].id)
+        }
+      } finally {
+        if (!cancelled) {
+          setProjectsLoading(false)
+          setSyncedLoading(false)
+        }
+      }
+    }
+
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [fetchProjectMessages, fetchDirectMessages])
+
+  // Realtime subscription for the active conversation
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages.length])
-
-  // Supabase Realtime subscription for new messages
-  useEffect(() => {
-    if (!SUPABASE_CONFIGURED || !activeProjectId) return
+    if (!SUPABASE_CONFIGURED || !active || !profile) return
     let cleanup: (() => void) | undefined
 
     async function subscribe() {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
-      const channel = supabase
-        .channel(`messages:${activeProjectId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-            filter: `project_id=eq.${activeProjectId}`,
-          },
-          (payload) => {
-            const incoming = payload.new as Message
-            // Skip if already added optimistically (same sender as current user)
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === incoming.id)) return prev
-              // Re-fetch to get sender profile
-              fetchMessages(activeProjectId)
-              return prev
-            })
-          }
-        )
-        .subscribe()
 
-      cleanup = () => { supabase.removeChannel(channel) }
+      if (active && active.kind === 'project') {
+        const projectId = active.project.id
+        const channel = supabase
+          .channel(`messages:${projectId}`)
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'messages',
+              filter: `project_id=eq.${projectId}`,
+            },
+            () => fetchProjectMessages(projectId)
+          )
+          .subscribe()
+        cleanup = () => {
+          supabase.removeChannel(channel)
+        }
+      } else if (active && active.kind === 'dm') {
+        const otherId = active.user.id
+        const channel = supabase
+          .channel(`dm:${profile?.id}:${otherId}`)
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'direct_messages' },
+            (payload) => {
+              const row = (payload.new ?? payload.old) as DirectMessage | undefined
+              if (!row) return
+              const matches =
+                (row.sender_id === profile?.id && row.receiver_id === otherId) ||
+                (row.sender_id === otherId && row.receiver_id === profile?.id)
+              if (matches) fetchDirectMessages(otherId)
+            }
+          )
+          .subscribe()
+        cleanup = () => {
+          supabase.removeChannel(channel)
+        }
+      }
     }
 
     subscribe()
-    return () => { cleanup?.() }
-  }, [activeProjectId, fetchMessages])
+    return () => {
+      cleanup?.()
+    }
+  }, [active, profile, fetchProjectMessages, fetchDirectMessages])
+
+  // Scroll to bottom on message change
+  const messageCount = active?.kind === 'dm' ? directMessages.length : projectMessages.length
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messageCount])
+
+  function selectProject(project: Project) {
+    setActive({ kind: 'project', project })
+    setProjectMessages([])
+    fetchProjectMessages(project.id)
+  }
+
+  function selectUser(user: Profile) {
+    setActive({ kind: 'dm', user })
+    setDirectMessages([])
+    fetchDirectMessages(user.id)
+  }
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault()
-    if (!input.trim() || !activeProjectId || !profile) return
-
-    // Optimistic update
-    const optimisticMsg: Message = {
-      id: `opt-${Date.now()}`,
-      project_id: activeProjectId,
-      sender_id: profile.id,
-      body: input,
-      created_at: new Date().toISOString(),
-      sender: profile,
-    }
-    setMessages((prev) => [...prev, optimisticMsg])
-    const sent = input
+    if (!input.trim() || !active || !profile) return
+    const text = input.trim()
     setInput('')
 
-    try {
-      if (SUPABASE_CONFIGURED) {
-        const res = await fetch('/api/messages', {
+    if (active.kind === 'project') {
+      const optimistic: Message = {
+        id: `opt-${Date.now()}`,
+        project_id: active.project.id,
+        sender_id: profile.id,
+        body: text,
+        created_at: new Date().toISOString(),
+        sender: profile,
+      }
+      setProjectMessages((prev) => [...prev, optimistic])
+
+      try {
+        if (SUPABASE_CONFIGURED) {
+          const res = await fetch('/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: active.project.id, body: text }),
+          })
+          if (res.ok) {
+            const saved = await res.json()
+            setProjectMessages((prev) =>
+              prev.map((m) => (m.id === optimistic.id ? { ...saved, sender: profile } : m))
+            )
+          }
+        }
+      } catch {
+        // optimistic stays
+      }
+    } else {
+      const optimistic: DirectMessage = {
+        id: `opt-${Date.now()}`,
+        sender_id: profile.id,
+        receiver_id: active.user.id,
+        type: 'text',
+        body: text,
+        payload: null,
+        state: 'sent',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        sender: { id: profile.id, name: profile.name, avatar_url: profile.avatar_url },
+      }
+      setDirectMessages((prev) => [...prev, optimistic])
+
+      try {
+        const res = await fetch('/api/direct-messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ project_id: activeProjectId, body: sent }),
+          body: JSON.stringify({
+            receiver_id: active.user.id,
+            type: 'text',
+            body: text,
+          }),
         })
-        if (res.ok) {
-          const saved = await res.json()
-          // Replace optimistic message with persisted one
-          setMessages((prev) =>
-            prev.map((m) => (m.id === optimisticMsg.id ? { ...saved, sender: profile } : m))
-          )
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string }
+          throw new Error(body.error ?? 'Failed to send')
         }
+        const saved = (await res.json()) as DirectMessage
+        setDirectMessages((prev) => prev.map((m) => (m.id === optimistic.id ? saved : m)))
+      } catch (e) {
+        setDirectMessages((prev) => prev.filter((m) => m.id !== optimistic.id))
+        setInput(text)
+        showToast(e instanceof Error ? e.message : 'Failed to send', 'error')
       }
-    } catch {
-      // optimistic message stays visible; silently fail
     }
   }
 
-  const activeProject = projects.find((p) => p.id === activeProjectId)
+  const respondToShare = useCallback(
+    async (msg: DirectMessage, action: 'accept' | 'reject') => {
+      setRespondingId(msg.id)
+      // Optimistic update
+      setDirectMessages((prev) =>
+        prev.map((m) => (m.id === msg.id ? { ...m, state: action === 'accept' ? 'accepted' : 'rejected' } : m))
+      )
+      try {
+        const res = await fetch(`/api/direct-messages/${msg.id}/respond`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action }),
+        })
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string }
+          throw new Error(body.error ?? 'Failed to respond')
+        }
+        showToast(
+          action === 'accept'
+            ? `${msg.payload?.name ?? msg.payload?.full_name ?? 'Repository'} added to your workspace`
+            : 'Share rejected'
+        )
+      } catch (e) {
+        setDirectMessages((prev) =>
+          prev.map((m) => (m.id === msg.id ? { ...m, state: 'sent' } : m))
+        )
+        showToast(e instanceof Error ? e.message : 'Failed to respond', 'error')
+      } finally {
+        setRespondingId(null)
+      }
+    },
+    [showToast]
+  )
+
+  const headerTitle = useMemo(() => {
+    if (!active) return ''
+    return active.kind === 'project' ? `#${active.project.name}` : active.user.name
+  }, [active])
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Channel list */}
-      <div className="w-56 flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex flex-col">
+      <div className="w-60 flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex flex-col">
         <div className="px-4 py-4 border-b border-gray-100 dark:border-gray-800">
           <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
             Channels
@@ -168,49 +359,102 @@ export default function ChatPage() {
         </div>
         <div className="flex-1 overflow-y-auto px-2 py-2">
           {projectsLoading ? (
-            Array.from({ length: 4 }).map((_, i) => (
+            Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="flex items-center gap-2.5 px-3 py-2">
                 <Skeleton className="w-3 h-3 rounded" />
                 <Skeleton className="h-3 flex-1" />
               </div>
             ))
+          ) : projects.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">No channels yet.</p>
           ) : (
-            projects.map((project) => (
-              <button
-                key={project.id}
-                onClick={() => handleProjectSelect(project.id)}
-                className={cn(
-                  'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-left',
-                  activeProjectId === project.id
-                    ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 font-medium'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-                )}
-              >
-                <Hash size={14} className="flex-shrink-0" />
-                <span className="truncate flex-1">{project.name}</span>
-              </button>
+            projects.map((project) => {
+              const isActive = active?.kind === 'project' && active.project.id === project.id
+              return (
+                <button
+                  key={project.id}
+                  onClick={() => selectProject(project)}
+                  className={cn(
+                    'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-left',
+                    isActive
+                      ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 font-medium'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+                  )}
+                >
+                  <Hash size={14} className="flex-shrink-0" />
+                  <span className="truncate flex-1">{project.name}</span>
+                </button>
+              )
+            })
+          )}
+
+          <div className="my-3 border-t border-gray-100 dark:border-gray-800" />
+
+          <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+            Direct
+          </p>
+          {syncedLoading ? (
+            Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-2.5 px-3 py-2">
+                <Skeleton className="w-6 h-6 rounded-full" />
+                <Skeleton className="h-3 flex-1" />
+              </div>
             ))
+          ) : synced.length === 0 ? (
+            <Link
+              href="/people"
+              className="mx-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-gray-400 hover:bg-gray-50 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+            >
+              <Inbox size={12} />
+              Sync with people to start a chat
+            </Link>
+          ) : (
+            synced.map((user) => {
+              const isActive = active?.kind === 'dm' && active.user.id === user.id
+              return (
+                <button
+                  key={user.id}
+                  onClick={() => selectUser(user)}
+                  className={cn(
+                    'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-left',
+                    isActive
+                      ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 font-medium'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+                  )}
+                >
+                  <Avatar name={user.name} src={user.avatar_url} size="xs" />
+                  <span className="truncate flex-1">{user.name}</span>
+                </button>
+              )
+            })
           )}
         </div>
       </div>
 
-      {/* Messages panel */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {activeProject && (
+        {active && (
           <div className="h-14 border-b border-gray-100 dark:border-gray-800 px-5 flex items-center gap-2 flex-shrink-0 bg-white dark:bg-gray-900">
-            <Hash size={16} className="text-gray-400 dark:text-gray-500" />
+            {active.kind === 'project' ? (
+              <Hash size={16} className="text-gray-400 dark:text-gray-500" />
+            ) : (
+              <Avatar name={active.user.name} src={active.user.avatar_url} size="xs" />
+            )}
             <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {activeProject.name}
+              {headerTitle}
             </span>
-            {activeProject.description && (
+            {active.kind === 'project' && active.project.description && (
               <span className="text-xs text-gray-400 dark:text-gray-500 truncate">
-                — {activeProject.description.slice(0, 60)}
+                — {active.project.description.slice(0, 60)}
+              </span>
+            )}
+            {active.kind === 'dm' && (
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                · synced
               </span>
             )}
           </div>
         )}
 
-        {/* Message list */}
         <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
           {messagesLoading ? (
             Array.from({ length: 5 }).map((_, i) => (
@@ -222,48 +466,94 @@ export default function ChatPage() {
                 </div>
               </div>
             ))
-          ) : messages.length === 0 ? (
+          ) : !active ? (
             <div className="flex flex-col items-center justify-center flex-1 py-16 gap-2">
               <Hash size={32} className="text-gray-200 dark:text-gray-700" />
               <p className="text-sm text-gray-400 dark:text-gray-500">
-                No messages yet in #{activeProject?.name}
+                Pick a channel or synced contact to start chatting.
               </p>
-              <p className="text-xs text-gray-300 dark:text-gray-600">Be the first to send one.</p>
             </div>
+          ) : active.kind === 'project' ? (
+            projectMessages.length === 0 ? (
+              <EmptyChannel name={active.project.name} />
+            ) : (
+              projectMessages.map((msg, i) => {
+                const prev = projectMessages[i - 1]
+                const sameAuthor =
+                  prev?.sender_id === msg.sender_id &&
+                  new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() < 300000
+                return (
+                  <div key={msg.id} className={cn('flex items-start gap-3', sameAuthor && 'mt-0.5')}>
+                    {sameAuthor ? (
+                      <div className="w-8 flex-shrink-0" />
+                    ) : (
+                      <Avatar name={msg.sender?.name ?? 'User'} src={msg.sender?.avatar_url} size="sm" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      {!sameAuthor && (
+                        <div className="flex items-baseline gap-2 mb-0.5">
+                          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {msg.sender?.name ?? 'User'}
+                          </span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                            {formatDate(msg.created_at)}
+                          </span>
+                        </div>
+                      )}
+                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{msg.body}</p>
+                    </div>
+                  </div>
+                )
+              })
+            )
+          ) : directMessages.length === 0 ? (
+            <EmptyDM name={active.user.name} />
           ) : (
-            messages.map((msg, i) => {
-              const prevMsg = messages[i - 1]
+            directMessages.map((msg, i) => {
+              const prev = directMessages[i - 1]
               const sameAuthor =
-                prevMsg?.sender_id === msg.sender_id &&
-                new Date(msg.created_at).getTime() -
-                  new Date(prevMsg.created_at).getTime() <
-                  300000
+                prev?.sender_id === msg.sender_id &&
+                new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() < 300000
+              const senderName =
+                msg.sender?.name ?? (msg.sender_id === profile?.id ? profile.name : active.user.name)
+              const senderAvatar =
+                msg.sender?.avatar_url ??
+                (msg.sender_id === profile?.id ? profile?.avatar_url : active.user.avatar_url)
+              const isReceiver = profile?.id === msg.receiver_id
+              const isResponding = respondingId === msg.id
 
               return (
                 <div key={msg.id} className={cn('flex items-start gap-3', sameAuthor && 'mt-0.5')}>
                   {sameAuthor ? (
                     <div className="w-8 flex-shrink-0" />
                   ) : (
-                    <Avatar
-                      name={msg.sender?.name ?? 'User'}
-                      src={msg.sender?.avatar_url}
-                      size="sm"
-                    />
+                    <Avatar name={senderName} src={senderAvatar} size="sm" />
                   )}
                   <div className="flex-1 min-w-0">
                     {!sameAuthor && (
                       <div className="flex items-baseline gap-2 mb-0.5">
                         <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                          {msg.sender?.name ?? 'User'}
+                          {senderName}
                         </span>
                         <span className="text-xs text-gray-400 dark:text-gray-500">
                           {formatDate(msg.created_at)}
                         </span>
                       </div>
                     )}
-                    <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                      {msg.body}
-                    </p>
+
+                    {msg.type === 'text' ? (
+                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                        {msg.body}
+                      </p>
+                    ) : (
+                      <RepoShareCard
+                        message={msg}
+                        viewerIsReceiver={isReceiver}
+                        responding={isResponding}
+                        onAccept={() => respondToShare(msg, 'accept')}
+                        onReject={() => respondToShare(msg, 'reject')}
+                      />
+                    )}
                   </div>
                 </div>
               )
@@ -272,7 +562,6 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Input */}
         <form
           onSubmit={sendMessage}
           className="border-t border-gray-100 dark:border-gray-800 p-4 flex gap-3 bg-white dark:bg-gray-900"
@@ -281,14 +570,163 @@ export default function ChatPage() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={activeProject ? `Message #${activeProject.name}...` : 'Select a channel'}
-            disabled={!activeProject}
+            placeholder={
+              !active
+                ? 'Select a conversation'
+                : active.kind === 'project'
+                  ? `Message #${active.project.name}...`
+                  : `Message ${active.user.name}...`
+            }
+            disabled={!active}
             className="flex-1 rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50 dark:bg-gray-800 dark:text-gray-100 focus:bg-white dark:focus:bg-gray-900 transition-colors"
           />
-          <Button type="submit" size="md" disabled={!input.trim() || !activeProject}>
+          <Button type="submit" size="md" disabled={!input.trim() || !active}>
             <Send size={15} />
           </Button>
         </form>
+      </div>
+
+      <div className="pointer-events-none fixed bottom-6 right-6 z-[60] flex flex-col gap-2">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className={cn(
+              'pointer-events-auto rounded-lg border px-4 py-2.5 text-sm shadow-lg backdrop-blur-sm transition-all',
+              t.tone === 'success'
+                ? 'bg-gray-900/95 text-white border-gray-800 dark:bg-gray-100/95 dark:text-gray-900 dark:border-gray-200'
+                : 'bg-red-600/95 text-white border-red-700'
+            )}
+          >
+            {t.message}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function EmptyChannel({ name }: { name: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center flex-1 py-16 gap-2">
+      <Hash size={32} className="text-gray-200 dark:text-gray-700" />
+      <p className="text-sm text-gray-400 dark:text-gray-500">No messages yet in #{name}</p>
+      <p className="text-xs text-gray-300 dark:text-gray-600">Be the first to send one.</p>
+    </div>
+  )
+}
+
+function EmptyDM({ name }: { name: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center flex-1 py-16 gap-2">
+      <Avatar name={name} size="lg" />
+      <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{name}</p>
+      <p className="text-xs text-gray-400 dark:text-gray-500 text-center max-w-xs">
+        Say hi or share a repository — they&apos;ll see it here.
+      </p>
+    </div>
+  )
+}
+
+function RepoShareCard({
+  message,
+  viewerIsReceiver,
+  responding,
+  onAccept,
+  onReject,
+}: {
+  message: DirectMessage
+  viewerIsReceiver: boolean
+  responding: boolean
+  onAccept: () => void
+  onReject: () => void
+}) {
+  const payload = (message.payload ?? {}) as RepoSharePayload
+  const fullName = payload.full_name ?? payload.name ?? 'Repository'
+  const owner = payload.owner ?? fullName.split('/')[0] ?? ''
+  const detailHref = `/repositories/${fullName}`
+
+  const stateLabel =
+    message.state === 'accepted'
+      ? 'Accepted'
+      : message.state === 'rejected'
+        ? 'Rejected'
+        : null
+
+  return (
+    <div
+      className={cn(
+        'mt-1 inline-flex max-w-md flex-col gap-3 rounded-2xl border bg-white p-4 transition-all',
+        'border-gray-200 dark:border-gray-800 dark:bg-gray-900',
+        message.state === 'rejected' && 'opacity-60'
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-500 ring-1 ring-inset ring-purple-100 dark:bg-purple-950/40 dark:text-purple-300 dark:ring-purple-900/60">
+          <Book size={14} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[11px] text-gray-400 dark:text-gray-500">{owner}</p>
+          <Link
+            href={detailHref}
+            className="block truncate text-sm font-semibold text-gray-900 hover:text-purple-600 dark:text-gray-100 dark:hover:text-purple-400"
+          >
+            {payload.name ?? fullName.split('/')[1] ?? fullName}
+          </Link>
+          {payload.description && (
+            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+              {payload.description}
+            </p>
+          )}
+          {payload.language && (
+            <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">{payload.language}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        {payload.url && (
+          <a
+            href={payload.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-[11px] text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400"
+          >
+            <ExternalLink size={11} />
+            Open on GitHub
+          </a>
+        )}
+
+        {viewerIsReceiver && message.state === 'sent' ? (
+          <div className="flex gap-1.5">
+            <button
+              disabled={responding}
+              onClick={onReject}
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition-all hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              <XIcon size={11} />
+              Reject
+            </button>
+            <button
+              disabled={responding}
+              onClick={onAccept}
+              className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-purple-500 to-fuchsia-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition-all hover:from-purple-600 hover:to-fuchsia-600 disabled:opacity-60"
+            >
+              <Check size={11} />
+              Accept
+            </button>
+          </div>
+        ) : stateLabel ? (
+          <span
+            className={cn(
+              'rounded-full px-2 py-0.5 text-[10px] font-medium',
+              message.state === 'accepted'
+                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
+                : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+            )}
+          >
+            {stateLabel}
+          </span>
+        ) : null}
       </div>
     </div>
   )

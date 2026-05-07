@@ -13,6 +13,7 @@ import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
 import CreateGitHubRepoModal from '@/components/dashboard/CreateGitHubRepoModal'
+import ShareRepoModal, { type RepoShareInfo } from '@/components/repositories/ShareRepoModal'
 import { useGitHub } from '@/context/GitHubContext'
 import { useUser } from '@/context/UserContext'
 import { cn, formatDate } from '@/lib/utils'
@@ -46,8 +47,20 @@ import {
 } from 'lucide-react'
 
 type SortKey = 'updated' | 'name'
-type RootSectionId = 'favorites' | 'private'
+type RootSectionId = 'favorites' | 'private' | 'shared'
 type ViewId = 'home' | RootSectionId | `folder:${string}`
+
+type SharedRepoRecord = {
+  id: string
+  source_user_id: string | null
+  repo_full_name: string
+  repo_url: string
+  repo_owner: string | null
+  repo_description: string | null
+  repo_language: string | null
+  created_at: string
+  source: { id: string; name: string; avatar_url: string | null } | null
+}
 type RepoLocationMap = Record<string, { folderId: string | null }>
 type FolderNodeId = 'home' | `folder:${string}`
 
@@ -64,11 +77,12 @@ interface PathSegment {
 
 type DragItem = { type: 'repo'; repoId: number } | { type: 'folder'; folderId: string } | null
 
-const ROOT_SECTIONS: RootSectionId[] = ['favorites', 'private']
+const ROOT_SECTIONS: RootSectionId[] = ['favorites', 'private', 'shared']
 
 const ROOT_SECTION_META: Record<RootSectionId, { label: string; icon: React.ReactNode }> = {
   favorites: { label: 'Favorites', icon: <Star size={13} /> },
   private: { label: 'Private', icon: <Lock size={13} /> },
+  shared: { label: 'Shared with me', icon: <Share2 size={13} /> },
 }
 
 function lsGet<T>(key: string, fallback: T): T {
@@ -877,6 +891,77 @@ function RepoCard({
   )
 }
 
+function SharedRepoCard({
+  record,
+  onNavigate,
+}: {
+  record: SharedRepoRecord
+  onNavigate: () => void
+}) {
+  const langColor = languageColor(record.repo_language)
+  const owner = record.repo_owner ?? record.repo_full_name.split('/')[0] ?? ''
+  const name = record.repo_full_name.split('/')[1] ?? record.repo_full_name
+
+  return (
+    <div
+      onClick={onNavigate}
+      className={cn(
+        'group relative flex cursor-pointer flex-col gap-3 rounded-2xl border border-gray-200/80 bg-white p-5 transition-all duration-200',
+        'hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-[0_8px_24px_-12px_rgba(124,58,237,0.18)]',
+        'dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700 dark:hover:shadow-[0_8px_24px_-12px_rgba(168,85,247,0.25)]'
+      )}
+    >
+      <div className="flex items-start gap-2.5">
+        <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-500 ring-1 ring-inset ring-purple-100 dark:bg-purple-950/40 dark:text-purple-300 dark:ring-purple-900/60">
+          <Book size={13} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold leading-tight text-gray-900 dark:text-gray-100">
+            {name}
+          </p>
+          <p className="truncate text-[11px] leading-tight text-gray-400 dark:text-gray-500">
+            {owner}
+          </p>
+        </div>
+        <a
+          href={record.repo_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="rounded-md p-1 text-gray-300 opacity-0 transition-all hover:text-gray-500 group-hover:opacity-100 dark:text-gray-600 dark:hover:text-gray-400"
+          aria-label="Open on GitHub"
+        >
+          <ExternalLink size={13} />
+        </a>
+      </div>
+
+      <p
+        className={cn(
+          'line-clamp-2 min-h-[2lh] text-xs leading-relaxed',
+          record.repo_description
+            ? 'text-gray-500 dark:text-gray-400'
+            : 'text-gray-300 dark:text-gray-600'
+        )}
+      >
+        {record.repo_description || 'No description'}
+      </p>
+
+      <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+        {record.repo_language && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: langColor }} aria-hidden />
+            <span className="text-gray-500 dark:text-gray-400">{record.repo_language}</span>
+          </span>
+        )}
+        <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
+          <Share2 size={9} />
+          Shared by {record.source?.name ?? 'someone'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export default function RepositoriesPage() {
   const github = useGitHub()
   const user = useUser()
@@ -894,6 +979,15 @@ export default function RepositoriesPage() {
   const [loadingDone, setLoadingDone] = useState(false)
   const [error, setError] = useState<{ message: string; code?: string } | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [shareTarget, setShareTarget] = useState<RepoShareInfo | null>(null)
+  const [sharedRepos, setSharedRepos] = useState<SharedRepoRecord[]>([])
+  const [toasts, setToasts] = useState<Array<{ id: number; tone: 'success' | 'error'; message: string }>>([])
+
+  const showToast = useCallback((message: string, tone: 'success' | 'error' = 'success') => {
+    const id = Date.now() + Math.random()
+    setToasts((prev) => [...prev, { id, tone, message }])
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 2400)
+  }, [])
 
   const [folders, setFolders] = useState<FolderDef[]>(() =>
     typeof window === 'undefined' ? [] : lsGet<FolderDef[]>(makeStorageKey(user?.id, 'folders'), [])
@@ -1000,8 +1094,9 @@ export default function RepositoriesPage() {
       home: repos.filter((repo) => getRepoFolderId(repo.id, repoLocations, folderMap) === null).length,
       favorites: repos.filter((repo) => starredIds.has(repo.id)).length,
       private: repos.filter((repo) => repo.private).length,
+      shared: sharedRepos.length,
     }
-  }, [folderMap, repoLocations, repos, starredIds])
+  }, [folderMap, repoLocations, repos, sharedRepos, starredIds])
 
   const notConnected =
     !loadingDone ? false : error?.code === 'not_connected' || error?.code === 'token_expired'
@@ -1062,6 +1157,24 @@ export default function RepositoriesPage() {
   useEffect(() => {
     fetchRepos()
   }, [fetchRepos])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadShared() {
+      try {
+        const res = await fetch('/api/shared-repos')
+        if (!res.ok) return
+        const data = (await res.json()) as SharedRepoRecord[]
+        if (!cancelled) setSharedRepos(Array.isArray(data) ? data : [])
+      } catch {
+        // ignore — keeps shared section empty on failure
+      }
+    }
+    loadShared()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleRetry = () => {
     setError(null)
@@ -1308,9 +1421,21 @@ export default function RepositoriesPage() {
     if (resolvedActiveView === 'home') return 'Organize repositories with folders, favorites, and private views.'
     if (resolvedActiveView === 'favorites') return 'Starred repositories live here without duplicating the source repo.'
     if (resolvedActiveView === 'private') return 'Private repositories are scoped to your account and hidden from other users.'
+    if (resolvedActiveView === 'shared') return 'Repositories synced users have shared with you.'
     if (resolvedActiveView.startsWith('folder:')) return ''
     return ''
   }, [resolvedActiveView])
+
+  const filteredSharedRepos = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return sharedRepos
+    return sharedRepos.filter((s) => {
+      const haystack = [s.repo_full_name, s.repo_description ?? '', s.repo_language ?? '', s.source?.name ?? '']
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [sharedRepos, search])
 
   return (
     <>
@@ -1567,7 +1692,44 @@ export default function RepositoriesPage() {
               </div>
             )}
 
-            {loadingDone && !error && repos.length === 0 && (
+            {loadingDone && !error && resolvedActiveView === 'shared' && (
+              filteredSharedRepos.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800">
+                    <Share2 size={22} className="text-gray-400 dark:text-gray-500" />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-sm font-semibold text-gray-800 dark:text-gray-200">
+                      Nothing shared with you yet
+                    </p>
+                    <p className="max-w-xs text-xs text-gray-400 dark:text-gray-500">
+                      When a synced user shares a repo with you and you accept it, it appears here.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <section>
+                  <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                    <Share2 size={12} />
+                    Shared with me
+                    <span className="text-gray-300 dark:text-gray-600">{filteredSharedRepos.length}</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {filteredSharedRepos.map((shared) => (
+                      <SharedRepoCard
+                        key={shared.id}
+                        record={shared}
+                        onNavigate={() =>
+                          router.push(`/repositories/${shared.repo_full_name}`)
+                        }
+                      />
+                    ))}
+                  </div>
+                </section>
+              )
+            )}
+
+            {loadingDone && !error && resolvedActiveView !== 'shared' && repos.length === 0 && (
               <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800">
                   <GitBranch size={26} className="text-gray-400 dark:text-gray-500" />
@@ -1587,7 +1749,7 @@ export default function RepositoriesPage() {
               </div>
             )}
 
-            {loadingDone && !error && repos.length > 0 && (
+            {loadingDone && !error && resolvedActiveView !== 'shared' && repos.length > 0 && (
               <div className="space-y-6">
                 {visibleChildFolders.length > 0 && (
                   <section>
@@ -1695,11 +1857,14 @@ export default function RepositoriesPage() {
                                 setOpenRepoMenuId(null)
                               }}
                               onShare={() => {
-                                const url =
-                                  typeof window !== 'undefined'
-                                    ? `${window.location.origin}/repositories/${repo.full_name}`
-                                    : `/repositories/${repo.full_name}`
-                                copyToClipboard(url)
+                                setShareTarget({
+                                  full_name: repo.full_name,
+                                  name: repo.name,
+                                  url: repo.html_url,
+                                  owner: repo.full_name.split('/')[0] ?? '',
+                                  description: repo.description,
+                                  language: repo.language,
+                                })
                                 setOpenRepoMenuId(null)
                               }}
                               onOpenVSCode={() => {
@@ -1724,6 +1889,31 @@ export default function RepositoriesPage() {
         onClose={() => setCreateOpen(false)}
         onCreated={handleRepoCreated}
       />
+
+      {shareTarget && (
+        <ShareRepoModal
+          open={true}
+          onClose={() => setShareTarget(null)}
+          repo={shareTarget}
+          onToast={showToast}
+        />
+      )}
+
+      <div className="pointer-events-none fixed bottom-6 right-6 z-[60] flex flex-col gap-2">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className={cn(
+              'pointer-events-auto rounded-lg border px-4 py-2.5 text-sm shadow-lg backdrop-blur-sm transition-all',
+              t.tone === 'success'
+                ? 'bg-gray-900/95 text-white border-gray-800 dark:bg-gray-100/95 dark:text-gray-900 dark:border-gray-200'
+                : 'bg-red-600/95 text-white border-red-700'
+            )}
+          >
+            {t.message}
+          </div>
+        ))}
+      </div>
     </>
   )
 }

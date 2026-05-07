@@ -23,16 +23,26 @@ const TOOL_COLORS: Record<string, string> = {
   Copilot: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
 }
 
-type ConnectionState = 'none' | 'following' | 'pending' | 'synced'
+type ConnectionState = 'none' | 'following' | 'pending' | 'request_received' | 'synced'
 type ConnectionMap = Record<string, ConnectionState>
 type Toast = { id: number; tone: 'success' | 'error'; message: string }
+type SyncBusyAction = 'sync' | 'accept' | 'reject'
+
+async function readApiError(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await res.json()) as { error?: string }
+    return body?.error ?? fallback
+  } catch {
+    return fallback
+  }
+}
 
 export default function PeoplePage() {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [connections, setConnections] = useState<ConnectionMap>({})
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [pendingByUser, setPendingByUser] = useState<Record<string, 'follow' | 'sync' | null>>({})
+  const [pendingByUser, setPendingByUser] = useState<Record<string, 'follow' | SyncBusyAction | null>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -119,7 +129,7 @@ export default function PeoplePage() {
     })
   }, [])
 
-  const setBusy = useCallback((userId: string, action: 'follow' | 'sync' | null) => {
+  const setBusy = useCallback((userId: string, action: 'follow' | SyncBusyAction | null) => {
     setPendingByUser((prev) => ({ ...prev, [userId]: action }))
   }, [])
 
@@ -142,11 +152,14 @@ export default function PeoplePage() {
         const res = await fetch(`/api/people/${profile.id}/follow`, {
           method: isFollowing ? 'DELETE' : 'POST',
         })
-        if (!res.ok) throw new Error('Request failed')
+        if (!res.ok) {
+          const message = await readApiError(res, 'Could not update follow.')
+          throw new Error(message)
+        }
         showToast(isFollowing ? `Unfollowed ${profile.name}` : `Following ${profile.name}`)
-      } catch {
+      } catch (e) {
         setConnectionState(profile.id, current)
-        showToast('Could not update follow. Try again.', 'error')
+        showToast(e instanceof Error ? e.message : 'Could not update follow.', 'error')
       } finally {
         setBusy(profile.id, null)
       }
@@ -179,14 +192,17 @@ export default function PeoplePage() {
         const res = await fetch(`/api/people/${profile.id}/sync`, {
           method: isActive ? 'DELETE' : 'POST',
         })
-        if (!res.ok) throw new Error('Request failed')
+        if (!res.ok) {
+          const message = await readApiError(res, 'Could not update Sync.')
+          throw new Error(message)
+        }
         const body = (await res.json().catch(() => ({}))) as { status?: ConnectionState }
         if (!isActive && body.status) {
           setConnectionState(profile.id, body.status)
           showToast(
             body.status === 'synced'
               ? `Synced with ${profile.name}`
-              : `Sync request sent to ${profile.name}`
+              : `Request sent to ${profile.name}`
           )
         } else {
           showToast(
@@ -195,14 +211,56 @@ export default function PeoplePage() {
               : `Sync request cancelled`
           )
         }
-      } catch {
+      } catch (e) {
         setConnectionState(profile.id, current)
-        showToast('Could not update Sync. Try again.', 'error')
+        showToast(e instanceof Error ? e.message : 'Could not update Sync.', 'error')
       } finally {
         setBusy(profile.id, null)
       }
     },
     [connections, setBusy, setConnectionState, showToast]
+  )
+
+  const handleAccept = useCallback(
+    async (profile: Profile) => {
+      setBusy(profile.id, 'accept')
+      setConnectionState(profile.id, 'synced')
+      try {
+        const res = await fetch(`/api/people/${profile.id}/sync/accept`, { method: 'POST' })
+        if (!res.ok) {
+          const message = await readApiError(res, 'Could not accept Sync.')
+          throw new Error(message)
+        }
+        showToast(`Synced with ${profile.name}`)
+      } catch (e) {
+        setConnectionState(profile.id, 'request_received')
+        showToast(e instanceof Error ? e.message : 'Could not accept Sync.', 'error')
+      } finally {
+        setBusy(profile.id, null)
+      }
+    },
+    [setBusy, setConnectionState, showToast]
+  )
+
+  const handleReject = useCallback(
+    async (profile: Profile) => {
+      setBusy(profile.id, 'reject')
+      setConnectionState(profile.id, 'none')
+      try {
+        const res = await fetch(`/api/people/${profile.id}/sync/reject`, { method: 'POST' })
+        if (!res.ok) {
+          const message = await readApiError(res, 'Could not reject request.')
+          throw new Error(message)
+        }
+        showToast(`Rejected ${profile.name}'s request`)
+      } catch (e) {
+        setConnectionState(profile.id, 'request_received')
+        showToast(e instanceof Error ? e.message : 'Could not reject request.', 'error')
+      } finally {
+        setBusy(profile.id, null)
+      }
+    },
+    [setBusy, setConnectionState, showToast]
   )
 
   return (
@@ -234,6 +292,8 @@ export default function PeoplePage() {
                   busy={busy}
                   onFollow={() => handleFollow(profile)}
                   onSync={() => handleSync(profile)}
+                  onAccept={() => handleAccept(profile)}
+                  onReject={() => handleReject(profile)}
                 />
               )
             })}
@@ -267,29 +327,87 @@ function PersonCard({
   busy,
   onFollow,
   onSync,
+  onAccept,
+  onReject,
 }: {
   profile: Profile
   projects: Project[]
   state: ConnectionState
-  busy: 'follow' | 'sync' | null
+  busy: 'follow' | SyncBusyAction | null
   onFollow: () => void
   onSync: () => void
+  onAccept: () => void
+  onReject: () => void
 }) {
   const followLabel = state === 'following' ? 'Following' : 'Follow'
-  const syncLabel =
-    state === 'synced' ? 'Synced' : state === 'pending' ? 'Pending' : 'Sync'
 
   const followClassName =
     state === 'following'
       ? 'border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30'
       : ''
 
-  const syncClassName =
-    state === 'synced'
-      ? 'bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white'
-      : state === 'pending'
-        ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 hover:bg-purple-200 dark:hover:bg-purple-900/50'
-        : ''
+  const renderSyncControl = () => {
+    if (state === 'synced') {
+      return (
+        <Button
+          size="sm"
+          loading={busy === 'sync'}
+          disabled={busy !== null}
+          onClick={onSync}
+          className="bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white"
+        >
+          Synced
+        </Button>
+      )
+    }
+    if (state === 'pending') {
+      return (
+        <Button
+          size="sm"
+          variant="secondary"
+          loading={busy === 'sync'}
+          disabled={busy !== null}
+          onClick={onSync}
+          className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 hover:bg-purple-200 dark:hover:bg-purple-900/50"
+        >
+          Pending
+        </Button>
+      )
+    }
+    if (state === 'request_received') {
+      return (
+        <div className="flex gap-1.5">
+          <Button
+            size="sm"
+            loading={busy === 'accept'}
+            disabled={busy !== null}
+            onClick={onAccept}
+          >
+            Accept
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={busy === 'reject'}
+            disabled={busy !== null}
+            onClick={onReject}
+          >
+            Reject
+          </Button>
+        </div>
+      )
+    }
+    return (
+      <Button
+        size="sm"
+        loading={busy === 'sync'}
+        disabled={busy !== null}
+        onClick={onSync}
+      >
+        Sync
+      </Button>
+    )
+  }
 
   return (
     <Card
@@ -302,6 +420,11 @@ function PersonCard({
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
             {profile.name}
           </h3>
+          {state === 'request_received' && (
+            <p className="text-xs font-medium text-purple-600 dark:text-purple-300">
+              Wants to Sync with you
+            </p>
+          )}
           <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
             {profile.role ?? 'Member'}
           </p>
@@ -318,33 +441,7 @@ function PersonCard({
           >
             {followLabel}
           </Button>
-          {state === 'synced' ? (
-            <div className="flex gap-1.5">
-              <Button
-                size="sm"
-                loading={busy === 'sync'}
-                disabled={busy !== null}
-                onClick={onSync}
-                className={syncClassName}
-              >
-                {syncLabel}
-              </Button>
-              <Button size="sm" variant="secondary" disabled={busy !== null}>
-                Message
-              </Button>
-            </div>
-          ) : (
-            <Button
-              size="sm"
-              variant={state === 'pending' ? 'secondary' : 'primary'}
-              loading={busy === 'sync'}
-              disabled={busy !== null}
-              onClick={onSync}
-              className={syncClassName}
-            >
-              {syncLabel}
-            </Button>
-          )}
+          {renderSyncControl()}
         </div>
       </div>
 

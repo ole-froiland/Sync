@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { cn, formatDate } from '@/lib/utils'
 import { languageColor } from '@/lib/github-language-colors'
 import { renderMarkdown } from '@/lib/markdown'
+import ShareRepoModal from '@/components/repositories/ShareRepoModal'
 import {
   ArrowLeft,
   ExternalLink,
@@ -77,6 +78,14 @@ export default function RepositoryDetailPage({
   const [error, setError] = useState<LoadError | null>(null)
   const [copied, setCopied] = useState<'clone' | 'share' | null>(null)
   const [summary, setSummary] = useState<SummaryState>({ status: 'idle' })
+  const [shareOpen, setShareOpen] = useState(false)
+  const [toasts, setToasts] = useState<Array<{ id: number; tone: 'success' | 'error'; message: string }>>([])
+
+  const showToast = useCallback((message: string, tone: 'success' | 'error' = 'success') => {
+    const id = Date.now() + Math.random()
+    setToasts((prev) => [...prev, { id, tone, message }])
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 2400)
+  }, [])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -150,11 +159,7 @@ export default function RepositoryDetailPage({
   }
 
   const handleShare = () => {
-    const url =
-      typeof window !== 'undefined'
-        ? `${window.location.origin}/repositories/${owner}/${repo}`
-        : `/repositories/${owner}/${repo}`
-    copyToClipboard(url, 'share')
+    setShareOpen(true)
   }
 
   const handleOpenVSCode = () => {
@@ -331,8 +336,8 @@ export default function RepositoryDetailPage({
                       onClick={handleShare}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                     >
-                      {copied === 'share' ? <Check size={13} /> : <Share2 size={13} />}
-                      {copied === 'share' ? 'Link copied' : 'Share'}
+                      <Share2 size={13} />
+                      Share
                     </button>
                     <Button size="sm" onClick={() => summarize('summary')}>
                       <Sparkles size={13} />
@@ -461,6 +466,38 @@ export default function RepositoryDetailPage({
             </>
           )}
         </div>
+      </div>
+
+      {data && (
+        <ShareRepoModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          repo={{
+            full_name: data.full_name,
+            name: data.name,
+            url: data.html_url,
+            owner: data.owner?.login ?? owner,
+            description: data.description,
+            language: data.language,
+          }}
+          onToast={showToast}
+        />
+      )}
+
+      <div className="pointer-events-none fixed bottom-6 right-6 z-[60] flex flex-col gap-2">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className={cn(
+              'pointer-events-auto rounded-lg border px-4 py-2.5 text-sm shadow-lg backdrop-blur-sm transition-all',
+              t.tone === 'success'
+                ? 'bg-gray-900/95 text-white border-gray-800 dark:bg-gray-100/95 dark:text-gray-900 dark:border-gray-200'
+                : 'bg-red-600/95 text-white border-red-700'
+            )}
+          >
+            {t.message}
+          </div>
+        ))}
       </div>
     </>
   )
