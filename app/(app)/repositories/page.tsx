@@ -27,6 +27,7 @@ import {
   Search,
   Star,
   Folder,
+  ChevronDown,
   ChevronRight,
   MoreHorizontal,
   Check,
@@ -125,6 +126,10 @@ function getFolderPath(folderId: string, folderMap: Map<string, FolderDef>): Fol
   }
 
   return path
+}
+
+function getFolderAncestorIds(folderId: string, folderMap: Map<string, FolderDef>): string[] {
+  return getFolderPath(folderId, folderMap).map((folder) => folder.id)
 }
 
 function isFolderDescendant(
@@ -335,16 +340,21 @@ function FolderMenu({
 
 function SidebarFolderItem({
   folder,
-  active,
-  dragOver,
-  itemCount,
+  depth,
+  foldersByParent,
+  activeFolderId,
+  collapsedFolders,
+  dragOverNode,
+  repoCounts,
+  childFolderCounts,
   editingFolderId,
   editingValue,
   onEditingChange,
   onEditingSubmit,
   onEditingCancel,
-  menuOpen,
+  openFolderMenuId,
   onOpen,
+  onToggleCollapse,
   onAddSubfolder,
   onStartRename,
   onDelete,
@@ -357,16 +367,21 @@ function SidebarFolderItem({
   onDrop,
 }: {
   folder: FolderDef
-  active: boolean
-  dragOver: boolean
-  itemCount: number
+  depth: number
+  foldersByParent: Map<string | null, FolderDef[]>
+  activeFolderId: string | null
+  collapsedFolders: Set<string>
+  dragOverNode: FolderNodeId | null
+  repoCounts: Record<string, number>
+  childFolderCounts: Record<string, number>
   editingFolderId: string | null
   editingValue: string
   onEditingChange: (value: string) => void
   onEditingSubmit: (folderId: string) => void
   onEditingCancel: () => void
-  menuOpen: boolean
+  openFolderMenuId: string | null
   onOpen: (folderId: string) => void
+  onToggleCollapse: (folderId: string) => void
   onAddSubfolder: (folderId: string) => void
   onStartRename: (folder: FolderDef) => void
   onDelete: (folderId: string) => void
@@ -379,82 +394,141 @@ function SidebarFolderItem({
   onDrop: (e: DragEvent<HTMLDivElement>, folderId: string) => void
 }) {
   const isEditing = editingFolderId === folder.id
+  const children = foldersByParent.get(folder.id) ?? []
+  const hasChildren = children.length > 0
+  const isCollapsed = collapsedFolders.has(folder.id)
+  const active = activeFolderId === folder.id
+  const dragOver = dragOverNode === `folder:${folder.id}`
+  const itemCount = (repoCounts[folder.id] ?? 0) + (childFolderCounts[folder.id] ?? 0)
+  const menuOpen = openFolderMenuId === folder.id
 
   return (
-    <div
-      onDragOver={(e) => onDragOver(e, folder.id)}
-      onDragLeave={onDragLeave}
-      onDrop={(e) => onDrop(e, folder.id)}
-      className={cn(
-        'group relative flex min-h-9 items-center rounded-xl transition-colors',
-        dragOver && 'bg-purple-50 dark:bg-purple-950/40'
-      )}
-    >
-      <button
-        draggable={!isEditing}
-        onDragStart={() => onDragStart(folder.id)}
-        onDragEnd={onDragEnd}
-        onClick={() => onOpen(folder.id)}
-        onDoubleClick={() => onOpen(folder.id)}
+    <div>
+      <div
+        onDragOver={(e) => onDragOver(e, folder.id)}
+        onDragLeave={onDragLeave}
+        onDrop={(e) => onDrop(e, folder.id)}
         className={cn(
-          'flex min-h-9 min-w-0 flex-1 items-center justify-between rounded-xl px-2.5 py-2 text-sm font-normal leading-5 transition-colors',
-          active
-            ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300'
-            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/50 dark:hover:text-gray-200'
+          'group relative flex min-h-9 items-center rounded-xl transition-colors',
+          dragOver && 'bg-purple-50 dark:bg-purple-950/40'
         )}
+        style={{ paddingLeft: depth * 14 }}
       >
-        <span className="flex min-w-0 items-center gap-2">
-          <Folder size={13} />
-          {isEditing ? (
-            <input
-              autoFocus
-              value={editingValue}
-              onChange={(e) => onEditingChange(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  onEditingSubmit(folder.id)
-                }
-                if (e.key === 'Escape') {
-                  e.preventDefault()
-                  onEditingCancel()
-                }
-              }}
-              onBlur={() => onEditingSubmit(folder.id)}
-              className="min-w-0 rounded-md border border-purple-300 bg-transparent px-1.5 py-0.5 text-sm font-normal leading-5 text-gray-900 outline-none ring-0 dark:border-purple-700 dark:text-gray-100"
-            />
-          ) : (
-            <span className="truncate">{folder.label}</span>
+        <button
+          draggable={!isEditing}
+          onDragStart={() => onDragStart(folder.id)}
+          onDragEnd={onDragEnd}
+          onClick={() => onOpen(folder.id)}
+          onDoubleClick={() => onOpen(folder.id)}
+          className={cn(
+            'flex min-h-9 min-w-0 flex-1 items-center justify-between rounded-xl px-2.5 py-2 text-sm font-normal leading-5 transition-colors',
+            active
+              ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300'
+              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/50 dark:hover:text-gray-200'
           )}
-        </span>
-        {itemCount > 0 ? (
-          <span className="ml-3 flex-shrink-0 text-xs tabular-nums text-inherit/70">{itemCount}</span>
-        ) : null}
-      </button>
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
+              {hasChildren ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggleCollapse(folder.id)
+                  }}
+                  className="rounded-sm text-inherit/70 transition-colors hover:text-inherit"
+                >
+                  {isCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+                </button>
+              ) : null}
+            </span>
+            <Folder size={13} />
+            {isEditing ? (
+              <input
+                autoFocus
+                value={editingValue}
+                onChange={(e) => onEditingChange(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    onEditingSubmit(folder.id)
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    onEditingCancel()
+                  }
+                }}
+                onBlur={() => onEditingSubmit(folder.id)}
+                className="min-w-0 rounded-md border border-purple-300 bg-transparent px-1.5 py-0.5 text-sm font-normal leading-5 text-gray-900 outline-none ring-0 dark:border-purple-700 dark:text-gray-100"
+              />
+            ) : (
+              <span className="truncate">{folder.label}</span>
+            )}
+          </span>
+          {itemCount > 0 ? (
+            <span className="ml-3 flex-shrink-0 text-xs tabular-nums text-inherit/70">{itemCount}</span>
+          ) : null}
+        </button>
 
-      {!isEditing && (
-        <div className="relative ml-1 flex items-center gap-1">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpenMenu(menuOpen ? null : folder.id)
-            }}
-            className="rounded-md p-1 text-gray-300 opacity-0 transition-all hover:text-gray-500 group-hover:opacity-100 dark:text-gray-600 dark:hover:text-gray-400"
-          >
-            <MoreHorizontal size={12} />
-          </button>
-          {menuOpen && (
-            <FolderMenu
-              onAddSubfolder={() => onAddSubfolder(folder.id)}
-              canMoveToRoot={folder.parentId !== null}
-              onRename={() => onStartRename(folder)}
-              onDelete={() => onDelete(folder.id)}
-              onMoveToRoot={() => onMoveToRoot(folder.id)}
+        {!isEditing && (
+          <div className="relative ml-1 flex items-center gap-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenMenu(menuOpen ? null : folder.id)
+              }}
+              className="rounded-md p-1 text-gray-300 opacity-0 transition-all hover:text-gray-500 group-hover:opacity-100 dark:text-gray-600 dark:hover:text-gray-400"
+            >
+              <MoreHorizontal size={12} />
+            </button>
+            {menuOpen && (
+              <FolderMenu
+                onAddSubfolder={() => onAddSubfolder(folder.id)}
+                canMoveToRoot={folder.parentId !== null}
+                onRename={() => onStartRename(folder)}
+                onDelete={() => onDelete(folder.id)}
+                onMoveToRoot={() => onMoveToRoot(folder.id)}
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {hasChildren && !isCollapsed ? (
+        <div className="mt-0.5 space-y-0.5">
+          {children.map((child) => (
+            <SidebarFolderItem
+              key={child.id}
+              folder={child}
+              depth={depth + 1}
+              foldersByParent={foldersByParent}
+              activeFolderId={activeFolderId}
+              collapsedFolders={collapsedFolders}
+              dragOverNode={dragOverNode}
+              repoCounts={repoCounts}
+              childFolderCounts={childFolderCounts}
+              editingFolderId={editingFolderId}
+              editingValue={editingValue}
+              onEditingChange={onEditingChange}
+              onEditingSubmit={onEditingSubmit}
+              onEditingCancel={onEditingCancel}
+              openFolderMenuId={openFolderMenuId}
+              onOpen={onOpen}
+              onToggleCollapse={onToggleCollapse}
+              onAddSubfolder={onAddSubfolder}
+              onStartRename={onStartRename}
+              onDelete={onDelete}
+              onMoveToRoot={onMoveToRoot}
+              onOpenMenu={onOpenMenu}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
             />
-          )}
+          ))}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }
@@ -718,6 +792,11 @@ export default function RepositoriesPage() {
       ? new Set()
       : new Set(lsGet<number[]>(makeStorageKey(user?.id, 'starred'), []))
   )
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() =>
+    typeof window === 'undefined'
+      ? new Set()
+      : new Set(lsGet<string[]>(makeStorageKey(user?.id, 'collapsed_folders'), []))
+  )
 
   const [activeView, setActiveView] = useState<ViewId>('home')
   const [sortKey, setSortKey] = useState<SortKey>('updated')
@@ -743,6 +822,7 @@ export default function RepositoriesPage() {
       folders: makeStorageKey(user?.id, 'folders'),
       locations: makeStorageKey(user?.id, 'repo_locations'),
       stars: makeStorageKey(user?.id, 'starred'),
+      collapsed: makeStorageKey(user?.id, 'collapsed_folders'),
     }),
     [user?.id]
   )
@@ -826,6 +906,10 @@ export default function RepositoriesPage() {
   }, [starredIds, storageKeys])
 
   useEffect(() => {
+    localStorage.setItem(storageKeys.collapsed, JSON.stringify([...collapsedFolders]))
+  }, [collapsedFolders, storageKeys])
+
+  useEffect(() => {
     if (openRepoMenuId === null && openFolderMenuId === null) return
 
     const close = () => {
@@ -884,6 +968,35 @@ export default function RepositoriesPage() {
     })
   }
 
+  const expandFolderPath = useCallback(
+    (folderId: string) => {
+      const ancestorIds = getFolderAncestorIds(folderId, folderMap)
+      setCollapsedFolders((prev) => {
+        const next = new Set(prev)
+        for (const id of ancestorIds) next.delete(id)
+        return next
+      })
+    },
+    [folderMap]
+  )
+
+  const openFolder = useCallback(
+    (folderId: string) => {
+      expandFolderPath(folderId)
+      setActiveView(`folder:${folderId}`)
+    },
+    [expandFolderPath]
+  )
+
+  const toggleFolderCollapse = useCallback((folderId: string) => {
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev)
+      if (next.has(folderId)) next.delete(folderId)
+      else next.add(folderId)
+      return next
+    })
+  }, [])
+
   const openFolderComposer = (parentFolderId: string | null, assignRepoId?: number | null) => {
     setFolderComposerOpen(true)
     setPendingParentFolderId(parentFolderId)
@@ -923,7 +1036,7 @@ export default function RepositoriesPage() {
     }
 
     closeFolderComposer()
-    setActiveView(`folder:${id}`)
+    openFolder(id)
   }
 
   const confirmFolderComposer = () =>
@@ -1067,10 +1180,7 @@ export default function RepositoriesPage() {
     return childFolders.filter((folder) => !query || folder.label.toLowerCase().includes(query))
   }, [currentFolderId, foldersByParent, resolvedActiveView, search])
 
-  const sidebarFolders = useMemo(() => {
-    const parentId = resolvedActiveView.startsWith('folder:') ? currentFolderId : null
-    return foldersByParent.get(parentId) ?? []
-  }, [currentFolderId, foldersByParent, resolvedActiveView])
+  const sidebarFolders = useMemo(() => foldersByParent.get(null) ?? [], [foldersByParent])
 
   const currentTitle = useMemo(() => {
     if (resolvedActiveView === 'home') return 'Repositories'
@@ -1082,7 +1192,7 @@ export default function RepositoriesPage() {
     if (resolvedActiveView === 'home') return 'Organize repositories with folders, favorites, and private views.'
     if (resolvedActiveView === 'favorites') return 'Starred repositories live here without duplicating the source repo.'
     if (resolvedActiveView === 'private') return 'Private repositories are scoped to your account and hidden from other users.'
-    if (resolvedActiveView.startsWith('folder:')) return 'Nested folders behave like a lightweight file system for your repos.'
+    if (resolvedActiveView.startsWith('folder:')) return ''
     return ''
   }, [resolvedActiveView])
 
@@ -1142,16 +1252,21 @@ export default function RepositoriesPage() {
                 <SidebarFolderItem
                   key={folder.id}
                   folder={folder}
-                  active={currentFolderId === folder.id}
-                  dragOver={dragOverNode === `folder:${folder.id}`}
-                  itemCount={(directRepoCounts[folder.id] ?? 0) + (childFolderCounts[folder.id] ?? 0)}
+                  depth={0}
+                  foldersByParent={foldersByParent}
+                  activeFolderId={currentFolderId}
+                  collapsedFolders={collapsedFolders}
+                  dragOverNode={dragOverNode}
+                  repoCounts={directRepoCounts}
+                  childFolderCounts={childFolderCounts}
+                  openFolderMenuId={openFolderMenuId}
                   editingFolderId={editingFolderId}
                   editingValue={editingFolderName}
                   onEditingChange={setEditingFolderName}
                   onEditingSubmit={submitFolderRename}
                   onEditingCancel={cancelFolderRename}
-                  menuOpen={openFolderMenuId === folder.id}
-                  onOpen={(folderId) => setActiveView(`folder:${folderId}`)}
+                  onOpen={openFolder}
+                  onToggleCollapse={toggleFolderCollapse}
                   onAddSubfolder={(folderId) => openFolderComposer(folderId)}
                   onStartRename={startRenameFolder}
                   onDelete={deleteFolder}
@@ -1371,7 +1486,7 @@ export default function RepositoriesPage() {
                           folder={folder}
                           repoCount={directRepoCounts[folder.id] ?? 0}
                           childCount={childFolderCounts[folder.id] ?? 0}
-                          onOpen={() => setActiveView(`folder:${folder.id}`)}
+                          onOpen={() => openFolder(folder.id)}
                           menuOpen={openFolderMenuId === folder.id}
                           onOpenMenu={() =>
                             setOpenFolderMenuId(openFolderMenuId === folder.id ? null : folder.id)
