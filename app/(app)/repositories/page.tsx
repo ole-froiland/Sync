@@ -207,18 +207,22 @@ function SidebarItem({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       className={cn(
-        'flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-sm transition-all duration-150',
+        'flex min-h-9 w-full items-center justify-between rounded-xl px-2.5 py-2 text-sm font-normal leading-5 transition-all duration-150',
         active
           ? 'bg-purple-50 text-purple-700 ring-1 ring-inset ring-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:ring-purple-900'
           : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/60 dark:hover:text-gray-200',
         dragOver && 'bg-purple-100 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300'
       )}
     >
-      <span className="pointer-events-none flex items-center gap-2">
+      <span className="pointer-events-none flex min-w-0 items-center gap-2">
         {icon}
-        {label}
+        <span className="truncate">{label}</span>
       </span>
-      <span className="pointer-events-none text-xs tabular-nums text-inherit/70">{count}</span>
+      {count > 0 ? (
+        <span className="pointer-events-none ml-3 flex-shrink-0 text-xs tabular-nums text-inherit/70">
+          {count}
+        </span>
+      ) : null}
     </button>
   )
 }
@@ -403,17 +407,22 @@ function FolderTreeItem({
         onDragLeave={onDragLeave}
         onDrop={(e) => onDrop(e, folder.id)}
         className={cn(
-          'group relative flex items-center gap-1 rounded-xl pr-1 transition-colors',
+          'group relative flex min-h-9 items-center gap-1 rounded-xl transition-colors',
           dragOver && 'bg-purple-50 dark:bg-purple-950/40'
         )}
         style={{ paddingLeft: depth * 14 }}
       >
         <button
           onClick={() => (children.length > 0 ? onToggleCollapse(folder.id) : onSelect(folder.id))}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+          className={cn(
+            'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors',
+            children.length > 0
+              ? 'hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300'
+              : 'pointer-events-none opacity-0'
+          )}
         >
           {children.length > 0 ? (
-            isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />
+            isCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />
           ) : (
             <span className="h-3 w-3" />
           )}
@@ -425,7 +434,7 @@ function FolderTreeItem({
           onDragEnd={onDragEnd}
           onClick={() => onSelect(folder.id)}
           className={cn(
-            'flex min-w-0 flex-1 items-center justify-between rounded-xl px-2 py-1.5 text-sm transition-colors',
+            'flex min-h-9 min-w-0 flex-1 items-center justify-between rounded-xl px-2.5 py-2 text-sm font-normal leading-5 transition-colors',
             isActive
               ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300'
               : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/50 dark:hover:text-gray-200'
@@ -450,19 +459,19 @@ function FolderTreeItem({
                   }
                 }}
                 onBlur={() => onEditingSubmit(folder.id)}
-                className="min-w-0 rounded-md border border-purple-300 bg-transparent px-1.5 py-0.5 text-sm text-gray-900 outline-none ring-0 dark:border-purple-700 dark:text-gray-100"
+                className="min-w-0 rounded-md border border-purple-300 bg-transparent px-1.5 py-0.5 text-sm font-normal leading-5 text-gray-900 outline-none ring-0 dark:border-purple-700 dark:text-gray-100"
               />
             ) : (
               <span className="truncate">{folder.label}</span>
             )}
           </span>
           {itemCount > 0 ? (
-            <span className="ml-2 text-[11px] tabular-nums text-inherit/70">{itemCount}</span>
+            <span className="ml-3 flex-shrink-0 text-xs tabular-nums text-inherit/70">{itemCount}</span>
           ) : null}
         </button>
 
         {!isEditing && (
-          <div className="relative flex items-center gap-1">
+          <div className="relative ml-1 flex items-center gap-1">
             <button
               onClick={(e) => {
                 e.stopPropagation()
@@ -480,7 +489,7 @@ function FolderTreeItem({
               }}
               className="rounded-md p-1 text-gray-300 opacity-0 transition-all hover:text-gray-500 group-hover:opacity-100 dark:text-gray-600 dark:hover:text-gray-400"
             >
-              <MoreHorizontal size={13} />
+              <MoreHorizontal size={12} />
             </button>
             {menuOpen && (
               <FolderMenu
@@ -1316,7 +1325,7 @@ export default function RepositoriesPage() {
 
             <button
               onClick={() => openFolderComposer(null, null)}
-              className="mt-2 flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/60 dark:hover:text-gray-200"
+              className="mt-2 flex min-h-9 w-full items-center gap-2 rounded-xl px-2.5 py-2 text-sm font-normal leading-5 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/60 dark:hover:text-gray-200"
             >
               <Plus size={13} />
               New folder
