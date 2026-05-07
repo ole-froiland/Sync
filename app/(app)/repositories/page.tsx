@@ -8,6 +8,7 @@ import {
   useRef,
   type DragEvent,
 } from 'react'
+import { useRouter } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -15,6 +16,7 @@ import CreateGitHubRepoModal from '@/components/dashboard/CreateGitHubRepoModal'
 import { useGitHub } from '@/context/GitHubContext'
 import { useUser } from '@/context/UserContext'
 import { cn, formatDate } from '@/lib/utils'
+import { languageColor } from '@/lib/github-language-colors'
 import type { GitHubUserRepo } from '@/types'
 import {
   GitBranch,
@@ -36,6 +38,11 @@ import {
   Pencil,
   Trash2,
   Home,
+  Book,
+  Copy,
+  Share2,
+  Code2,
+  ArrowUpRight,
 } from 'lucide-react'
 
 type SortKey = 'updated' | 'name'
@@ -230,30 +237,71 @@ function SidebarItem({
   )
 }
 
-function MoveMenu({
+function RepoActionsMenu({
+  repo,
   folders,
   currentFolderId,
+  onOpenGithub,
+  onOpenVSCode,
+  onCopyClone,
+  onShare,
   onMove,
   onNewFolder,
 }: {
+  repo: GitHubUserRepo
   folders: Array<{ id: string; label: string; depth: number }>
   currentFolderId: string | null
+  onOpenGithub: () => void
+  onOpenVSCode: () => void
+  onCopyClone: () => void
+  onShare: () => void
   onMove: (folderId: string | null) => void
   onNewFolder: () => void
 }) {
   return (
     <div
-      className="absolute right-0 top-full z-50 mt-1 min-w-[220px] rounded-2xl border border-gray-200 bg-white py-1 shadow-lg shadow-black/5 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/30"
+      className="absolute right-0 top-full z-50 mt-1 min-w-[240px] rounded-2xl border border-gray-200 bg-white py-1.5 shadow-lg shadow-black/5 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/30"
       onClick={(e) => e.stopPropagation()}
     >
-      <p className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+      <button
+        onClick={onOpenGithub}
+        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+      >
+        <ExternalLink size={13} className="text-gray-400 dark:text-gray-500" />
+        Open on GitHub
+      </button>
+      <button
+        onClick={onOpenVSCode}
+        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+      >
+        <Code2 size={13} className="text-gray-400 dark:text-gray-500" />
+        Open in VS Code
+      </button>
+      <button
+        onClick={onCopyClone}
+        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+      >
+        <Copy size={13} className="text-gray-400 dark:text-gray-500" />
+        Copy clone URL
+      </button>
+      <button
+        onClick={onShare}
+        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+      >
+        <Share2 size={13} className="text-gray-400 dark:text-gray-500" />
+        Share
+      </button>
+
+      <div className="mx-2 my-1 h-px bg-gray-100 dark:bg-gray-800" />
+
+      <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
         Move to folder
       </p>
       <button
         onClick={() => onMove(null)}
         className="flex w-full items-center justify-between px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
       >
-        <span className="flex items-center gap-2">
+        <span className="flex items-center gap-2.5">
           <Home size={13} className="text-gray-400 dark:text-gray-500" />
           Home
         </span>
@@ -265,7 +313,7 @@ function MoveMenu({
           onClick={() => onMove(folder.id)}
           className="flex w-full items-center justify-between px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
         >
-          <span className="flex items-center gap-2">
+          <span className="flex items-center gap-2.5">
             <span style={{ width: folder.depth * 12 }} aria-hidden />
             <Folder size={13} className="text-gray-400 dark:text-gray-500" />
             {folder.label}
@@ -273,14 +321,18 @@ function MoveMenu({
           {currentFolderId === folder.id && <Check size={12} className="ml-2 text-purple-500" />}
         </button>
       ))}
-      <div className="mx-2 my-1 h-px bg-gray-100 dark:bg-gray-800" />
       <button
         onClick={onNewFolder}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800"
+        className="mt-0.5 flex w-full items-center gap-2.5 px-3 py-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800"
       >
         <FolderPlus size={13} />
         New folder
       </button>
+      {repo.archived && (
+        <p className="px-3 py-1 pt-2 text-[10px] uppercase tracking-[0.18em] text-amber-500">
+          Archived
+        </p>
+      )}
     </div>
   )
 }
@@ -647,6 +699,10 @@ function RepoCard({
   onNewFolder,
   onDragStart,
   onDragEnd,
+  onNavigate,
+  onCopyClone,
+  onShare,
+  onOpenVSCode,
 }: {
   repo: GitHubUserRepo
   starred: boolean
@@ -660,49 +716,95 @@ function RepoCard({
   onNewFolder: () => void
   onDragStart: () => void
   onDragEnd: () => void
+  onNavigate: () => void
+  onCopyClone: () => void
+  onShare: () => void
+  onOpenVSCode: () => void
 }) {
+  const [owner] = repo.full_name.split('/')
+  const langColor = languageColor(repo.language)
+
+  const handleCardClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('[data-stop-card-click]')) return
+    onNavigate()
+  }
+
   return (
     <div
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      onClick={handleCardClick}
       className={cn(
-        'relative flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-5 transition-all duration-150 hover:border-gray-200 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700',
-        'cursor-grab select-none active:cursor-grabbing',
+        'group relative flex cursor-pointer flex-col gap-3 rounded-2xl border border-gray-200/80 bg-white p-5 transition-all duration-200',
+        'hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-[0_8px_24px_-12px_rgba(124,58,237,0.18)]',
+        'dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700 dark:hover:shadow-[0_8px_24px_-12px_rgba(168,85,247,0.25)]',
+        'select-none active:cursor-grabbing',
         isDragging && 'scale-[0.98] opacity-40'
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          {repo.private ? (
-            <Lock size={13} className="flex-shrink-0 text-gray-400 dark:text-gray-500" />
-          ) : (
-            <Globe size={13} className="flex-shrink-0 text-gray-400 dark:text-gray-500" />
-          )}
-          <a
-            href={repo.html_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            draggable={false}
-            className="truncate text-sm font-semibold text-gray-900 transition-colors hover:text-purple-600 dark:text-gray-100 dark:hover:text-purple-400"
-          >
-            {repo.name}
-          </a>
-          {repo.fork && <GitFork size={12} className="flex-shrink-0 text-gray-300 dark:text-gray-600" />}
-          {repo.archived && (
-            <Archive size={12} className="flex-shrink-0 text-amber-400 dark:text-amber-500" />
-          )}
+        <div className="flex min-w-0 items-start gap-2.5">
+          <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-500 ring-1 ring-inset ring-purple-100 dark:bg-purple-950/40 dark:text-purple-300 dark:ring-purple-900/60">
+            <Book size={13} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <button
+                data-stop-card-click
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onNavigate()
+                }}
+                className="truncate text-sm font-semibold leading-tight text-gray-900 transition-colors hover:text-purple-600 dark:text-gray-100 dark:hover:text-purple-400"
+              >
+                {repo.name}
+              </button>
+              {repo.fork && (
+                <GitFork
+                  size={11}
+                  className="flex-shrink-0 text-gray-300 dark:text-gray-600"
+                  aria-label="Fork"
+                />
+              )}
+              {repo.archived && (
+                <Archive
+                  size={11}
+                  className="flex-shrink-0 text-amber-400 dark:text-amber-500"
+                  aria-label="Archived"
+                />
+              )}
+            </div>
+            <p className="truncate text-[11px] leading-tight text-gray-400 dark:text-gray-500">
+              {owner}
+            </p>
+          </div>
         </div>
 
-        <div className="flex flex-shrink-0 items-center gap-0.5">
+        <div className="flex flex-shrink-0 items-center gap-1" data-stop-card-click>
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium leading-none',
+              repo.private
+                ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
+            )}
+          >
+            {repo.private ? <Lock size={9} /> : <Globe size={9} />}
+            {repo.private ? 'Private' : 'Public'}
+          </span>
+
           <button
-            onClick={onToggleStar}
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleStar()
+            }}
             title={starred ? 'Remove from favorites' : 'Add to favorites'}
             className={cn(
-              'rounded p-1 transition-colors',
+              'rounded-md p-1 transition-colors',
               starred
                 ? 'text-amber-400 hover:text-amber-500'
-                : 'text-gray-200 hover:text-amber-400 dark:text-gray-700 dark:hover:text-amber-500'
+                : 'text-gray-300 opacity-0 group-hover:opacity-100 hover:text-amber-400 dark:text-gray-600 dark:hover:text-amber-500'
             )}
           >
             <Star size={13} fill={starred ? 'currentColor' : 'none'} />
@@ -714,56 +816,61 @@ function RepoCard({
                 e.stopPropagation()
                 onOpenMenu()
               }}
-              className="rounded p-1 text-gray-300 transition-colors hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400"
+              className="rounded-md p-1 text-gray-300 opacity-0 transition-all hover:text-gray-500 group-hover:opacity-100 dark:text-gray-600 dark:hover:text-gray-400"
+              aria-label="More actions"
             >
               <MoreHorizontal size={13} />
             </button>
             {menuOpen && (
-              <MoveMenu
+              <RepoActionsMenu
+                repo={repo}
                 folders={folders}
                 currentFolderId={currentFolderId}
+                onOpenGithub={() => {
+                  window.open(repo.html_url, '_blank', 'noopener,noreferrer')
+                  onOpenMenu()
+                }}
+                onOpenVSCode={onOpenVSCode}
+                onCopyClone={onCopyClone}
+                onShare={onShare}
                 onMove={onMove}
                 onNewFolder={onNewFolder}
               />
             )}
           </div>
-
-          <a
-            href={repo.html_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            draggable={false}
-            className="p-1 text-gray-300 transition-colors hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400"
-          >
-            <ExternalLink size={13} />
-          </a>
         </div>
       </div>
 
-      {repo.description && (
-        <p className="line-clamp-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-          {repo.description}
-        </p>
-      )}
+      <p
+        className={cn(
+          'line-clamp-2 min-h-[2lh] text-xs leading-relaxed',
+          repo.description ? 'text-gray-500 dark:text-gray-400' : 'text-gray-300 dark:text-gray-600'
+        )}
+      >
+        {repo.description || 'No description'}
+      </p>
 
-      <div className="mt-auto flex flex-wrap items-center gap-3">
-        <span
-          className={cn(
-            'rounded-full px-2 py-0.5 text-xs font-medium',
-            repo.private
-              ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-              : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
-          )}
-        >
-          {repo.private ? 'Private' : 'Public'}
-        </span>
-        {repo.language && <span className="text-xs text-gray-400 dark:text-gray-500">{repo.language}</span>}
-        <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
-          <GitBranch size={11} />
+      <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+        {repo.language && (
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{ backgroundColor: langColor }}
+              aria-hidden
+            />
+            <span className="text-gray-500 dark:text-gray-400">{repo.language}</span>
+          </span>
+        )}
+        <span className="inline-flex items-center gap-1">
+          <GitBranch size={10} />
           {repo.default_branch}
         </span>
-        <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
+        <span className="ml-auto inline-flex items-center gap-1">
           Updated {formatDate(repo.updated_at)}
+          <ArrowUpRight
+            size={11}
+            className="text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 dark:text-gray-600"
+          />
         </span>
       </div>
     </div>
@@ -773,6 +880,15 @@ function RepoCard({
 export default function RepositoriesPage() {
   const github = useGitHub()
   const user = useUser()
+  const router = useRouter()
+
+  const copyToClipboard = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      // ignore — clipboard not available
+    }
+  }, [])
 
   const [repos, setRepos] = useState<GitHubUserRepo[]>([])
   const [loadingDone, setLoadingDone] = useState(false)
@@ -1549,28 +1665,50 @@ export default function RepositoriesPage() {
                         <span className="text-gray-300 dark:text-gray-600">{currentRepos.length}</span>
                       </div>
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                        {currentRepos.map((repo) => (
-                          <RepoCard
-                            key={repo.id}
-                            repo={repo}
-                            starred={starredIds.has(repo.id)}
-                            folders={flattenedFolders}
-                            currentFolderId={repoLocations[String(repo.id)]?.folderId ?? null}
-                            menuOpen={openRepoMenuId === repo.id}
-                            isDragging={dragItem?.type === 'repo' && dragItem.repoId === repo.id}
-                            onToggleStar={() => toggleStar(repo.id)}
-                            onOpenMenu={() =>
-                              setOpenRepoMenuId(openRepoMenuId === repo.id ? null : repo.id)
-                            }
-                            onMove={(folderId) => moveRepoToFolder(repo.id, folderId)}
-                            onNewFolder={() => openFolderComposer(currentFolderId, repo.id)}
-                            onDragStart={() => setDragItem({ type: 'repo', repoId: repo.id })}
-                            onDragEnd={() => {
-                              setDragItem(null)
-                              setDragOverNode(null)
-                            }}
-                          />
-                        ))}
+                        {currentRepos.map((repo) => {
+                          const cloneUrl = `${repo.html_url}.git`
+                          return (
+                            <RepoCard
+                              key={repo.id}
+                              repo={repo}
+                              starred={starredIds.has(repo.id)}
+                              folders={flattenedFolders}
+                              currentFolderId={repoLocations[String(repo.id)]?.folderId ?? null}
+                              menuOpen={openRepoMenuId === repo.id}
+                              isDragging={dragItem?.type === 'repo' && dragItem.repoId === repo.id}
+                              onToggleStar={() => toggleStar(repo.id)}
+                              onOpenMenu={() =>
+                                setOpenRepoMenuId(openRepoMenuId === repo.id ? null : repo.id)
+                              }
+                              onMove={(folderId) => moveRepoToFolder(repo.id, folderId)}
+                              onNewFolder={() => openFolderComposer(currentFolderId, repo.id)}
+                              onDragStart={() => setDragItem({ type: 'repo', repoId: repo.id })}
+                              onDragEnd={() => {
+                                setDragItem(null)
+                                setDragOverNode(null)
+                              }}
+                              onNavigate={() =>
+                                router.push(`/repositories/${repo.full_name}`)
+                              }
+                              onCopyClone={() => {
+                                copyToClipboard(cloneUrl)
+                                setOpenRepoMenuId(null)
+                              }}
+                              onShare={() => {
+                                const url =
+                                  typeof window !== 'undefined'
+                                    ? `${window.location.origin}/repositories/${repo.full_name}`
+                                    : `/repositories/${repo.full_name}`
+                                copyToClipboard(url)
+                                setOpenRepoMenuId(null)
+                              }}
+                              onOpenVSCode={() => {
+                                window.location.href = `vscode://vscode.git/clone?url=${encodeURIComponent(cloneUrl)}`
+                                setOpenRepoMenuId(null)
+                              }}
+                            />
+                          )
+                        })}
                       </div>
                     </section>
                   )
