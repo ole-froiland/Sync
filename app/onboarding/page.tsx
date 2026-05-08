@@ -18,11 +18,5 @@ export default async function OnboardingPage() {
 
   if (profile?.onboarding_completed) redirect('/dashboard')
 
-  // Pre-fill name fields from GitHub metadata
-  const githubName = ((user.user_metadata?.full_name as string | undefined) ?? '').trim()
-  const parts = githubName.split(/\s+/).filter(Boolean)
-  const defaultFirst = parts[0] ?? ''
-  const defaultLast = parts.slice(1).join(' ')
-
-  return <OnboardingForm defaultFirst={defaultFirst} defaultLast={defaultLast} />
+  return <OnboardingForm />
 }

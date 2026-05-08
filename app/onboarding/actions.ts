@@ -19,16 +19,20 @@ export async function onboardingAction(
 
   if (userError || !user) redirect('/login')
 
-  const firstName = String(formData.get('firstName') ?? '').trim()
-  const lastName = String(formData.get('lastName') ?? '').trim()
-  const avatarId = String(formData.get('avatarId') ?? '').trim()
+  const rawFullName = String(user.user_metadata?.full_name ?? '').trim()
+  const nameParts = rawFullName.split(/\s+/).filter(Boolean)
+  const emailLocal = String(user.email ?? 'syncuser').split('@')[0]?.trim() || 'syncuser'
 
-  if (!firstName) return { error: 'First name is required.' }
-  if (!lastName) return { error: 'Last name is required.' }
-  if (!avatarId) return { error: 'Please select an avatar.' }
+  const fallbackFirstName = nameParts[0] || emailLocal || 'Sync'
+  const fallbackLastName = nameParts.slice(1).join(' ') || 'User'
+  const fallbackAvatarId = '0-indigo'
+
+  const firstName = String(formData.get('firstName') ?? '').trim() || fallbackFirstName
+  const lastName = String(formData.get('lastName') ?? '').trim() || fallbackLastName
+  const avatarId = String(formData.get('avatarId') ?? '').trim() || fallbackAvatarId
 
   // Generate unique username from first + last name
-  const base = (firstName + lastName).toLowerCase().replace(/[^a-z0-9]/g, '')
+  const base = (firstName + lastName).toLowerCase().replace(/[^a-z0-9]/g, '') || emailLocal.toLowerCase().replace(/[^a-z0-9]/g, '') || 'syncuser'
   let username = base
   let counter = 2
   while (true) {
