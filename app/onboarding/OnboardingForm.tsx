@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { onboardingAction } from './actions'
+import StickFigureScene from '@/components/onboarding/StickFigureScene'
 
 const SLIDES = [
   {
@@ -10,7 +11,7 @@ const SLIDES = [
       'You need one place to keep track of your projects, code, and people.',
       "That's what Sync is for.",
     ],
-    cta: 'Continue',
+    cta: 'Start →',
   },
   {
     title: 'Create your first project',
@@ -37,6 +38,7 @@ export default function OnboardingForm() {
   const [error, setError] = useState<string | null>(null)
 
   const isLastSlide = currentSlide === SLIDES.length - 1
+  const isFirstSlide = currentSlide === 0
 
   function goToSlide(index: number) {
     setCurrentSlide(Math.max(0, Math.min(index, SLIDES.length - 1)))
@@ -56,12 +58,12 @@ export default function OnboardingForm() {
   }
 
   return (
-    <main className="relative flex min-h-screen overflow-hidden bg-[#f6f1e8] text-[#171717]">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.88),_transparent_55%),linear-gradient(135deg,_#f6f1e8_0%,_#efe3cf_48%,_#e7d3b0_100%)]" />
+    <main className="relative flex min-h-screen overflow-hidden bg-[#f6f1e8] text-[#171717] dark:bg-[#0b0613] dark:text-[#f4ecf7]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.88),_transparent_55%),linear-gradient(135deg,_#f6f1e8_0%,_#efe3cf_48%,_#e7d3b0_100%)] dark:bg-[radial-gradient(circle_at_top,_rgba(120,60,180,0.35),_transparent_55%),linear-gradient(135deg,_#0b0613_0%,_#1a0a2a_48%,_#2c0e3a_100%)]" />
 
       <div className="relative flex w-full flex-col justify-between px-6 py-8 sm:px-10 sm:py-10">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold uppercase tracking-[0.3em] text-[#7a5c2e]">
+          <span className="text-sm font-semibold uppercase tracking-[0.3em] text-[#7a5c2e] dark:text-[#c8a9d6]">
             Sync
           </span>
           <div className="flex items-center gap-2">
@@ -72,7 +74,9 @@ export default function OnboardingForm() {
                 onClick={() => goToSlide(index)}
                 aria-label={`Go to slide ${index + 1}`}
                 className={`h-2.5 rounded-full transition-all duration-300 ${
-                  index === currentSlide ? 'w-8 bg-[#171717]' : 'w-2.5 bg-[#171717]/20 hover:bg-[#171717]/35'
+                  index === currentSlide
+                    ? 'w-8 bg-[#171717] dark:bg-[#f4ecf7]'
+                    : 'w-2.5 bg-[#171717]/20 hover:bg-[#171717]/35 dark:bg-[#f4ecf7]/25 dark:hover:bg-[#f4ecf7]/45'
                 }`}
               />
             ))}
@@ -84,23 +88,27 @@ export default function OnboardingForm() {
             className="flex w-full transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
             style={{ transform: `translateX(-${currentSlide * 100}%)` }}
           >
-            {SLIDES.map((slide) => (
+            {SLIDES.map((slide, index) => (
               <section
                 key={slide.title}
                 className="flex min-w-full flex-col items-center justify-center px-2 text-center"
               >
-                <div className="max-w-4xl">
-                  <h1 className="text-[clamp(2.75rem,7vw,5.75rem)] font-semibold leading-[0.95] tracking-[-0.04em]">
-                    {slide.title}
-                  </h1>
-                  <div className="mt-8 space-y-4 text-[clamp(1.1rem,2vw,1.65rem)] leading-[1.15] text-[#3c3428]">
-                    {slide.lines.map((line) => (
-                      <p key={line} className="mx-auto max-w-3xl">
-                        {line}
-                      </p>
-                    ))}
+                {index === 0 ? (
+                  <StickFigureScene />
+                ) : (
+                  <div className="max-w-4xl">
+                    <h1 className="text-[clamp(2.75rem,7vw,5.75rem)] font-semibold leading-[0.95] tracking-[-0.04em]">
+                      {slide.title}
+                    </h1>
+                    <div className="mt-8 space-y-4 text-[clamp(1.1rem,2vw,1.65rem)] leading-[1.15] text-[#3c3428] dark:text-[#cdb6db]">
+                      {slide.lines.map((line) => (
+                        <p key={line} className="mx-auto max-w-3xl">
+                          {line}
+                        </p>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </section>
             ))}
           </div>
@@ -110,17 +118,17 @@ export default function OnboardingForm() {
           <button
             type="button"
             onClick={() => goToSlide(currentSlide - 1)}
-            disabled={currentSlide === 0 || isPending}
-            className="min-w-20 text-sm font-medium text-[#171717] transition-opacity hover:opacity-65 disabled:cursor-not-allowed disabled:opacity-20"
+            disabled={isFirstSlide || isPending}
+            className="min-w-20 text-sm font-medium text-[#171717] transition-opacity hover:opacity-65 disabled:cursor-not-allowed disabled:opacity-20 dark:text-[#f4ecf7]"
           >
             Back
           </button>
 
           <div className="flex flex-col items-center gap-3">
             {error ? (
-              <p className="text-sm text-[#9f2c2c]">{error}</p>
-            ) : (
-              <p className="text-xs uppercase tracking-[0.25em] text-[#7a5c2e]">
+              <p className="text-sm text-[#9f2c2c] dark:text-[#f59ea0]">{error}</p>
+            ) : isFirstSlide ? null : (
+              <p className="text-xs uppercase tracking-[0.25em] text-[#7a5c2e] dark:text-[#c8a9d6]">
                 Create. Connect. Invite. Build.
               </p>
             )}
@@ -128,13 +136,13 @@ export default function OnboardingForm() {
               type="button"
               onClick={handleContinue}
               disabled={isPending}
-              className="inline-flex min-w-40 items-center justify-center rounded-full bg-[#171717] px-6 py-3 text-sm font-semibold text-[#f6f1e8] transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:cursor-wait disabled:opacity-70"
+              className="inline-flex min-w-40 items-center justify-center rounded-full bg-[#171717] px-6 py-3 text-sm font-semibold text-[#f6f1e8] transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 dark:bg-[#f4ecf7] dark:text-[#0b0613]"
             >
               {isPending ? 'Starting…' : SLIDES[currentSlide].cta}
             </button>
           </div>
 
-          <div className="min-w-20 text-right text-sm font-medium text-[#171717]/45">
+          <div className="min-w-20 text-right text-sm font-medium text-[#171717]/45 dark:text-[#f4ecf7]/40">
             {currentSlide + 1}/{SLIDES.length}
           </div>
         </div>
