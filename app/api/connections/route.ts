@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-export type ConnectionState =
-  | 'none'
-  | 'following'
-  | 'pending'
-  | 'request_received'
-  | 'synced'
+export type SyncState = 'pending' | 'request_received' | 'synced'
+export type SyncMap = Record<string, SyncState>
 
+// Kept for backwards compatibility with existing consumers (chat, ShareRepoModal)
+// that filter on `state === 'synced'`. Follow state is now returned separately
+// in `follows` so a user can be following AND have any sync state.
+export type ConnectionState = 'none' | 'following' | SyncState
 export type ConnectionMap = Record<string, ConnectionState>
 
 export async function GET() {
@@ -32,7 +32,7 @@ export async function GET() {
     return NextResponse.json({ error: connectionsRes.error.message }, { status: 500 })
   }
 
-  const map: ConnectionMap = {}
+  const sync: SyncMap = {}
 
   for (const row of (connectionsRes.data ?? []) as Array<{
     requester_id: string
@@ -41,17 +41,17 @@ export async function GET() {
   }>) {
     const otherId = row.requester_id === user.id ? row.addressee_id : row.requester_id
     if (row.status === 'accepted') {
-      map[otherId] = 'synced'
-    } else if (map[otherId] !== 'synced') {
-      map[otherId] = row.requester_id === user.id ? 'pending' : 'request_received'
+      sync[otherId] = 'synced'
+    } else if (sync[otherId] !== 'synced') {
+      sync[otherId] = row.requester_id === user.id ? 'pending' : 'request_received'
     }
   }
 
-  for (const row of (followsRes.data ?? []) as Array<{ following_id: string }>) {
-    if (!map[row.following_id]) {
-      map[row.following_id] = 'following'
-    }
-  }
+  const follows = (followsRes.data ?? []).map((row) => (row as { following_id: string }).following_id)
 
-  return NextResponse.json({ userId: user.id, connections: map })
+  // Mirror sync state into the legacy `connections` map for callers that only
+  // care about the 'synced' filter. Follow is intentionally not merged in here.
+  const connections: ConnectionMap = { ...sync }
+
+  return NextResponse.json({ userId: user.id, connections, follows, sync })
 }

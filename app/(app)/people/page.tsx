@@ -23,8 +23,9 @@ const TOOL_COLORS: Record<string, string> = {
   Copilot: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
 }
 
-type ConnectionState = 'none' | 'following' | 'pending' | 'request_received' | 'synced'
-type ConnectionMap = Record<string, ConnectionState>
+type SyncState = 'none' | 'pending' | 'request_received' | 'synced'
+type SyncMap = Record<string, SyncState>
+type FollowSet = Record<string, true>
 type Toast = { id: number; tone: 'success' | 'error'; message: string }
 type SyncBusyAction = 'sync' | 'accept' | 'reject'
 
@@ -40,7 +41,8 @@ async function readApiError(res: Response, fallback: string): Promise<string> {
 export default function PeoplePage() {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [projects, setProjects] = useState<Project[]>([])
-  const [connections, setConnections] = useState<ConnectionMap>({})
+  const [follows, setFollows] = useState<FollowSet>({})
+  const [syncStates, setSyncStates] = useState<SyncMap>({})
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [pendingByUser, setPendingByUser] = useState<Record<string, 'follow' | SyncBusyAction | null>>({})
   const [loading, setLoading] = useState(true)
@@ -66,7 +68,8 @@ export default function PeoplePage() {
         if (cancelled) return
         setProfiles(mockProfiles)
         setProjects(mockProjects)
-        setConnections({})
+        setFollows({})
+        setSyncStates({})
         setCurrentUserId('mock-current-user')
         setLoading(false)
         return
@@ -83,13 +86,20 @@ export default function PeoplePage() {
         const people = (await peopleRes.json()) as Profile[] | { error: string }
         const projs = projectsRes.ok ? ((await projectsRes.json()) as Project[]) : []
         const connData = connectionsRes.ok
-          ? ((await connectionsRes.json()) as { userId: string; connections: ConnectionMap })
-          : { userId: null, connections: {} }
+          ? ((await connectionsRes.json()) as {
+              userId: string
+              follows?: string[]
+              sync?: SyncMap
+            })
+          : { userId: null, follows: [], sync: {} as SyncMap }
 
         if (cancelled) return
         setProfiles(Array.isArray(people) ? people : [])
         setProjects(Array.isArray(projs) ? projs : [])
-        setConnections(connData.connections ?? {})
+        const followSet: FollowSet = {}
+        for (const id of connData.follows ?? []) followSet[id] = true
+        setFollows(followSet)
+        setSyncStates(connData.sync ?? {})
         setCurrentUserId(connData.userId ?? null)
       } catch (e) {
         if (cancelled) return
@@ -120,8 +130,17 @@ export default function PeoplePage() {
     )
   }
 
-  const setConnectionState = useCallback((userId: string, state: ConnectionState) => {
-    setConnections((prev) => {
+  const setFollow = useCallback((userId: string, isFollowing: boolean) => {
+    setFollows((prev) => {
+      const next = { ...prev }
+      if (isFollowing) next[userId] = true
+      else delete next[userId]
+      return next
+    })
+  }, [])
+
+  const setSyncState = useCallback((userId: string, state: SyncState) => {
+    setSyncStates((prev) => {
       const next = { ...prev }
       if (state === 'none') delete next[userId]
       else next[userId] = state
@@ -135,55 +154,48 @@ export default function PeoplePage() {
 
   const handleFollow = useCallback(
     async (profile: Profile) => {
-      const current = connections[profile.id] ?? 'none'
-      const isFollowing = current === 'following'
-      const next: ConnectionState = isFollowing ? 'none' : 'following'
+      const wasFollowing = !!follows[profile.id]
+      const next = !wasFollowing
 
       setBusy(profile.id, 'follow')
-      setConnectionState(profile.id, next)
+      setFollow(profile.id, next)
 
       if (!SUPABASE_CONFIGURED) {
-        showToast(isFollowing ? `Unfollowed ${profile.name}` : `Following ${profile.name}`)
+        showToast(wasFollowing ? 'Unfollowed' : 'Following')
         setBusy(profile.id, null)
         return
       }
 
       try {
         const res = await fetch(`/api/people/${profile.id}/follow`, {
-          method: isFollowing ? 'DELETE' : 'POST',
+          method: wasFollowing ? 'DELETE' : 'POST',
         })
         if (!res.ok) {
           const message = await readApiError(res, 'Could not update follow.')
           throw new Error(message)
         }
-        showToast(isFollowing ? `Unfollowed ${profile.name}` : `Following ${profile.name}`)
+        showToast(wasFollowing ? 'Unfollowed' : 'Following')
       } catch (e) {
-        setConnectionState(profile.id, current)
+        setFollow(profile.id, wasFollowing)
         showToast(e instanceof Error ? e.message : 'Could not update follow.', 'error')
       } finally {
         setBusy(profile.id, null)
       }
     },
-    [connections, setBusy, setConnectionState, showToast]
+    [follows, setBusy, setFollow, showToast]
   )
 
   const handleSync = useCallback(
     async (profile: Profile) => {
-      const current = connections[profile.id] ?? 'none'
+      const current = syncStates[profile.id] ?? 'none'
       const isActive = current === 'pending' || current === 'synced'
-      const optimisticNext: ConnectionState = isActive ? 'none' : 'pending'
+      const optimisticNext: SyncState = isActive ? 'none' : 'pending'
 
       setBusy(profile.id, 'sync')
-      setConnectionState(profile.id, optimisticNext)
+      setSyncState(profile.id, optimisticNext)
 
       if (!SUPABASE_CONFIGURED) {
-        showToast(
-          isActive
-            ? current === 'synced'
-              ? `Removed Sync with ${profile.name}`
-              : `Sync request to ${profile.name} cancelled`
-            : `Sync request sent to ${profile.name}`
-        )
+        showToast(isActive ? 'Sync request cancelled' : 'Sync request sent')
         setBusy(profile.id, null)
         return
       }
@@ -196,71 +208,63 @@ export default function PeoplePage() {
           const message = await readApiError(res, 'Could not update Sync.')
           throw new Error(message)
         }
-        const body = (await res.json().catch(() => ({}))) as { status?: ConnectionState }
+        const body = (await res.json().catch(() => ({}))) as { status?: SyncState }
         if (!isActive && body.status) {
-          setConnectionState(profile.id, body.status)
-          showToast(
-            body.status === 'synced'
-              ? `Synced with ${profile.name}`
-              : `Request sent to ${profile.name}`
-          )
+          setSyncState(profile.id, body.status)
+          showToast(body.status === 'synced' ? 'Sync accepted' : 'Sync request sent')
         } else {
-          showToast(
-            current === 'synced'
-              ? `Removed Sync with ${profile.name}`
-              : `Sync request cancelled`
-          )
+          showToast(current === 'synced' ? 'Sync removed' : 'Sync request cancelled')
         }
       } catch (e) {
-        setConnectionState(profile.id, current)
+        setSyncState(profile.id, current)
         showToast(e instanceof Error ? e.message : 'Could not update Sync.', 'error')
       } finally {
         setBusy(profile.id, null)
       }
     },
-    [connections, setBusy, setConnectionState, showToast]
+    [syncStates, setBusy, setSyncState, showToast]
   )
 
   const handleAccept = useCallback(
     async (profile: Profile) => {
       setBusy(profile.id, 'accept')
-      setConnectionState(profile.id, 'synced')
+      setSyncState(profile.id, 'synced')
       try {
         const res = await fetch(`/api/people/${profile.id}/sync/accept`, { method: 'POST' })
         if (!res.ok) {
           const message = await readApiError(res, 'Could not accept Sync.')
           throw new Error(message)
         }
-        showToast(`Synced with ${profile.name}`)
+        showToast('Sync accepted')
       } catch (e) {
-        setConnectionState(profile.id, 'request_received')
+        setSyncState(profile.id, 'request_received')
         showToast(e instanceof Error ? e.message : 'Could not accept Sync.', 'error')
       } finally {
         setBusy(profile.id, null)
       }
     },
-    [setBusy, setConnectionState, showToast]
+    [setBusy, setSyncState, showToast]
   )
 
   const handleReject = useCallback(
     async (profile: Profile) => {
       setBusy(profile.id, 'reject')
-      setConnectionState(profile.id, 'none')
+      setSyncState(profile.id, 'none')
       try {
         const res = await fetch(`/api/people/${profile.id}/sync/reject`, { method: 'POST' })
         if (!res.ok) {
           const message = await readApiError(res, 'Could not reject request.')
           throw new Error(message)
         }
-        showToast(`Rejected ${profile.name}'s request`)
+        showToast('Sync rejected')
       } catch (e) {
-        setConnectionState(profile.id, 'request_received')
+        setSyncState(profile.id, 'request_received')
         showToast(e instanceof Error ? e.message : 'Could not reject request.', 'error')
       } finally {
         setBusy(profile.id, null)
       }
     },
-    [setBusy, setConnectionState, showToast]
+    [setBusy, setSyncState, showToast]
   )
 
   return (
@@ -281,14 +285,16 @@ export default function PeoplePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {visibleProfiles.map((profile) => {
               const userProjects = getProjectsForUser(profile.id)
-              const state = connections[profile.id] ?? 'none'
+              const isFollowing = !!follows[profile.id]
+              const syncState = syncStates[profile.id] ?? 'none'
               const busy = pendingByUser[profile.id] ?? null
               return (
                 <PersonCard
                   key={profile.id}
                   profile={profile}
                   projects={userProjects}
-                  state={state}
+                  isFollowing={isFollowing}
+                  syncState={syncState}
                   busy={busy}
                   onFollow={() => handleFollow(profile)}
                   onSync={() => handleSync(profile)}
@@ -323,7 +329,8 @@ export default function PeoplePage() {
 function PersonCard({
   profile,
   projects,
-  state,
+  isFollowing,
+  syncState,
   busy,
   onFollow,
   onSync,
@@ -332,22 +339,22 @@ function PersonCard({
 }: {
   profile: Profile
   projects: Project[]
-  state: ConnectionState
+  isFollowing: boolean
+  syncState: SyncState
   busy: 'follow' | SyncBusyAction | null
   onFollow: () => void
   onSync: () => void
   onAccept: () => void
   onReject: () => void
 }) {
-  const followLabel = state === 'following' ? 'Following' : 'Follow'
+  const followLabel = isFollowing ? 'Following' : 'Follow'
 
-  const followClassName =
-    state === 'following'
-      ? 'border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30'
-      : ''
+  const followClassName = isFollowing
+    ? 'border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30'
+    : ''
 
   const renderSyncControl = () => {
-    if (state === 'synced') {
+    if (syncState === 'synced') {
       return (
         <Button
           size="sm"
@@ -360,7 +367,7 @@ function PersonCard({
         </Button>
       )
     }
-    if (state === 'pending') {
+    if (syncState === 'pending') {
       return (
         <Button
           size="sm"
@@ -374,7 +381,7 @@ function PersonCard({
         </Button>
       )
     }
-    if (state === 'request_received') {
+    if (syncState === 'request_received') {
       return (
         <div className="flex gap-1.5">
           <Button
@@ -420,7 +427,7 @@ function PersonCard({
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
             {profile.name}
           </h3>
-          {state === 'request_received' && (
+          {syncState === 'request_received' && (
             <p className="text-xs font-medium text-purple-600 dark:text-purple-300">
               Wants to Sync with you
             </p>
