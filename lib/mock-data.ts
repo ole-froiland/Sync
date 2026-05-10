@@ -49,6 +49,21 @@ export const mockProfiles: Profile[] = [
     tools_used: ['Figma', 'Claude', 'GitHub'],
     created_at: '2024-01-18T10:00:00Z',
   },
+  {
+    ...MOCK_PROFILE_DEFAULTS,
+    id: 'user-5-eliasn',
+    email: 'elias.test@syncapp.dev',
+    name: 'Elias Nilsen',
+    first_name: 'Elias',
+    last_name: 'Nilsen',
+    username: 'eliasn',
+    selected_avatar: '10-emerald',
+    avatar_url:
+      'data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2040%2040%22%20width%3D%2240%22%20height%3D%2240%22%3E%3Ccircle%20cx%3D%2220%22%20cy%3D%2220%22%20r%3D%2220%22%20fill%3D%22%23059669%22/%3E%3Ctext%20x%3D%2220%22%20y%3D%2221.5%22%20font-size%3D%2220%22%20text-anchor%3D%22middle%22%20dominant-baseline%3D%22middle%22%3E%F0%9F%90%A7%3C/text%3E%3C/svg%3E',
+    role: null,
+    tools_used: ['Codex', 'GitHub', 'VS Code'],
+    created_at: '2024-01-20T10:00:00Z',
+  },
 ]
 
 export const mockProjects: Project[] = [
@@ -62,7 +77,7 @@ export const mockProjects: Project[] = [
     demo_url: null,
     created_by: 'user-1',
     created_at: '2024-02-01T10:00:00Z',
-    member_count: 4,
+    member_count: 5,
     task_count: 8,
     members: mockProfiles,
   },
@@ -90,9 +105,9 @@ export const mockProjects: Project[] = [
     demo_url: 'https://portfoliokit.vercel.app',
     created_by: 'user-3',
     created_at: '2024-01-20T10:00:00Z',
-    member_count: 3,
+    member_count: 4,
     task_count: 2,
-    members: [mockProfiles[0], mockProfiles[2], mockProfiles[3]],
+    members: [mockProfiles[0], mockProfiles[2], mockProfiles[3], mockProfiles[4]],
   },
 ]
 

@@ -56,6 +56,7 @@ Copy `.env.local` and fill in your values:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
@@ -64,6 +65,23 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```bash
 npm run dev
 ```
+
+### 6. Seed the Elias test user
+
+Create or update a fake member account for login and People/follow testing:
+
+```bash
+npm run seed:test-user
+```
+
+This script touches only:
+
+- `Elias Nilsen`
+- `eliasn`
+- `elias.test@syncapp.dev`
+- `Test1234!`
+
+It creates the Supabase auth user, confirms the email, and upserts the matching `profiles` row.
 
 ---
 
