@@ -45,6 +45,7 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
 
   useEffect(() => {
     if (!profileId || !supabaseConfigured) return
+    const currentProfileId = profileId
 
     let cancelled = false
 
@@ -70,8 +71,8 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
           sync?: Record<string, 'pending' | 'request_received' | 'synced'>
         }
 
-        const readMap = readChatReadMap(profileId)
-        const mutedIds = new Set(readMutedUserIds(profileId))
+        const readMap = readChatReadMap(currentProfileId)
+        const mutedIds = new Set(readMutedUserIds(currentProfileId))
         const syncMap = connBody.sync ?? {}
         const requestCount = Object.entries(syncMap).filter(
           ([userId, state]) => state === 'request_received' && !mutedIds.has(userId)
@@ -79,7 +80,7 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
 
         let unreadMessageCount = 0
         for (const item of inboxBody.items ?? []) {
-          if (item.receiver_id !== profileId) continue
+          if (item.receiver_id !== currentProfileId) continue
           if (item.payload?.kind === 'sync_request') continue
           const otherId = item.sender_id
           if (mutedIds.has(otherId)) continue
