@@ -33,5 +33,15 @@ export async function POST(
     .eq('id', incoming.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const { error: messageError } = await supabase
+    .from('direct_messages')
+    .update({ state: 'accepted', updated_at: new Date().toISOString() })
+    .eq('sender_id', id)
+    .eq('receiver_id', user.id)
+    .contains('payload', { kind: 'sync_request' })
+    .eq('state', 'sent')
+
+  if (messageError) return NextResponse.json({ error: messageError.message }, { status: 500 })
   return NextResponse.json({ ok: true, status: 'synced' })
 }

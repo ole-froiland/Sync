@@ -12,6 +12,10 @@ type RepoSharePayload = {
   language?: string | null
 }
 
+type SyncRequestPayload = {
+  kind?: 'sync_request'
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -48,14 +52,77 @@ export async function POST(
       { status: 403 }
     )
   }
-  if (message.type !== 'repo_share') {
-    return NextResponse.json({ error: 'This message is not a repo share.' }, { status: 400 })
-  }
   if (message.state !== 'sent') {
     return NextResponse.json({ error: 'This share has already been answered.' }, { status: 409 })
   }
 
   const nextState = body.action === 'accept' ? 'accepted' : 'rejected'
+  const isSyncRequest =
+    message.type === 'text' && ((message.payload ?? {}) as SyncRequestPayload).kind === 'sync_request'
+
+  if (message.type !== 'repo_share' && !isSyncRequest) {
+    return NextResponse.json({ error: 'This message cannot be answered.' }, { status: 400 })
+  }
+
+  if (isSyncRequest) {
+    if (body.action === 'accept') {
+      const { data: incomingConnection, error: connectionLookupError } = await supabase
+        .from('connections')
+        .select('id, status')
+        .eq('requester_id', message.sender_id)
+        .eq('addressee_id', user.id)
+        .maybeSingle()
+
+      if (connectionLookupError) {
+        return NextResponse.json({ error: connectionLookupError.message }, { status: 500 })
+      }
+      if (!incomingConnection) {
+        return NextResponse.json({ error: 'No pending sync request found.' }, { status: 404 })
+      }
+
+      const { error: acceptError } = await supabase
+        .from('connections')
+        .update({ status: 'accepted', updated_at: new Date().toISOString() })
+        .eq('id', incomingConnection.id)
+
+      if (acceptError) {
+        return NextResponse.json({ error: acceptError.message }, { status: 500 })
+      }
+
+      const { error: updateError } = await supabase
+        .from('direct_messages')
+        .update({ state: 'accepted', updated_at: new Date().toISOString() })
+        .eq('id', message.id)
+
+      if (updateError) {
+        return NextResponse.json({ error: updateError.message }, { status: 500 })
+      }
+
+      return NextResponse.json({ ok: true, state: 'accepted' })
+    }
+
+    const { error: rejectConnectionError } = await supabase
+      .from('connections')
+      .delete()
+      .eq('requester_id', message.sender_id)
+      .eq('addressee_id', user.id)
+      .eq('status', 'pending')
+
+    if (rejectConnectionError) {
+      return NextResponse.json({ error: rejectConnectionError.message }, { status: 500 })
+    }
+
+    const { error: deleteMessageError } = await supabase
+      .from('direct_messages')
+      .delete()
+      .eq('id', message.id)
+
+    if (deleteMessageError) {
+      return NextResponse.json({ error: deleteMessageError.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ ok: true, state: 'rejected' })
+  }
 
   if (nextState === 'accepted') {
     const payload = (message.payload ?? {}) as RepoSharePayload

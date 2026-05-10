@@ -28,6 +28,7 @@ type RepoSharePayload = {
   owner?: string
   description?: string | null
   language?: string | null
+  kind?: 'sync_request'
 }
 
 type DirectMessage = {
@@ -54,8 +55,9 @@ export default function ChatPage() {
 
   const [projects, setProjects] = useState<Project[]>([])
   const [projectsLoading, setProjectsLoading] = useState(true)
-  const [synced, setSynced] = useState<Profile[]>([])
-  const [syncedLoading, setSyncedLoading] = useState(true)
+  const [directPeople, setDirectPeople] = useState<Profile[]>([])
+  const [directPeopleLoading, setDirectPeopleLoading] = useState(true)
+  const [directStates, setDirectStates] = useState<Record<string, 'synced' | 'pending' | 'request_received'>>({})
   const [active, setActive] = useState<ActiveTarget | null>(null)
 
   const [projectMessages, setProjectMessages] = useState<Message[]>([])
@@ -107,13 +109,13 @@ export default function ChatPage() {
           if (cancelled) return
           const firstProject = mockProjects[0] ?? null
           setProjects(mockProjects)
-          setSynced([])
+          setDirectPeople([])
           if (firstProject) {
             setActive({ kind: 'project', project: firstProject })
             setProjectMessages(mockMessages.filter((m) => m.project_id === firstProject.id))
           }
           setProjectsLoading(false)
-          setSyncedLoading(false)
+          setDirectPeopleLoading(false)
           return
         }
 
@@ -126,33 +128,43 @@ export default function ChatPage() {
         const projectList = projRes.ok ? ((await projRes.json()) as Project[]) : []
         const peopleList = peopleRes.ok ? ((await peopleRes.json()) as Profile[]) : []
         const connData = connRes.ok
-          ? ((await connRes.json()) as { userId: string; connections: Record<string, string> })
-          : { userId: null, connections: {} as Record<string, string> }
+          ? ((await connRes.json()) as {
+              userId: string
+              connections: Record<string, string>
+              sync?: Record<string, 'pending' | 'request_received' | 'synced'>
+            })
+          : { userId: null, connections: {} as Record<string, string>, sync: {} }
 
         if (cancelled) return
 
         const list = Array.isArray(projectList) ? projectList : []
         setProjects(list)
 
-        const syncedIds = new Set(
-          Object.entries(connData.connections ?? {})
-            .filter(([, state]) => state === 'synced')
+        const syncMap = connData.sync ?? {}
+        const directIds = new Set(
+          Object.entries(syncMap)
+            .filter(([, state]) => state === 'synced' || state === 'pending' || state === 'request_received')
             .map(([id]) => id)
         )
-        const syncedPeople = peopleList.filter((p) => syncedIds.has(p.id))
-        setSynced(syncedPeople)
+        const directList = peopleList.filter((p) => directIds.has(p.id))
+        setDirectPeople(directList)
+        setDirectStates(
+          Object.fromEntries(
+            Object.entries(syncMap).filter(([, state]) => state === 'synced' || state === 'pending' || state === 'request_received')
+          ) as Record<string, 'synced' | 'pending' | 'request_received'>
+        )
 
         if (list[0]) {
           setActive({ kind: 'project', project: list[0] })
           fetchProjectMessages(list[0].id)
-        } else if (syncedPeople[0]) {
-          setActive({ kind: 'dm', user: syncedPeople[0] })
-          fetchDirectMessages(syncedPeople[0].id)
+        } else if (directList[0]) {
+          setActive({ kind: 'dm', user: directList[0] })
+          fetchDirectMessages(directList[0].id)
         }
       } finally {
         if (!cancelled) {
           setProjectsLoading(false)
-          setSyncedLoading(false)
+          setDirectPeopleLoading(false)
         }
       }
     }
@@ -393,14 +405,14 @@ export default function ChatPage() {
           <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
             Direct
           </p>
-          {syncedLoading ? (
+          {directPeopleLoading ? (
             Array.from({ length: 2 }).map((_, i) => (
               <div key={i} className="flex items-center gap-2.5 px-3 py-2">
                 <Skeleton className="w-6 h-6 rounded-full" />
                 <Skeleton className="h-3 flex-1" />
               </div>
             ))
-          ) : synced.length === 0 ? (
+          ) : directPeople.length === 0 ? (
             <Link
               href="/people"
               className="mx-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-gray-400 hover:bg-gray-50 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
@@ -409,8 +421,9 @@ export default function ChatPage() {
               Sync with people to start a chat
             </Link>
           ) : (
-            synced.map((user) => {
+            directPeople.map((user) => {
               const isActive = active?.kind === 'dm' && active.user.id === user.id
+              const state = directStates[user.id] ?? 'synced'
               return (
                 <button
                   key={user.id}
@@ -424,6 +437,11 @@ export default function ChatPage() {
                 >
                   <Avatar name={user.name} src={user.avatar_url} size="xs" />
                   <span className="truncate flex-1">{user.name}</span>
+                  {state !== 'synced' && (
+                    <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                      {state === 'request_received' ? 'Request' : 'Pending'}
+                    </span>
+                  )}
                 </button>
               )
             })
@@ -449,7 +467,7 @@ export default function ChatPage() {
             )}
             {active.kind === 'dm' && (
               <span className="text-xs text-gray-400 dark:text-gray-500">
-                · synced
+                · {directStates[active.user.id] === 'request_received' ? 'incoming request' : directStates[active.user.id] === 'pending' ? 'pending sync' : 'synced'}
               </span>
             )}
           </div>
@@ -575,12 +593,18 @@ export default function ChatPage() {
                 ? 'Select a conversation'
                 : active.kind === 'project'
                   ? `Message #${active.project.name}...`
-                  : `Message ${active.user.name}...`
+                  : directStates[active.user.id] === 'synced'
+                    ? `Message ${active.user.name}...`
+                    : `Accept sync with ${active.user.name} to start chatting...`
             }
-            disabled={!active}
+            disabled={!active || (active.kind === 'dm' && directStates[active.user.id] !== 'synced')}
             className="flex-1 rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50 dark:bg-gray-800 dark:text-gray-100 focus:bg-white dark:focus:bg-gray-900 transition-colors"
           />
-          <Button type="submit" size="md" disabled={!input.trim() || !active}>
+          <Button
+            type="submit"
+            size="md"
+            disabled={!input.trim() || !active || (active.kind === 'dm' && directStates[active.user.id] !== 'synced')}
+          >
             <Send size={15} />
           </Button>
         </form>
@@ -641,6 +665,7 @@ function RepoShareCard({
   onReject: () => void
 }) {
   const payload = (message.payload ?? {}) as RepoSharePayload
+  const isSyncRequest = message.type === 'text' && payload.kind === 'sync_request'
   const fullName = payload.full_name ?? payload.name ?? 'Repository'
   const owner = payload.owner ?? fullName.split('/')[0] ?? ''
   const detailHref = `/repositories/${fullName}`
@@ -651,6 +676,64 @@ function RepoShareCard({
       : message.state === 'rejected'
         ? 'Rejected'
         : null
+
+  if (isSyncRequest) {
+    return (
+      <div
+        className={cn(
+          'mt-1 inline-flex max-w-md flex-col gap-3 rounded-2xl border bg-white p-4 transition-all',
+          'border-purple-200 dark:border-purple-800 dark:bg-gray-900',
+          message.state === 'rejected' && 'opacity-60'
+        )}
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-500 ring-1 ring-inset ring-purple-100 dark:bg-purple-950/40 dark:text-purple-300 dark:ring-purple-900/60">
+            <Inbox size={14} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Sync request</p>
+            <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+              You need to accept this request before the chat opens for normal messages.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          {viewerIsReceiver && message.state === 'sent' ? (
+            <div className="flex gap-1.5">
+              <button
+                disabled={responding}
+                onClick={onReject}
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition-all hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                <XIcon size={11} />
+                Reject
+              </button>
+              <button
+                disabled={responding}
+                onClick={onAccept}
+                className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-purple-500 to-fuchsia-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition-all hover:from-purple-600 hover:to-fuchsia-600 disabled:opacity-60"
+              >
+                <Check size={11} />
+                Accept
+              </button>
+            </div>
+          ) : stateLabel ? (
+            <span
+              className={cn(
+                'rounded-full px-2 py-0.5 text-[10px] font-medium',
+                message.state === 'accepted'
+                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
+                  : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+              )}
+            >
+              {stateLabel}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
