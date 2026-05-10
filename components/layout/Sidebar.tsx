@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
 import type { Profile } from '@/types'
+import { CHAT_META_EVENT, readChatReadMap, readMutedUserIds } from '@/lib/chat-meta'
 
 const nav = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -33,6 +35,82 @@ interface SidebarProps {
 
 export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps) {
   const pathname = usePathname()
+  const [chatBadgeCount, setChatBadgeCount] = useState(0)
+  const profileId = profile?.id ?? null
+
+  const supabaseConfigured = useMemo(
+    () => (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http'),
+    []
+  )
+
+  useEffect(() => {
+    if (!profileId || !supabaseConfigured) return
+
+    let cancelled = false
+
+    async function loadInboxBadge() {
+      try {
+        const [inboxRes, connRes] = await Promise.all([
+          fetch('/api/direct-messages/inbox'),
+          fetch('/api/connections'),
+        ])
+
+        if (!inboxRes.ok || !connRes.ok) return
+
+        const inboxBody = (await inboxRes.json()) as {
+          items?: Array<{
+            sender_id: string
+            receiver_id: string
+            created_at: string
+            state: 'sent' | 'accepted' | 'rejected'
+            payload?: { kind?: 'sync_request' } | null
+          }>
+        }
+        const connBody = (await connRes.json()) as {
+          sync?: Record<string, 'pending' | 'request_received' | 'synced'>
+        }
+
+        const readMap = readChatReadMap(profileId)
+        const mutedIds = new Set(readMutedUserIds(profileId))
+        const syncMap = connBody.sync ?? {}
+        const requestCount = Object.entries(syncMap).filter(
+          ([userId, state]) => state === 'request_received' && !mutedIds.has(userId)
+        ).length
+
+        let unreadMessageCount = 0
+        for (const item of inboxBody.items ?? []) {
+          if (item.receiver_id !== profileId) continue
+          if (item.payload?.kind === 'sync_request') continue
+          const otherId = item.sender_id
+          if (mutedIds.has(otherId)) continue
+          const lastReadAt = readMap[otherId]
+          if (!lastReadAt || new Date(item.created_at).getTime() > new Date(lastReadAt).getTime()) {
+            unreadMessageCount += 1
+          }
+        }
+
+        if (!cancelled) {
+          setChatBadgeCount(requestCount + unreadMessageCount)
+        }
+      } catch {
+        if (!cancelled) setChatBadgeCount(0)
+      }
+    }
+
+    void loadInboxBadge()
+    const interval = window.setInterval(loadInboxBadge, 30000)
+    const onMetaChanged = () => void loadInboxBadge()
+    const onFocus = () => void loadInboxBadge()
+    window.addEventListener(CHAT_META_EVENT, onMetaChanged)
+    window.addEventListener('focus', onFocus)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+      window.removeEventListener(CHAT_META_EVENT, onMetaChanged)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [profileId, supabaseConfigured])
 
   return (
     <aside className="w-60 flex-shrink-0 h-screen sticky top-0 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex flex-col">
@@ -45,6 +123,7 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
       <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5">
         {nav.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
+          const isChat = href === '/chat'
           return (
             <Link
               key={href}
@@ -57,7 +136,19 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
               )}
             >
               <Icon size={17} />
-              {label}
+              <span className="flex-1">{label}</span>
+              {isChat && profileId && chatBadgeCount > 0 && (
+                <span
+                  className={cn(
+                    'min-w-5 rounded-full px-1.5 py-0.5 text-center text-[11px] font-semibold',
+                    active
+                      ? 'bg-purple-600 text-white dark:bg-purple-500'
+                      : 'bg-red-500 text-white'
+                  )}
+                >
+                  {chatBadgeCount > 99 ? '99+' : chatBadgeCount}
+                </span>
+              )}
             </Link>
           )
         })}

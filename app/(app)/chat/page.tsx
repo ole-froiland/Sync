@@ -16,8 +16,17 @@ import {
   X as XIcon,
   ExternalLink,
   Inbox,
+  BellOff,
+  Bell,
 } from 'lucide-react'
 import type { Message, Profile, Project } from '@/types'
+import {
+  CHAT_META_EVENT,
+  readChatReadMap,
+  readMutedUserIds,
+  writeChatReadMap,
+  writeMutedUserIds,
+} from '@/lib/chat-meta'
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
 
@@ -52,12 +61,14 @@ type Toast = { id: number; tone: 'success' | 'error'; message: string }
 
 export default function ChatPage() {
   const profile = useUser()
+  const profileId = profile?.id ?? null
 
   const [projects, setProjects] = useState<Project[]>([])
   const [projectsLoading, setProjectsLoading] = useState(true)
   const [directPeople, setDirectPeople] = useState<Profile[]>([])
   const [directPeopleLoading, setDirectPeopleLoading] = useState(true)
   const [directStates, setDirectStates] = useState<Record<string, 'synced' | 'pending' | 'request_received'>>({})
+  const [mutedIds, setMutedIds] = useState<string[]>([])
   const [active, setActive] = useState<ActiveTarget | null>(null)
 
   const [projectMessages, setProjectMessages] = useState<Message[]>([])
@@ -68,6 +79,20 @@ export default function ChatPage() {
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
+
+  useEffect(() => {
+    if (!profileId) return
+
+    const syncMutedIds = () => {
+      setMutedIds(readMutedUserIds(profileId))
+    }
+
+    queueMicrotask(syncMutedIds)
+    window.addEventListener(CHAT_META_EVENT, syncMutedIds)
+    return () => {
+      window.removeEventListener(CHAT_META_EVENT, syncMutedIds)
+    }
+  }, [profileId])
 
   const showToast = useCallback((message: string, tone: 'success' | 'error' = 'success') => {
     const id = Date.now() + Math.random()
@@ -98,6 +123,31 @@ export default function ChatPage() {
       .catch(() => setDirectMessages([]))
       .finally(() => setMessagesLoading(false))
   }, [])
+
+  const markConversationRead = useCallback(
+    (userId: string) => {
+      if (!profileId) return
+      const next = {
+        ...readChatReadMap(profileId),
+        [userId]: new Date().toISOString(),
+      }
+      writeChatReadMap(profileId, next)
+    },
+    [profileId]
+  )
+
+  const toggleMute = useCallback(
+    (userId: string) => {
+      if (!profileId) return
+      const next = mutedIds.includes(userId)
+        ? mutedIds.filter((id) => id !== userId)
+        : [...mutedIds, userId]
+      writeMutedUserIds(profileId, next)
+      setMutedIds(next)
+      showToast(next.includes(userId) ? 'Conversation muted' : 'Conversation unmuted')
+    },
+    [mutedIds, profileId, showToast]
+  )
 
   // Initial load: projects + synced people
   useEffect(() => {
@@ -236,6 +286,14 @@ export default function ChatPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messageCount])
+
+  useEffect(() => {
+    if (!active || active.kind !== 'dm') return
+    const state = directStates[active.user.id]
+    if (state === 'request_received') return
+    markConversationRead(active.user.id)
+    window.dispatchEvent(new CustomEvent(CHAT_META_EVENT))
+  }, [active, directMessages, directStates, markConversationRead])
 
   function selectProject(project: Project) {
     setActive({ kind: 'project', project })
@@ -475,6 +533,7 @@ export default function ChatPage() {
             directPeople.map((user) => {
               const isActive = active?.kind === 'dm' && active.user.id === user.id
               const state = directStates[user.id] ?? 'synced'
+              const isMuted = mutedIds.includes(user.id)
               return (
                 <button
                   key={user.id}
@@ -488,6 +547,11 @@ export default function ChatPage() {
                 >
                   <Avatar name={user.name} src={user.avatar_url} size="xs" />
                   <span className="truncate flex-1">{user.name}</span>
+                  {isMuted && (
+                    <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                      Muted
+                    </span>
+                  )}
                   {state !== 'synced' && (
                     <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-500 dark:bg-gray-800 dark:text-gray-400">
                       {state === 'request_received' ? 'Request' : 'Pending'}
@@ -521,8 +585,18 @@ export default function ChatPage() {
                 · {directStates[active.user.id] === 'request_received' ? 'incoming request' : directStates[active.user.id] === 'pending' ? 'pending sync' : 'synced'}
               </span>
             )}
+            {active.kind === 'dm' && (
+              <button
+                type="button"
+                className="ml-auto inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+                onClick={() => toggleMute(active.user.id)}
+              >
+                {mutedIds.includes(active.user.id) ? <Bell size={12} /> : <BellOff size={12} />}
+                {mutedIds.includes(active.user.id) ? 'Unmute' : 'Mute'}
+              </button>
+            )}
             {active.kind === 'dm' && directStates[active.user.id] === 'request_received' && (
-              <div className="ml-auto flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <Button
                   size="sm"
                   variant="secondary"
