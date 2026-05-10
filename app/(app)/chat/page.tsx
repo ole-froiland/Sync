@@ -356,6 +356,57 @@ export default function ChatPage() {
     [showToast]
   )
 
+  const respondToSync = useCallback(
+    async (user: Profile, action: 'accept' | 'reject') => {
+      setRespondingId(`sync:${user.id}`)
+
+      const previousState = directStates[user.id]
+      if (action === 'accept') {
+        setDirectStates((prev) => ({ ...prev, [user.id]: 'synced' }))
+      } else {
+        setDirectStates((prev) => {
+          const next = { ...prev }
+          delete next[user.id]
+          return next
+        })
+        setDirectPeople((prev) => prev.filter((person) => person.id !== user.id))
+      }
+
+      try {
+        const res = await fetch(`/api/people/${user.id}/sync/${action}`, {
+          method: 'POST',
+        })
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string }
+          throw new Error(body.error ?? `Failed to ${action} sync request`)
+        }
+
+        if (action === 'accept') {
+          showToast('Sync accepted')
+          fetchDirectMessages(user.id)
+        } else {
+          showToast('Sync rejected')
+          setDirectMessages([])
+          setActive(null)
+        }
+      } catch (e) {
+        if (previousState) {
+          setDirectStates((prev) => ({ ...prev, [user.id]: previousState }))
+        }
+        if (action === 'reject') {
+          setDirectPeople((prev) => {
+            if (prev.some((person) => person.id === user.id)) return prev
+            return [...prev, user]
+          })
+        }
+        showToast(e instanceof Error ? e.message : `Failed to ${action} sync request`, 'error')
+      } finally {
+        setRespondingId(null)
+      }
+    },
+    [directStates, fetchDirectMessages, showToast]
+  )
+
   const headerTitle = useMemo(() => {
     if (!active) return ''
     return active.kind === 'project' ? `#${active.project.name}` : active.user.name
@@ -470,6 +521,25 @@ export default function ChatPage() {
                 · {directStates[active.user.id] === 'request_received' ? 'incoming request' : directStates[active.user.id] === 'pending' ? 'pending sync' : 'synced'}
               </span>
             )}
+            {active.kind === 'dm' && directStates[active.user.id] === 'request_received' && (
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={respondingId === `sync:${active.user.id}`}
+                  onClick={() => respondToSync(active.user, 'reject')}
+                >
+                  Reject
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={respondingId === `sync:${active.user.id}`}
+                  onClick={() => respondToSync(active.user, 'accept')}
+                >
+                  Accept
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -525,7 +595,21 @@ export default function ChatPage() {
               })
             )
           ) : directMessages.length === 0 ? (
-            <EmptyDM name={active.user.name} />
+            <EmptyDM
+              name={active.user.name}
+              state={directStates[active.user.id] ?? 'synced'}
+              busy={respondingId === `sync:${active.user.id}`}
+              onAccept={
+                directStates[active.user.id] === 'request_received'
+                  ? () => respondToSync(active.user, 'accept')
+                  : undefined
+              }
+              onReject={
+                directStates[active.user.id] === 'request_received'
+                  ? () => respondToSync(active.user, 'reject')
+                  : undefined
+              }
+            />
           ) : (
             directMessages.map((msg, i) => {
               const prev = directMessages[i - 1]
@@ -639,14 +723,46 @@ function EmptyChannel({ name }: { name: string }) {
   )
 }
 
-function EmptyDM({ name }: { name: string }) {
+function EmptyDM({
+  name,
+  state,
+  busy,
+  onAccept,
+  onReject,
+}: {
+  name: string
+  state: 'synced' | 'pending' | 'request_received'
+  busy: boolean
+  onAccept?: () => void
+  onReject?: () => void
+}) {
   return (
     <div className="flex flex-col items-center justify-center flex-1 py-16 gap-2">
       <Avatar name={name} size="lg" />
       <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{name}</p>
-      <p className="text-xs text-gray-400 dark:text-gray-500 text-center max-w-xs">
-        Say hi or share a repository — they&apos;ll see it here.
-      </p>
+      {state === 'request_received' ? (
+        <>
+          <p className="text-xs text-gray-400 dark:text-gray-500 text-center max-w-xs">
+            This sync request is waiting for your answer.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" variant="secondary" disabled={busy} onClick={onReject}>
+              Reject
+            </Button>
+            <Button size="sm" disabled={busy} onClick={onAccept}>
+              Accept
+            </Button>
+          </div>
+        </>
+      ) : state === 'pending' ? (
+        <p className="text-xs text-gray-400 dark:text-gray-500 text-center max-w-xs">
+          Sync request sent. Chat opens when they accept it.
+        </p>
+      ) : (
+        <p className="text-xs text-gray-400 dark:text-gray-500 text-center max-w-xs">
+          Say hi or share a repository — they&apos;ll see it here.
+        </p>
+      )}
     </div>
   )
 }
