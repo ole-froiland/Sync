@@ -13,6 +13,8 @@ import {
   LogOut,
   GitBranch,
   Handshake,
+  CalendarDays,
+  Lightbulb,
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
 import type { Profile } from '@/types'
@@ -22,8 +24,10 @@ const nav = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/projects', label: 'Projects', icon: FolderKanban },
   { href: '/repositories', label: 'Repositories', icon: GitBranch },
+  { href: '/calendar', label: 'Calendar', icon: CalendarDays },
   { href: '/chat', label: 'Chat', icon: MessageSquare },
   { href: '/people', label: 'People', icon: Users },
+  { href: '/ideas', label: 'Ideas', icon: Lightbulb },
   { href: '/how-to-sync', label: 'How to Sync', icon: Handshake },
 ]
 
