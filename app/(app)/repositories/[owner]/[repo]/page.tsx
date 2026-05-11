@@ -9,6 +9,7 @@ import { cn, formatDate } from '@/lib/utils'
 import { languageColor } from '@/lib/github-language-colors'
 import { renderMarkdown } from '@/lib/markdown'
 import ShareRepoModal from '@/components/repositories/ShareRepoModal'
+import DeployMenu from '@/components/repositories/DeployMenu'
 import {
   ArrowLeft,
   ExternalLink,
@@ -339,6 +340,7 @@ export default function RepositoryDetailPage({
                       <Share2 size={13} />
                       Share
                     </button>
+                    <DeployMenu repoUrl={data.html_url} />
                     <Button size="sm" onClick={() => summarize('summary')}>
                       <Sparkles size={13} />
                       Summarize
