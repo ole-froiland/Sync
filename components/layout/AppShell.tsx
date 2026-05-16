@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Sidebar from './Sidebar'
+import GlobalPrimaryActions from './GlobalPrimaryActions'
 import { UserProvider } from '@/context/UserContext'
 import { GitHubProvider, type GitHubStatus } from '@/context/GitHubContext'
 import type { Profile } from '@/types'
@@ -27,7 +28,10 @@ export default function AppShell({ profile, githubStatus, children }: AppShellPr
       <GitHubProvider status={githubStatus}>
         <div className="flex h-screen bg-gray-50 dark:bg-gray-950 overflow-hidden">
           <Sidebar profile={profile} onSignOut={handleSignOut} signingOut={signingOut} />
-          <main className="flex-1 flex flex-col overflow-hidden">{children}</main>
+          <main className="flex-1 flex flex-col overflow-hidden">
+            <GlobalPrimaryActions />
+            {children}
+          </main>
         </div>
       </GitHubProvider>
     </UserProvider>
