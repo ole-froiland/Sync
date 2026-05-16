@@ -107,7 +107,7 @@ export default function ProjectsPage() {
         try {
           const parsed = JSON.parse(saved) as ProjectFolder[]
           setFolders(parsed)
-          setSelectedFolderId(parsed[0]?.id ?? null)
+          setSelectedFolderId(null)
         } catch {
           window.localStorage.removeItem(STORAGE_KEY)
         }
@@ -196,116 +196,119 @@ export default function ProjectsPage() {
       />
 
       <div className="flex-1 overflow-y-auto px-6 py-8">
-        <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-950 dark:text-gray-100">Prosjektmapper</h1>
-            <p className="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-              Lag mapper for prosjektene dine og samle notater, lenker, filer og oppgaver på ett sted.
-            </p>
-          </div>
-          <div className="relative w-full lg:w-80">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Søk i prosjektmapper"
-              className="h-10 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100"
-            />
-          </div>
-        </div>
+        {selectedFolder ? (
+          <div className="mx-auto max-w-6xl">
+            <button
+              onClick={() => setSelectedFolderId(null)}
+              className="mb-6 text-sm text-gray-400 transition hover:text-gray-700 dark:hover:text-gray-300"
+            >
+              Tilbake til prosjektmapper
+            </button>
 
-        {folders.length === 0 ? (
-          <div className="flex min-h-[52vh] flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 text-center dark:border-gray-800 dark:bg-gray-900/30">
-            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-950/60 dark:text-purple-300">
-              <Plus size={34} />
-            </div>
-            <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Ingen prosjekter enda</h2>
-            <p className="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
-              Start med en prosjektmappe. Etterpå kan du legge inn hva du vil samle for prosjektet.
-            </p>
-            <Button className="mt-5" onClick={() => setFolderOpen(true)}>
-              <Plus size={18} />
-              Lag prosjektmappe
-            </Button>
-          </div>
-        ) : (
-          <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
-            <aside className="space-y-3">
-              {visibleFolders.map((folder) => {
-                const active = folder.id === selectedFolderId
-                const FolderIcon = active ? FolderOpen : Folder
-
-                return (
-                  <button
-                    key={folder.id}
-                    onClick={() => setSelectedFolderId(folder.id)}
-                    className={`group flex w-full items-start gap-3 rounded-lg border p-4 text-left transition ${
-                      active
-                        ? 'border-purple-400 bg-purple-50 shadow-sm dark:border-purple-700 dark:bg-purple-950/30'
-                        : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700'
-                    }`}
-                  >
-                    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${folder.color} text-white shadow-sm`}>
-                      <FolderIcon size={22} />
+            <main className="min-h-[64vh] rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex flex-col gap-4 border-b border-gray-200 p-5 dark:border-gray-800 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-3">
+                    <span className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${selectedFolder.color} text-white`}>
+                      <FolderOpen size={21} />
                     </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
-                      <span className="mt-1 line-clamp-2 block text-sm text-gray-500 dark:text-gray-400">
-                        {folder.description || 'Tom prosjektmappe'}
-                      </span>
-                      <span className="mt-3 block text-xs text-gray-400 dark:text-gray-500">
-                        {folder.items.length} {folder.items.length === 1 ? 'ting lagret' : 'ting lagret'}
-                      </span>
-                    </span>
-                  </button>
-                )
-              })}
-            </aside>
-
-            <main className="min-h-[56vh] rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-              {selectedFolder ? (
-                <>
-                  <div className="flex flex-col gap-4 border-b border-gray-200 p-5 dark:border-gray-800 md:flex-row md:items-start md:justify-between">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-3">
-                        <span className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${selectedFolder.color} text-white`}>
-                          <FolderOpen size={21} />
-                        </span>
-                        <div className="min-w-0">
-                          <h2 className="truncate text-xl font-semibold text-gray-950 dark:text-gray-100">{selectedFolder.name}</h2>
-                          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{selectedFolder.description || 'Ingen beskrivelse'}</p>
-                        </div>
-                      </div>
+                      <h1 className="truncate text-xl font-semibold text-gray-950 dark:text-gray-100">{selectedFolder.name}</h1>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{selectedFolder.description || 'Ingen beskrivelse'}</p>
                     </div>
-                    <Button size="sm" onClick={() => setItemOpen(true)}>
-                      <Plus size={16} />
-                      Legg til
-                    </Button>
                   </div>
+                </div>
+                <Button size="sm" onClick={() => setItemOpen(true)}>
+                  <Plus size={16} />
+                  Legg til
+                </Button>
+              </div>
 
-                  {selectedFolder.items.length === 0 ? (
-                    <div className="flex min-h-80 flex-col items-center justify-center px-6 text-center">
-                      <FileText size={38} className="mb-4 text-gray-300 dark:text-gray-700" />
-                      <h3 className="font-medium text-gray-950 dark:text-gray-100">Mappen er tom</h3>
-                      <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-                        Legg inn notater, lenker, filer eller oppgaver når du vil samle noe for prosjektet.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid gap-3 p-5 lg:grid-cols-2">
-                      {selectedFolder.items.map((item) => (
-                        <ProjectItemCard key={item.id} item={item} onToggle={toggleTask} onRemove={removeItem} />
-                      ))}
-                    </div>
-                  )}
-                </>
+              {selectedFolder.items.length === 0 ? (
+                <div className="flex min-h-80 flex-col items-center justify-center px-6 text-center">
+                  <FileText size={38} className="mb-4 text-gray-300 dark:text-gray-700" />
+                  <h2 className="font-medium text-gray-950 dark:text-gray-100">Mappen er tom</h2>
+                  <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+                    Legg inn notater, lenker, filer eller oppgaver når du vil samle noe for prosjektet.
+                  </p>
+                </div>
               ) : (
-                <div className="flex min-h-[56vh] items-center justify-center text-sm text-gray-500 dark:text-gray-400">
-                  Velg en prosjektmappe.
+                <div className="grid gap-3 p-5 lg:grid-cols-2">
+                  {selectedFolder.items.map((item) => (
+                    <ProjectItemCard key={item.id} item={item} onToggle={toggleTask} onRemove={removeItem} />
+                  ))}
                 </div>
               )}
             </main>
           </div>
+        ) : (
+          <>
+            <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h1 className="text-2xl font-semibold text-gray-950 dark:text-gray-100">Prosjektmapper</h1>
+                <p className="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
+                  Lag mapper for prosjektene dine og samle notater, lenker, filer og oppgaver på ett sted.
+                </p>
+              </div>
+              <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+                <div className="relative w-full lg:w-80">
+                  <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Søk i prosjektmapper"
+                    className="h-10 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100"
+                  />
+                </div>
+                <Button onClick={() => setFolderOpen(true)} className="h-10 whitespace-nowrap">
+                  <Plus size={16} />
+                  Ny mappe
+                </Button>
+              </div>
+            </div>
+
+            {folders.length === 0 ? (
+              <div className="flex min-h-[52vh] flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 text-center dark:border-gray-800 dark:bg-gray-900/30">
+                <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-950/60 dark:text-purple-300">
+                  <Plus size={34} />
+                </div>
+                <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Ingen prosjekter enda</h2>
+                <p className="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
+                  Start med en prosjektmappe. Etterpå kan du legge inn hva du vil samle for prosjektet.
+                </p>
+                <Button className="mt-5" onClick={() => setFolderOpen(true)}>
+                  <Plus size={18} />
+                  Lag prosjektmappe
+                </Button>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {visibleFolders.map((folder) => (
+                  <button
+                    key={folder.id}
+                    onDoubleClick={() => setSelectedFolderId(folder.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') setSelectedFolderId(folder.id)
+                    }}
+                    className="group flex min-h-36 w-full items-start gap-4 rounded-lg border border-gray-200 bg-white p-5 text-left transition hover:border-purple-400 hover:bg-purple-50/60 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
+                  >
+                    <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${folder.color} text-white shadow-sm`}>
+                      <Folder size={24} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-lg font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
+                      <span className="mt-2 line-clamp-2 block text-sm text-gray-500 dark:text-gray-400">
+                        {folder.description || 'Tom prosjektmappe'}
+                      </span>
+                      <span className="mt-5 block text-xs text-gray-400 dark:text-gray-500">
+                        {folder.items.length} {folder.items.length === 1 ? 'ting lagret' : 'ting lagret'}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
