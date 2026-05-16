@@ -31,12 +31,24 @@ type FollowSet = Record<string, true>
 type Toast = { id: number; tone: 'success' | 'error'; message: string }
 type SyncBusyAction = 'sync' | 'accept' | 'reject'
 type UsageStats = {
-  codexRequests: number
-  openAiRequests: number
-  openAiTokens: number
-  lastActiveAt: string
-  mostUsedModel: string
-  dailyUsage: number[]
+  codex: {
+    requests: number
+    totalTokens: number
+    inputTokens: number
+    outputTokens: number
+    remainingPercent: number
+    resetLabel: string
+    lastActiveLabel: string
+    mostUsedModel: string
+  }
+  dailyCodex: Array<{
+    label: string
+    dateLabel: string
+    requests: number
+    tokens: number
+    limitTokens: number
+    status: 'normal' | 'heavy' | 'used_up'
+  }>
 }
 
 async function readApiError(res: Response, fallback: string): Promise<string> {
@@ -695,104 +707,117 @@ function ProfileModal({
 
         {isCurrentUser && usageStats && (
           <section className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                  Your AI Usage
+                  Your Codex Usage
                 </h4>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Personal usage snapshot across your workspace tools.
+                  Token usage and daily limit pressure for your Codex access.
                 </p>
               </div>
-              <div className="flex gap-2">
-                <a
-                  href="https://platform.openai.com/usage"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-                >
-                  Manage API usage
-                </a>
-              </div>
+              <a
+                href="https://chatgpt.com/codex"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                Open in Codex
+              </a>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <UsageStatCard label="Codex usage" value={`${formatCompactNumber(usageStats.codexRequests)} requests`} />
-              <UsageStatCard label="OpenAI usage" value={`${formatCompactNumber(usageStats.openAiRequests)} req`} secondary={formatTokenCount(usageStats.openAiTokens)} />
-              <UsageStatCard label="Last active" value={formatRelativeTime(usageStats.lastActiveAt)} secondary={formatDateTime(usageStats.lastActiveAt)} />
-              <UsageStatCard label="Most used model" value={usageStats.mostUsedModel} />
+              <UsageMetricCard
+                label="Codex requests"
+                value={usageStats.codex.requests.toLocaleString()}
+                detail={`${usageStats.codex.remainingPercent}% usage left`}
+              />
+              <UsageMetricCard
+                label="Tokens"
+                value={formatCompactNumber(usageStats.codex.totalTokens)}
+                detail={`${formatCompactNumber(usageStats.codex.inputTokens)} in / ${formatCompactNumber(usageStats.codex.outputTokens)} out`}
+              />
+              <UsageMetricCard
+                label="Last active"
+                value={usageStats.codex.lastActiveLabel}
+                detail={usageStats.codex.resetLabel}
+              />
+              <UsageMetricCard
+                label="Most used model"
+                value={usageStats.codex.mostUsedModel}
+                detail="Codex sessions"
+              />
             </div>
 
-            <div className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-              <div className="flex items-center justify-between gap-2">
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+              <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Last 7 days</p>
+                  <h5 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    Last 7 days
+                  </h5>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Request volume across your AI tools
+                    Tokens per day and whether the daily usage was close to the limit.
                   </p>
                 </div>
-                <a
-                  href="https://chatgpt.com/codex"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs font-medium text-purple-600 transition-colors hover:text-purple-500 dark:text-purple-300 dark:hover:text-purple-200"
-                >
-                  Open in Codex
-                </a>
+                <p className="text-xs font-medium text-purple-600 dark:text-purple-300">
+                  {formatCompactNumber(
+                    usageStats.dailyCodex.reduce((sum, day) => sum + day.tokens, 0)
+                  )}{' '}
+                  tokens
+                </p>
               </div>
-              <UsageGraph values={usageStats.dailyUsage} />
+
+              <div className="grid grid-cols-7 items-end gap-2">
+                {usageStats.dailyCodex.map((day) => {
+                  const percent = Math.min(100, Math.round((day.tokens / day.limitTokens) * 100))
+
+                  return (
+                    <div key={day.dateLabel} className="flex min-w-0 flex-col items-center gap-2">
+                      <div className="flex h-28 w-full items-end rounded-lg bg-gray-50 p-1 dark:bg-gray-950/50">
+                        <div
+                          className={`w-full rounded-md ${usageStatusBarClass(day.status)}`}
+                          style={{ height: `${Math.max(10, percent)}%` }}
+                          title={`${day.dateLabel}: ${formatCompactNumber(day.tokens)} tokens`}
+                        />
+                      </div>
+                      <div className="min-w-0 text-center">
+                        <p className="truncate text-xs font-medium text-gray-700 dark:text-gray-300">
+                          {day.label}
+                        </p>
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                          {formatCompactNumber(day.tokens)}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                {usageStats.dailyCodex.map((day) => (
+                  <div
+                    key={`${day.dateLabel}-row`}
+                    className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-950/50"
+                  >
+                    <div>
+                      <p className="text-xs font-medium text-gray-800 dark:text-gray-200">
+                        {day.dateLabel}
+                      </p>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                        {day.requests} requests · {formatCompactNumber(day.tokens)} tokens
+                      </p>
+                    </div>
+                    <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${usageStatusPillClass(day.status)}`}>
+                      {usageStatusLabel(day.status)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
         )}
       </div>
     </Modal>
-  )
-}
-
-function UsageStatCard({
-  label,
-  value,
-  secondary,
-}: {
-  label: string
-  value: string
-  secondary?: string
-}) {
-  return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-        {label}
-      </p>
-      <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-gray-100">{value}</p>
-      {secondary && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{secondary}</p>}
-    </div>
-  )
-}
-
-function UsageGraph({ values }: { values: number[] }) {
-  const max = Math.max(...values, 1)
-  const labels = getRecentDayLabels(values.length)
-
-  return (
-    <div className="mt-4">
-      <div className="flex items-end gap-2">
-        {values.map((value, index) => {
-          const height = Math.max(14, Math.round((value / max) * 88))
-          return (
-            <div key={index} className="flex flex-1 flex-col items-center gap-2">
-              <div className="text-[11px] text-gray-400 dark:text-gray-500">
-                {formatCompactNumber(value)}
-              </div>
-              <div
-                className="w-full rounded-full bg-gradient-to-t from-purple-500 to-fuchsia-400"
-                style={{ height }}
-              />
-              <div className="text-[11px] text-gray-400 dark:text-gray-500">{labels[index]}</div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
   )
 }
 
@@ -831,6 +856,26 @@ function ActivityBars({
           }}
         />
       ))}
+    </div>
+  )
+}
+
+function UsageMetricCard({
+  label,
+  value,
+  detail,
+}: {
+  label: string
+  value: string
+  detail: string
+}) {
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white px-4 py-4 dark:border-gray-800 dark:bg-gray-900">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+        {label}
+      </p>
+      <p className="mt-3 text-2xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{detail}</p>
     </div>
   )
 }
@@ -910,33 +955,71 @@ function buildFallbackCurrentProfile(userId: string): Profile {
 
 function buildUsageStats(profile: Profile): UsageStats {
   const seed = profile.id
-  const createdAt = new Date(profile.created_at || Date.now())
-  const daysSinceJoin = Math.max(
-    14,
-    Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24))
-  )
-  const codexBias = profile.tools_used?.includes('Codex') ? 1.35 : 0.85
-  const chatBias = profile.tools_used?.includes('ChatGPT') ? 1.25 : 0.95
+  const dailyCodex = Array.from({ length: 7 }, (_, index) => {
+    const daysAgo = 6 - index
+    const date = new Date()
+    date.setDate(date.getDate() - daysAgo)
 
-  const codexRequests = Math.round((24 + seededNumber(seed, 0, 90)) * codexBias)
-  const openAiRequests = Math.round((68 + seededNumber(seed, 1, 220)) * chatBias)
-  const openAiTokens = Math.round(openAiRequests * (1200 + seededNumber(seed, 2, 6200)))
-  const lastActiveOffsetMinutes = 8 + seededNumber(seed, 3, 26 * 60)
-  const lastActiveAt = new Date(Date.now() - lastActiveOffsetMinutes * 60 * 1000).toISOString()
-  const dailyUsage = Array.from({ length: 7 }, (_, index) => {
-    const base = 8 + seededNumber(seed, 10 + index, 28)
-    const trend = Math.max(0, Math.round((daysSinceJoin / 30) * 3))
-    return Math.round(base * (index >= 4 ? 1.2 : 1) + trend)
+    const requests = 12 + seededNumber(seed, 10 + index, 46)
+    const inputTokens = 86_000 + seededNumber(seed, 30 + index, 420_000)
+    const outputTokens = 24_000 + seededNumber(seed, 50 + index, 160_000)
+    const tokens = inputTokens + outputTokens
+    const limitTokens = 620_000
+    const percent = tokens / limitTokens
+
+    return {
+      label: new Intl.DateTimeFormat('en', { weekday: 'short' }).format(date),
+      dateLabel: new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(date),
+      requests,
+      tokens,
+      limitTokens,
+      status: percent >= 0.96 ? 'used_up' : percent >= 0.72 ? 'heavy' : 'normal',
+    } satisfies UsageStats['dailyCodex'][number]
   })
+  const totalTokens = dailyCodex.reduce((sum, day) => sum + day.tokens, 0)
+  const requests = dailyCodex.reduce((sum, day) => sum + day.requests, 0)
+  const inputTokens = Math.round(totalTokens * 0.72)
+  const outputTokens = totalTokens - inputTokens
+  const heaviestDay = dailyCodex.reduce((max, day) => (day.tokens > max.tokens ? day : max), dailyCodex[0])
 
   return {
-    codexRequests,
-    openAiRequests,
-    openAiTokens,
-    lastActiveAt,
-    mostUsedModel: determineMostUsedModel(profile.tools_used ?? []),
-    dailyUsage,
+    codex: {
+      requests,
+      totalTokens,
+      inputTokens,
+      outputTokens,
+      remainingPercent: Math.max(3, 100 - Math.round((heaviestDay.tokens / heaviestDay.limitTokens) * 100)),
+      resetLabel: `Daily limit resets ${formatTimeOfDayFromNow(8 + seededNumber(seed, 0, 180))}`,
+      lastActiveLabel: `${1 + seededNumber(seed, 4, 11)} hours ago`,
+      mostUsedModel: ['GPT-4.1', 'GPT-5.1 Codex', 'GPT-5.2'][seededNumber(seed, 5, 3)],
+    },
+    dailyCodex,
   }
+}
+
+function formatCompactNumber(value: number) {
+  return new Intl.NumberFormat('en', {
+    notation: 'compact',
+    maximumFractionDigits: value >= 1_000_000 ? 1 : 0,
+  }).format(value)
+}
+
+function usageStatusLabel(status: UsageStats['dailyCodex'][number]['status']) {
+  if (status === 'used_up') return 'Used up'
+  if (status === 'heavy') return 'High usage'
+  return 'Normal'
+}
+
+function usageStatusBarClass(status: UsageStats['dailyCodex'][number]['status']) {
+  if (status === 'used_up') return 'bg-red-500'
+  if (status === 'heavy') return 'bg-amber-400'
+  return 'bg-gradient-to-t from-purple-600 to-fuchsia-400'
+}
+
+function usageStatusPillClass(status: UsageStats['dailyCodex'][number]['status']) {
+  if (status === 'used_up') return 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300'
+  if (status === 'heavy') return 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+  return 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300'
 }
 
 function seededNumber(seed: string, index: number, max: number) {
@@ -949,53 +1032,10 @@ function seededNumber(seed: string, index: number, max: number) {
   return Math.abs(hash >>> 0) % max
 }
 
-function determineMostUsedModel(toolsUsed: string[]) {
-  if (toolsUsed.includes('Codex')) return 'Codex'
-  if (toolsUsed.includes('ChatGPT')) return 'GPT-4o'
-  if (toolsUsed.includes('Claude')) return 'Claude Sonnet 4'
-  return 'GPT-4.1'
-}
-
-function formatCompactNumber(value: number) {
-  return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(
-    value
-  )
-}
-
-function formatTokenCount(value: number) {
-  return `${new Intl.NumberFormat('en', {
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(value)} tokens`
-}
-
-function formatDateTime(value: string) {
+function formatTimeOfDayFromNow(minutesFromNow: number) {
+  const date = new Date(Date.now() + minutesFromNow * 60 * 1000)
   return new Intl.DateTimeFormat('en', {
-    month: 'short',
-    day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-  }).format(new Date(value))
-}
-
-function formatRelativeTime(value: string) {
-  const diffMs = new Date(value).getTime() - Date.now()
-  const minutes = Math.round(diffMs / (1000 * 60))
-  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
-
-  if (Math.abs(minutes) < 60) return rtf.format(minutes, 'minute')
-
-  const hours = Math.round(minutes / 60)
-  if (Math.abs(hours) < 24) return rtf.format(hours, 'hour')
-
-  const days = Math.round(hours / 24)
-  return rtf.format(days, 'day')
-}
-
-function getRecentDayLabels(count: number) {
-  return Array.from({ length: count }, (_, index) => {
-    const date = new Date()
-    date.setDate(date.getDate() - (count - index - 1))
-    return new Intl.DateTimeFormat('en', { weekday: 'short' }).format(date)
-  })
+  }).format(date)
 }
