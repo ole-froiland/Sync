@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ArrowLeft,
   CheckSquare,
   Eye,
   FilePenLine,
@@ -255,6 +256,47 @@ export default function ProjectsPage() {
     )
   }
 
+  if (selectedFolder) {
+    return (
+      <>
+        <TopBar
+          title={selectedFolder.name}
+          actions={
+            <Button size="sm" onClick={() => setItemOpen(true)}>
+              <Plus size={16} />
+              Add Resource
+            </Button>
+          }
+        />
+
+        <div className="flex-1 overflow-y-auto px-6 py-8">
+          <button
+            onClick={() => {
+              setSelectedFolderId(null)
+              setItemOpen(false)
+            }}
+            className="mb-6 inline-flex h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+          >
+            <ArrowLeft size={16} />
+            Tilbake til prosjektmapper
+          </button>
+
+          <main className="min-h-[64vh] rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+            <ProjectDetailContent
+              folder={selectedFolder}
+              onAddResource={() => setItemOpen(true)}
+              onUpdate={updateFolder}
+              onToggleTask={toggleTask}
+              onRemoveItem={removeItem}
+            />
+          </main>
+        </div>
+
+        <CreateItemModal open={itemOpen} onClose={() => setItemOpen(false)} onCreate={createItem} />
+      </>
+    )
+  }
+
   return (
     <>
       <TopBar
@@ -422,18 +464,6 @@ export default function ProjectsPage() {
       </div>
 
       <CreateFolderModal open={folderOpen} onClose={() => setFolderOpen(false)} onCreate={createFolder} />
-      <ProjectDetailModal
-        folder={selectedFolder}
-        open={!!selectedFolder}
-        onClose={() => {
-          setSelectedFolderId(null)
-          setItemOpen(false)
-        }}
-        onAddResource={() => setItemOpen(true)}
-        onUpdate={updateFolder}
-        onToggleTask={toggleTask}
-        onRemoveItem={removeItem}
-      />
       <CreateItemModal open={itemOpen} onClose={() => setItemOpen(false)} onCreate={createItem} />
     </>
   )
@@ -558,39 +588,6 @@ function ProjectLogoThumbnail({
     <span className={`flex shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${folder.color} text-white shadow-sm ${className}`}>
       <Icon size={iconSize} />
     </span>
-  )
-}
-
-function ProjectDetailModal({
-  folder,
-  open,
-  onClose,
-  onAddResource,
-  onUpdate,
-  onToggleTask,
-  onRemoveItem,
-}: {
-  folder: ProjectFolder | null
-  open: boolean
-  onClose: () => void
-  onAddResource: () => void
-  onUpdate: (folderId: string, updates: Partial<Pick<ProjectFolder, 'name' | 'description' | 'logo' | 'color'>>) => void
-  onToggleTask: (itemId: string) => void
-  onRemoveItem: (itemId: string) => void
-}) {
-  if (!folder) return null
-
-  return (
-    <Modal open={open} onClose={onClose} title={folder.name} className="max-w-5xl">
-      <ProjectDetailContent
-        key={folder.id}
-        folder={folder}
-        onAddResource={onAddResource}
-        onUpdate={onUpdate}
-        onToggleTask={onToggleTask}
-        onRemoveItem={onRemoveItem}
-      />
-    </Modal>
   )
 }
 
