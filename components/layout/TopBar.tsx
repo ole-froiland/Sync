@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { Bell, GitBranch } from 'lucide-react'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 import Button from '@/components/ui/Button'
@@ -21,6 +22,9 @@ export default function TopBar({ title, actions, className, titleClassName }: To
     window.dispatchEvent(new Event('sync:open-post-modal'))
   }
 
+  const aiButtonClass =
+    'inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 shadow-sm transition-all duration-200 hover:scale-[1.02] hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+
   return (
     <header
       className={cn(
@@ -33,6 +37,33 @@ export default function TopBar({ title, actions, className, titleClassName }: To
       </h1>
       <div className="flex items-center gap-2">
         {actions}
+        <a
+          href="https://claude.ai"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Open Claude"
+          title="Claude"
+          className={aiButtonClass}
+        >
+          <Image src="/brand/claude-logo.svg" alt="" width={18} height={18} aria-hidden="true" />
+        </a>
+        <a
+          href="https://chatgpt.com"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Open ChatGPT"
+          title="ChatGPT"
+          className={aiButtonClass}
+        >
+          <Image
+            src="/brand/chatgpt-logo.png"
+            alt=""
+            width={18}
+            height={18}
+            aria-hidden="true"
+            className="rounded-sm"
+          />
+        </a>
         <Button size="sm" variant="secondary" onClick={openRepoModal} className="h-8">
           <GitBranch size={14} />
           New repo
