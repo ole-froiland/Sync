@@ -7,7 +7,7 @@ import FeedView from '@/components/dashboard/views/FeedView'
 import DiscoverView from '@/components/dashboard/views/DiscoverView'
 import TrendingView from '@/components/dashboard/views/TrendingView'
 import { mockPosts } from '@/lib/mock-data'
-import type { Post, FeedItem, ModelCost } from '@/types'
+import type { Post, FeedItem } from '@/types'
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
 const NEWS_REFRESH_MS = 5 * 60 * 1000
@@ -29,8 +29,6 @@ export default function DashboardPage() {
 
   const [news, setNews] = useState<FeedItem[]>([])
   const [newsLoading, setNewsLoading] = useState(true)
-
-  const [modelCosts, setModelCosts] = useState<ModelCost[]>([])
 
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
 
@@ -81,15 +79,6 @@ export default function DashboardPage() {
     const interval = setInterval(fetchNews, NEWS_REFRESH_MS)
     return () => clearInterval(interval)
   }, [fetchNews])
-
-  useEffect(() => {
-    fetch('/api/model-costs')
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setModelCosts(data)
-      })
-      .catch(() => {})
-  }, [])
 
   // Supabase Realtime: new posts appear without page refresh
   useEffect(() => {
@@ -170,11 +159,7 @@ export default function DashboardPage() {
             <FeedView
               posts={posts}
               postsLoading={postsLoading}
-              news={news}
-              newsLoading={newsLoading}
-              modelCosts={modelCosts}
               onPostClick={setSelectedPost}
-              onFetchNews={fetchNews}
             />
           )}
           {activeTab === 'discover' && <DiscoverView news={news} newsLoading={newsLoading} />}
