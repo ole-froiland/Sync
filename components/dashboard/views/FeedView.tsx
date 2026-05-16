@@ -1,7 +1,6 @@
 'use client'
 
 import PostCard from '@/components/dashboard/PostCard'
-import QuickActions from '@/components/dashboard/QuickActions'
 import GitHubTrending from '@/components/dashboard/GitHubTrending'
 import { PostSkeleton, Skeleton } from '@/components/ui/Skeleton'
 import { Rss, Newspaper, DollarSign, RefreshCw } from 'lucide-react'
@@ -28,9 +27,6 @@ interface FeedViewProps {
   modelCosts: ModelCost[]
   onPostClick: (post: Post) => void
   onFetchNews: () => void
-  onCreateProject: () => void
-  onCreatePost: () => void
-  onInviteMember: () => void
 }
 
 export default function FeedView({
@@ -41,9 +37,6 @@ export default function FeedView({
   modelCosts,
   onPostClick,
   onFetchNews,
-  onCreateProject,
-  onCreatePost,
-  onInviteMember,
 }: FeedViewProps) {
   return (
     <div className="max-w-5xl mx-auto px-6 py-8 grid grid-cols-3 gap-8">
@@ -79,17 +72,6 @@ export default function FeedView({
 
       {/* Right column — widgets */}
       <div className="flex flex-col gap-5">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">
-            Quick actions
-          </h2>
-          <QuickActions
-            onCreateProject={onCreateProject}
-            onCreatePost={onCreatePost}
-            onInviteMember={onInviteMember}
-          />
-        </div>
-
         {/* Hacker News widget */}
         <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">

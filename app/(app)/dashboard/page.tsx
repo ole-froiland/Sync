@@ -3,12 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import PostDetailModal from '@/components/dashboard/PostDetailModal'
-import InviteMemberModal from '@/components/dashboard/InviteMemberModal'
-import CreateProjectModal from '@/components/projects/CreateProjectModal'
 import FeedView from '@/components/dashboard/views/FeedView'
 import DiscoverView from '@/components/dashboard/views/DiscoverView'
 import TrendingView from '@/components/dashboard/views/TrendingView'
-import { useUser } from '@/context/UserContext'
 import { mockPosts } from '@/lib/mock-data'
 import type { Post, FeedItem, ModelCost } from '@/types'
 
@@ -24,8 +21,6 @@ const TABS: { id: Tab; label: string }[] = [
 ]
 
 export default function DashboardPage() {
-  const profile = useUser()
-
   const [activeTab, setActiveTab] = useState<Tab>('feed')
   const [tabReady, setTabReady] = useState(false)
 
@@ -38,8 +33,6 @@ export default function DashboardPage() {
   const [modelCosts, setModelCosts] = useState<ModelCost[]>([])
 
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
-  const [projectModalOpen, setProjectModalOpen] = useState(false)
-  const [inviteModalOpen, setInviteModalOpen] = useState(false)
 
   // Hydrate tab from localStorage after mount to avoid SSR mismatch
   useEffect(() => {
@@ -182,9 +175,6 @@ export default function DashboardPage() {
               modelCosts={modelCosts}
               onPostClick={setSelectedPost}
               onFetchNews={fetchNews}
-              onCreateProject={() => setProjectModalOpen(true)}
-              onCreatePost={() => window.dispatchEvent(new Event('sync:open-post-modal'))}
-              onInviteMember={() => setInviteModalOpen(true)}
             />
           )}
           {activeTab === 'discover' && <DiscoverView news={news} newsLoading={newsLoading} />}
@@ -193,18 +183,6 @@ export default function DashboardPage() {
       </div>
 
       <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} />
-
-      <CreateProjectModal
-        open={projectModalOpen}
-        onClose={() => setProjectModalOpen(false)}
-        onCreated={() => setProjectModalOpen(false)}
-        userId={profile?.id ?? ''}
-      />
-      <InviteMemberModal
-        open={inviteModalOpen}
-        onClose={() => setInviteModalOpen(false)}
-        userId={profile?.id ?? ''}
-      />
     </>
   )
 }
