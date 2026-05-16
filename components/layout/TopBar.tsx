@@ -4,7 +4,6 @@ import Image from 'next/image'
 import { Bell, GitBranch } from 'lucide-react'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 import Button from '@/components/ui/Button'
-import { cn } from '@/lib/utils'
 
 interface TopBarProps {
   title: string
@@ -13,7 +12,7 @@ interface TopBarProps {
   titleClassName?: string
 }
 
-export default function TopBar({ title, actions, className, titleClassName }: TopBarProps) {
+export default function TopBar({ title }: TopBarProps) {
   function openRepoModal() {
     window.dispatchEvent(new Event('sync:open-repo-modal'))
   }
@@ -27,16 +26,10 @@ export default function TopBar({ title, actions, className, titleClassName }: To
 
   return (
     <header
-      className={cn(
-        'h-14 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-6 flex items-center justify-between flex-shrink-0',
-        className
-      )}
+      className="h-14 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-6 flex items-center justify-between flex-shrink-0"
     >
-      <h1 className={cn('text-base font-semibold text-gray-900 dark:text-gray-100', titleClassName)}>
-        {title}
-      </h1>
+      <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h1>
       <div className="flex items-center gap-2">
-        {actions}
         <a
           href="https://claude.ai"
           target="_blank"
