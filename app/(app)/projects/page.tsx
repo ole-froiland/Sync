@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CheckSquare,
+  Eye,
   FilePenLine,
   FileSpreadsheet,
   FileText,
@@ -98,6 +99,8 @@ export default function ProjectsPage() {
   const [folderOpen, setFolderOpen] = useState(false)
   const [itemOpen, setItemOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [previewMode, setPreviewMode] = useState(false)
+  const [previewFolderId, setPreviewFolderId] = useState<string | null>(null)
   const loadedRef = useRef(false)
 
   useEffect(() => {
@@ -131,6 +134,9 @@ export default function ProjectsPage() {
       return folderText.includes(query) || itemText.includes(query)
     })
   }, [folders, search])
+
+  const previewFolder =
+    visibleFolders.find((folder) => folder.id === previewFolderId) ?? visibleFolders[0] ?? null
 
   function createFolder(folder: Pick<ProjectFolder, 'name' | 'description' | 'color'>) {
     const nextFolder: ProjectFolder = {
@@ -260,6 +266,19 @@ export default function ProjectsPage() {
                     className="h-10 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100"
                   />
                 </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setPreviewMode((current) => !current)}
+                  className={`h-10 whitespace-nowrap ${
+                    previewMode
+                      ? 'border-purple-400 bg-purple-50 text-purple-700 dark:border-purple-700 dark:bg-purple-950/30 dark:text-purple-200'
+                      : ''
+                  }`}
+                >
+                  <Eye size={16} />
+                  Preview
+                </Button>
                 <Button onClick={() => setFolderOpen(true)} className="h-10 whitespace-nowrap">
                   <Plus size={16} />
                   Ny mappe
@@ -280,6 +299,81 @@ export default function ProjectsPage() {
                   <Plus size={18} />
                   Lag prosjektmappe
                 </Button>
+              </div>
+            ) : previewMode ? (
+              <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
+                <aside className="space-y-3">
+                  {visibleFolders.map((folder) => {
+                    const active = folder.id === previewFolder?.id
+
+                    return (
+                      <button
+                        key={folder.id}
+                        onClick={() => setPreviewFolderId(folder.id)}
+                        onDoubleClick={() => setSelectedFolderId(folder.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') setPreviewFolderId(folder.id)
+                        }}
+                        className={`group flex w-full items-start gap-3 rounded-lg border p-4 text-left transition ${
+                          active
+                            ? 'border-purple-400 bg-purple-50 shadow-sm dark:border-purple-700 dark:bg-purple-950/30'
+                            : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700'
+                        }`}
+                      >
+                        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${folder.color} text-white shadow-sm`}>
+                          <Folder size={22} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
+                          <span className="mt-1 line-clamp-2 block text-sm text-gray-500 dark:text-gray-400">
+                            {folder.description || 'Tom prosjektmappe'}
+                          </span>
+                          <span className="mt-3 block text-xs text-gray-400 dark:text-gray-500">
+                            {folder.items.length} {folder.items.length === 1 ? 'ting lagret' : 'ting lagret'}
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </aside>
+
+                <main className="min-h-[56vh] rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+                  {previewFolder ? (
+                    <>
+                      <div className="border-b border-gray-200 p-5 dark:border-gray-800">
+                        <div className="flex items-center gap-3">
+                          <span className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${previewFolder.color} text-white`}>
+                            <FolderOpen size={21} />
+                          </span>
+                          <div className="min-w-0">
+                            <h2 className="truncate text-xl font-semibold text-gray-950 dark:text-gray-100">{previewFolder.name}</h2>
+                            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{previewFolder.description || 'Ingen beskrivelse'}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {previewFolder.items.length === 0 ? (
+                        <div className="flex min-h-80 flex-col items-center justify-center px-6 text-center">
+                          <FileText size={38} className="mb-4 text-gray-300 dark:text-gray-700" />
+                          <h2 className="font-medium text-gray-950 dark:text-gray-100">Mappen er tom</h2>
+                          <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+                            Legg inn notater, lenker, filer eller oppgaver når du vil samle noe for prosjektet.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 p-5 lg:grid-cols-2">
+                          {previewFolder.items.map((item) => (
+                            <ProjectItemPreviewCard key={item.id} item={item} />
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex min-h-[56vh] items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+                      Ingen prosjekter å forhåndsvise.
+                    </div>
+                  )}
+                </main>
               </div>
             ) : (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -384,6 +478,46 @@ function ProjectItemCard({
           >
             <X size={16} />
           </button>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
+  const meta = itemTypeMeta[item.type]
+  const Icon = meta.icon
+
+  return (
+    <article className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/40">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-300">
+          <Icon size={18} />
+        </span>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className={`font-medium text-gray-950 dark:text-gray-100 ${item.done ? 'line-through opacity-60' : ''}`}>{item.title}</h3>
+            <span className="rounded-md bg-white px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
+              {meta.label}
+            </span>
+          </div>
+          {item.body && <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">{item.body}</p>}
+          {item.url && (
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex max-w-full items-center gap-1 truncate text-sm text-purple-600 hover:underline dark:text-purple-300"
+            >
+              <Link2 size={14} />
+              <span className="truncate">{item.url}</span>
+            </a>
+          )}
+          {item.fileName && (
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+              {item.fileName} {formatFileSize(item.fileSize)}
+            </p>
+          )}
         </div>
       </div>
     </article>
