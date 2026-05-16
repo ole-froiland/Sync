@@ -31,6 +31,10 @@ type FollowSet = Record<string, true>
 type Toast = { id: number; tone: 'success' | 'error'; message: string }
 type SyncBusyAction = 'sync' | 'accept' | 'reject'
 type UsageStats = {
+  codexLimits: Array<{
+    label: string
+    resetLabel: string
+  }>
   codex: {
     requests: number
     totalTokens: number
@@ -726,6 +730,22 @@ function ProfileModal({
               </a>
             </div>
 
+            <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900">
+              {usageStats.codexLimits.map((limit, index) => (
+                <div
+                  key={limit.label}
+                  className={`px-5 py-5 ${index > 0 ? 'border-t border-gray-100 dark:border-gray-800' : ''}`}
+                >
+                  <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    {limit.label}
+                  </p>
+                  <p className="mt-2 text-sm font-medium text-gray-500 dark:text-gray-400">
+                    {limit.resetLabel}
+                  </p>
+                </div>
+              ))}
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <UsageMetricCard
                 label="Codex requests"
@@ -983,6 +1003,16 @@ function buildUsageStats(profile: Profile): UsageStats {
   const heaviestDay = dailyCodex.reduce((max, day) => (day.tokens > max.tokens ? day : max), dailyCodex[0])
 
   return {
+    codexLimits: [
+      {
+        label: '5 hour usage limit',
+        resetLabel: `Resets ${formatTimeOfDayFromNow(8 + seededNumber(seed, 0, 180))}`,
+      },
+      {
+        label: 'Weekly usage limit',
+        resetLabel: `Resets ${formatMonthDayFromNow(2 + seededNumber(seed, 2, 6))}`,
+      },
+    ],
     codex: {
       requests,
       totalTokens,
@@ -1037,5 +1067,14 @@ function formatTimeOfDayFromNow(minutesFromNow: number) {
   return new Intl.DateTimeFormat('en', {
     hour: 'numeric',
     minute: '2-digit',
+  }).format(date)
+}
+
+function formatMonthDayFromNow(daysFromNow: number) {
+  const date = new Date()
+  date.setDate(date.getDate() + daysFromNow)
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
   }).format(date)
 }
