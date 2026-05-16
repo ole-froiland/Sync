@@ -75,7 +75,8 @@ type ProjectItem = {
 }
 
 type ItemType = ProjectItem['type']
-type ResourceType = 'github' | 'local_folder' | 'notion' | 'url' | 'document'
+type ResourceMode = 'github' | 'url' | 'document' | 'app'
+type AppResourceType = 'notion' | 'docs' | 'sheets' | 'word' | 'excel'
 
 const STORAGE_KEY = 'sync-project-folders-v1'
 
@@ -143,6 +144,7 @@ export default function ProjectsPage() {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
   const [folderOpen, setFolderOpen] = useState(false)
   const [itemOpen, setItemOpen] = useState(false)
+  const [localFolderOpen, setLocalFolderOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [previewMode, setPreviewMode] = useState(false)
   const [previewFolderId, setPreviewFolderId] = useState<string | null>(null)
@@ -251,10 +253,16 @@ export default function ProjectsPage() {
         <TopBar
           title={selectedFolder.name}
           actions={
-            <Button size="sm" onClick={() => setItemOpen(true)}>
-              <Plus size={16} />
-              Add Resource
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="secondary" onClick={() => setLocalFolderOpen(true)}>
+                <FolderOpen size={16} />
+                Add mappe
+              </Button>
+              <Button size="sm" onClick={() => setItemOpen(true)}>
+                <Plus size={16} />
+                Add Resource
+              </Button>
+            </div>
           }
         />
 
@@ -263,6 +271,7 @@ export default function ProjectsPage() {
             onClick={() => {
               setSelectedFolderId(null)
               setItemOpen(false)
+              setLocalFolderOpen(false)
             }}
             className="mb-6 inline-flex h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100"
           >
@@ -274,6 +283,7 @@ export default function ProjectsPage() {
             <ProjectDetailContent
               folder={selectedFolder}
               onAddResource={() => setItemOpen(true)}
+              onAddLocalFolder={() => setLocalFolderOpen(true)}
               onUpdate={updateFolder}
               onToggleTask={toggleTask}
               onRemoveItem={removeItem}
@@ -282,6 +292,11 @@ export default function ProjectsPage() {
         </div>
 
         <CreateItemModal open={itemOpen} onClose={() => setItemOpen(false)} onCreate={createItem} />
+        <CreateLocalFolderModal
+          open={localFolderOpen}
+          onClose={() => setLocalFolderOpen(false)}
+          onCreate={createItem}
+        />
       </>
     )
   }
@@ -583,12 +598,14 @@ function ProjectLogoThumbnail({
 function ProjectDetailContent({
   folder,
   onAddResource,
+  onAddLocalFolder,
   onUpdate,
   onToggleTask,
   onRemoveItem,
 }: {
   folder: ProjectFolder
   onAddResource: () => void
+  onAddLocalFolder: () => void
   onUpdate: (folderId: string, updates: Partial<Pick<ProjectFolder, 'name' | 'description' | 'logo' | 'color'>>) => void
   onToggleTask: (itemId: string) => void
   onRemoveItem: (itemId: string) => void
@@ -617,10 +634,16 @@ function ProjectDetailContent({
             </p>
           </div>
         </div>
-        <Button size="sm" onClick={onAddResource}>
-          <Plus size={16} />
-          Add Resource
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={onAddLocalFolder}>
+            <FolderOpen size={16} />
+            Add mappe
+          </Button>
+          <Button size="sm" onClick={onAddResource}>
+            <Plus size={16} />
+            Add Resource
+          </Button>
+        </div>
       </div>
 
       <section className="pt-5">
@@ -634,6 +657,10 @@ function ProjectDetailContent({
             <Button className="mt-5" onClick={onAddResource}>
               <Plus size={16} />
               Add Resource
+            </Button>
+            <Button className="mt-2" variant="secondary" onClick={onAddLocalFolder}>
+              <FolderOpen size={16} />
+              Add mappe
             </Button>
           </div>
         ) : (
@@ -910,9 +937,9 @@ function CreateItemModal({
   onClose: () => void
   onCreate: (item: Omit<ProjectItem, 'id' | 'createdAt' | 'updatedAt'>) => void
 }) {
-  const [type, setType] = useState<ResourceType | 'docs' | 'sheets' | 'word'>('github')
+  const [mode, setMode] = useState<ResourceMode>('github')
+  const [appType, setAppType] = useState<AppResourceType>('docs')
   const [title, setTitle] = useState('')
-  const [body, setBody] = useState('')
   const [url, setUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [repos, setRepos] = useState<GitHubUserRepo[]>([])
@@ -925,9 +952,20 @@ function CreateItemModal({
   const [newRepoPrivate, setNewRepoPrivate] = useState(false)
   const [creatingRepo, setCreatingRepo] = useState(false)
   const [createRepoError, setCreateRepoError] = useState<string | null>(null)
-  const usesUrl = type === 'notion' || type === 'url' || type === 'docs' || type === 'sheets' || type === 'word'
-  const usesPath = type === 'local_folder'
-  const usesFile = type === 'document'
+  const usesFile = mode === 'document'
+  const appOptions: Array<{
+    type: AppResourceType
+    label: string
+    icon: React.ElementType
+    url: string
+  }> = [
+    { type: 'docs', label: 'Google Docs', icon: FilePenLine, url: 'https://docs.new' },
+    { type: 'sheets', label: 'Google Sheets', icon: FileSpreadsheet, url: 'https://sheets.new' },
+    { type: 'word', label: 'Word', icon: FilePenLine, url: 'https://www.office.com/launch/word' },
+    { type: 'excel', label: 'Excel', icon: FileSpreadsheet, url: 'https://www.office.com/launch/excel' },
+    { type: 'notion', label: 'Notion', icon: PanelsTopLeft, url: 'https://www.notion.so/new' },
+  ]
+  const selectedApp = appOptions.find((option) => option.type === appType) ?? appOptions[0]
   const filteredRepos = repos.filter((repo) => {
     const query = repoSearch.trim().toLowerCase()
     if (!query) return true
@@ -955,9 +993,9 @@ function CreateItemModal({
   }, [open])
 
   function reset() {
-    setType('github')
+    setMode('github')
+    setAppType('docs')
     setTitle('')
-    setBody('')
     setUrl('')
     setFile(null)
     setRepoSearch('')
@@ -973,19 +1011,18 @@ function CreateItemModal({
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
-    const fallbackTitle = file?.name ?? url.trim().split('/').filter(Boolean).at(-1) ?? ''
+    const fallbackTitle = mode === 'app' ? selectedApp.label : file?.name ?? url.trim().split('/').filter(Boolean).at(-1) ?? ''
     const itemTitle = title.trim() || fallbackTitle
     if (!itemTitle) return
 
     onCreate({
-      type,
+      type: mode === 'app' ? appType : mode,
       title: itemTitle,
-      body: body.trim(),
-      url: usesUrl ? url.trim() : undefined,
-      path: usesPath ? url.trim() : undefined,
+      body: '',
+      url: mode === 'url' ? url.trim() : mode === 'app' ? selectedApp.url : undefined,
       fileName: usesFile ? file?.name : undefined,
       fileSize: usesFile ? file?.size : undefined,
-      status: usesFile ? 'Uploaded' : 'Connected',
+      status: mode === 'app' ? 'Created' : usesFile ? 'Uploaded' : 'Connected',
     })
     reset()
     onClose()
@@ -1042,41 +1079,31 @@ function CreateItemModal({
     }
   }
 
-  function selectQuickResource(nextType: ResourceType | 'docs' | 'sheets' | 'word') {
-    setType(nextType)
-    const defaults: Partial<Record<typeof nextType, { title: string; url: string; body: string }>> = {
-      notion: { title: 'Notion-side', url: 'https://www.notion.so/new', body: 'Notion-side for prosjektet.' },
-      docs: { title: 'Google Docs', url: 'https://docs.new', body: 'Google Docs-ressurs for prosjektet.' },
-      sheets: { title: 'Google Sheets', url: 'https://sheets.new', body: 'Google Sheets-ressurs for prosjektet.' },
-      word: { title: 'Word dokument', url: 'https://www.office.com/launch/word', body: 'Word-ressurs for prosjektet.' },
-    }
-    const preset = defaults[nextType]
-    setTitle(preset?.title ?? '')
-    setUrl(preset?.url ?? '')
-    setBody(preset?.body ?? '')
+  function selectMode(nextMode: ResourceMode) {
+    setMode(nextMode)
+    setTitle('')
+    setUrl('')
     setFile(null)
   }
 
   return (
     <Modal open={open} onClose={() => { reset(); onClose() }} title="Add Resource" className="max-w-4xl">
       <div className="space-y-5">
-        <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid gap-2 sm:grid-cols-4">
           {[
             { type: 'github' as const, label: 'Repos', icon: FolderGit2 },
             { type: 'url' as const, label: 'Link', icon: Globe2 },
             { type: 'document' as const, label: 'Upload', icon: Upload },
-            { type: 'local_folder' as const, label: 'Folder', icon: FolderOpen },
-            { type: 'notion' as const, label: 'Notion', icon: PanelsTopLeft },
-            { type: 'docs' as const, label: 'Docs', icon: FilePenLine },
+            { type: 'app' as const, label: 'App', icon: PanelsTopLeft },
           ].map((option) => {
             const Icon = option.icon
-            const active = type === option.type
+            const active = mode === option.type
 
             return (
               <button
                 key={option.type}
                 type="button"
-                onClick={() => selectQuickResource(option.type)}
+                onClick={() => selectMode(option.type)}
                 className={`flex h-20 flex-col items-center justify-center gap-2 rounded-lg border text-sm font-medium transition ${
                   active
                     ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-200'
@@ -1090,7 +1117,7 @@ function CreateItemModal({
           })}
         </div>
 
-        {type === 'github' ? (
+        {mode === 'github' ? (
           <div className="space-y-4">
             <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-gray-800 dark:bg-gray-950/40">
               {(['existing', 'new'] as const).map((mode) => (
@@ -1204,49 +1231,46 @@ function CreateItemModal({
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid gap-2 sm:grid-cols-4">
-              {[
-                { type: 'sheets' as const, label: 'Sheets', icon: FileSpreadsheet },
-                { type: 'word' as const, label: 'Word', icon: FilePenLine },
-                { type: 'notion' as const, label: 'Notion', icon: PanelsTopLeft },
-                { type: 'docs' as const, label: 'Docs', icon: FilePenLine },
-              ].map((option) => {
-                const Icon = option.icon
-                return (
-                  <button
-                    key={option.type}
-                    type="button"
-                    onClick={() => selectQuickResource(option.type)}
-                    className={`flex h-14 items-center justify-center gap-2 rounded-lg border text-sm transition ${
-                      type === option.type
-                        ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-200'
-                        : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800'
-                    }`}
-                  >
-                    <Icon size={17} />
-                    {option.label}
-                  </button>
-                )
-              })}
-            </div>
+            {mode === 'app' && (
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Velg app</label>
+                <div className="grid gap-2 sm:grid-cols-5">
+                  {appOptions.map((option) => {
+                    const Icon = option.icon
+                    return (
+                      <button
+                        key={option.type}
+                        type="button"
+                        onClick={() => setAppType(option.type)}
+                        className={`flex h-16 flex-col items-center justify-center gap-1 rounded-lg border text-sm transition ${
+                          appType === option.type
+                            ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-200'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800'
+                        }`}
+                      >
+                        <Icon size={18} />
+                        {option.label.replace('Google ', '')}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
-            <Input label="Navn" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="F.eks. Brand docs, Figma brief, lokal mappe" required={!usesFile} />
-            {usesUrl && (
+            <Input
+              label="Navn"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder={mode === 'app' ? `Navn på ${selectedApp.label}` : mode === 'url' ? 'Navn på lenken' : 'Navn på filen'}
+              required={!usesFile}
+            />
+            {mode === 'url' && (
               <Input
-                label="URL"
+                label="Link"
                 value={url}
                 onChange={(event) => setUrl(event.target.value)}
                 placeholder="https://..."
                 type="url"
-                required
-              />
-            )}
-            {usesPath && (
-              <Input
-                label="Mappe-sti"
-                value={url}
-                onChange={(event) => setUrl(event.target.value)}
-                placeholder="/Users/navn/Prosjekter/app"
                 required
               />
             )}
@@ -1261,13 +1285,6 @@ function CreateItemModal({
                 />
               </div>
             )}
-            <Textarea
-              label="Notat"
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-              placeholder="Valgfri status, eier, miljø, eller hvorfor ressursen hører til prosjektet."
-              rows={4}
-            />
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="secondary" onClick={() => { reset(); onClose() }}>
                 Avbryt
@@ -1280,6 +1297,70 @@ function CreateItemModal({
           </form>
         )}
       </div>
+    </Modal>
+  )
+}
+
+function CreateLocalFolderModal({
+  open,
+  onClose,
+  onCreate,
+}: {
+  open: boolean
+  onClose: () => void
+  onCreate: (item: Omit<ProjectItem, 'id' | 'createdAt' | 'updatedAt'>) => void
+}) {
+  const [title, setTitle] = useState('')
+  const [path, setPath] = useState('')
+
+  function reset() {
+    setTitle('')
+    setPath('')
+  }
+
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
+    const fallbackTitle = path.trim().split('/').filter(Boolean).at(-1) ?? ''
+    const itemTitle = title.trim() || fallbackTitle
+    if (!itemTitle || !path.trim()) return
+
+    onCreate({
+      type: 'local_folder',
+      title: itemTitle,
+      body: '',
+      path: path.trim(),
+      status: 'Folder',
+    })
+    reset()
+    onClose()
+  }
+
+  return (
+    <Modal open={open} onClose={() => { reset(); onClose() }} title="Add mappe">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Input
+          label="Navn"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder="F.eks. Frontend, Design, Assets"
+        />
+        <Input
+          label="Mappe-sti"
+          value={path}
+          onChange={(event) => setPath(event.target.value)}
+          placeholder="/Users/navn/Prosjekter/app"
+          required
+        />
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" onClick={() => { reset(); onClose() }}>
+            Avbryt
+          </Button>
+          <Button type="submit">
+            <Plus size={16} />
+            Legg til mappe
+          </Button>
+        </div>
+      </form>
     </Modal>
   )
 }
