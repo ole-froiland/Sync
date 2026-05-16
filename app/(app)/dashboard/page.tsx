@@ -3,18 +3,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import PostDetailModal from '@/components/dashboard/PostDetailModal'
-import CreatePostModal from '@/components/dashboard/CreatePostModal'
 import InviteMemberModal from '@/components/dashboard/InviteMemberModal'
 import CreateProjectModal from '@/components/projects/CreateProjectModal'
-import CreateGitHubRepoModal from '@/components/dashboard/CreateGitHubRepoModal'
 import FeedView from '@/components/dashboard/views/FeedView'
 import DiscoverView from '@/components/dashboard/views/DiscoverView'
 import TrendingView from '@/components/dashboard/views/TrendingView'
-import Button from '@/components/ui/Button'
 import { useUser } from '@/context/UserContext'
 import { mockPosts } from '@/lib/mock-data'
 import type { Post, FeedItem, ModelCost } from '@/types'
-import { GitBranch } from 'lucide-react'
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
 const NEWS_REFRESH_MS = 5 * 60 * 1000
@@ -42,10 +38,8 @@ export default function DashboardPage() {
   const [modelCosts, setModelCosts] = useState<ModelCost[]>([])
 
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
-  const [postModalOpen, setPostModalOpen] = useState(false)
   const [projectModalOpen, setProjectModalOpen] = useState(false)
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
-  const [githubModalOpen, setGithubModalOpen] = useState(false)
 
   // Hydrate tab from localStorage after mount to avoid SSR mismatch
   useEffect(() => {
@@ -139,26 +133,24 @@ export default function DashboardPage() {
     }
   }, [])
 
+  useEffect(() => {
+    function handlePostCreated(event: Event) {
+      const createdPost = (event as CustomEvent<Post>).detail
+      setPosts((prev) => [createdPost, ...prev.filter((post) => post.id !== createdPost.id)])
+      setPostsLoading(false)
+    }
+
+    window.addEventListener('sync:post-created', handlePostCreated as EventListener)
+    return () => window.removeEventListener('sync:post-created', handlePostCreated as EventListener)
+  }, [])
+
   return (
     <>
-      <TopBar
-        title="Dashboard"
-        actions={
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="secondary" onClick={() => setGithubModalOpen(true)}>
-              <GitBranch size={14} />
-              New repo
-            </Button>
-            <Button size="sm" onClick={() => setPostModalOpen(true)}>
-              New post
-            </Button>
-          </div>
-        }
-      />
+      <TopBar title="Dashboard" />
 
       <div className="flex-1 overflow-y-auto">
         {/* Tab navigation */}
-        <div className="border-b border-gray-100 dark:border-gray-800 px-6 sticky top-0 bg-gray-50 dark:bg-gray-950 z-10">
+        <div className="px-6 sticky top-0 bg-gray-50 dark:bg-gray-950 z-10">
           <nav className="flex items-center max-w-5xl mx-auto">
             {TABS.map((tab) => (
               <button
@@ -191,7 +183,7 @@ export default function DashboardPage() {
               onPostClick={setSelectedPost}
               onFetchNews={fetchNews}
               onCreateProject={() => setProjectModalOpen(true)}
-              onCreatePost={() => setPostModalOpen(true)}
+              onCreatePost={() => window.dispatchEvent(new Event('sync:open-post-modal'))}
               onInviteMember={() => setInviteModalOpen(true)}
             />
           )}
@@ -202,13 +194,6 @@ export default function DashboardPage() {
 
       <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} />
 
-      <CreatePostModal
-        open={postModalOpen}
-        onClose={() => setPostModalOpen(false)}
-        onCreated={(post) => setPosts((prev) => [post, ...prev])}
-        userId={profile?.id ?? ''}
-        userProfile={{ name: profile?.name ?? 'User', avatar_url: profile?.avatar_url ?? null }}
-      />
       <CreateProjectModal
         open={projectModalOpen}
         onClose={() => setProjectModalOpen(false)}
@@ -219,11 +204,6 @@ export default function DashboardPage() {
         open={inviteModalOpen}
         onClose={() => setInviteModalOpen(false)}
         userId={profile?.id ?? ''}
-      />
-      <CreateGitHubRepoModal
-        open={githubModalOpen}
-        onClose={() => setGithubModalOpen(false)}
-        onCreated={() => {}}
       />
     </>
   )
