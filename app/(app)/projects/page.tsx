@@ -28,6 +28,7 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Modal from '@/components/ui/Modal'
 import Textarea from '@/components/ui/Textarea'
+import type { GitHubUserRepo } from '@/types'
 
 type ProjectFolder = {
   id: string
@@ -111,18 +112,6 @@ const itemTypeMeta: Record<ItemType, { label: string; icon: React.ElementType }>
   excel: { label: 'Excel', icon: FileSpreadsheet },
   folder: { label: 'Mappe', icon: FolderPlus },
 }
-
-const resourceTypes: Array<{
-  type: ResourceType
-  label: string
-  description: string
-}> = [
-  { type: 'github', label: 'GitHub repository', description: 'Koble repo, README eller issues.' },
-  { type: 'local_folder', label: 'Lokal mappe', description: 'Legg inn sti til en arbeidsmappe.' },
-  { type: 'notion', label: 'Notion-side', description: 'Samle research, specs eller docs.' },
-  { type: 'url', label: 'Lenke / URL', description: 'Nettside, demo, design eller referanse.' },
-  { type: 'document', label: 'Dokument / fil', description: 'Last opp eller registrer en fil.' },
-]
 
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -921,14 +910,49 @@ function CreateItemModal({
   onClose: () => void
   onCreate: (item: Omit<ProjectItem, 'id' | 'createdAt' | 'updatedAt'>) => void
 }) {
-  const [type, setType] = useState<ResourceType>('github')
+  const [type, setType] = useState<ResourceType | 'docs' | 'sheets' | 'word'>('github')
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [url, setUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
-  const usesUrl = type === 'github' || type === 'notion' || type === 'url'
+  const [repos, setRepos] = useState<GitHubUserRepo[]>([])
+  const [reposLoading, setReposLoading] = useState(true)
+  const [repoError, setRepoError] = useState<string | null>(null)
+  const [repoSearch, setRepoSearch] = useState('')
+  const [repoMode, setRepoMode] = useState<'existing' | 'new'>('existing')
+  const [newRepoName, setNewRepoName] = useState('')
+  const [newRepoDescription, setNewRepoDescription] = useState('')
+  const [newRepoPrivate, setNewRepoPrivate] = useState(false)
+  const [creatingRepo, setCreatingRepo] = useState(false)
+  const [createRepoError, setCreateRepoError] = useState<string | null>(null)
+  const usesUrl = type === 'notion' || type === 'url' || type === 'docs' || type === 'sheets' || type === 'word'
   const usesPath = type === 'local_folder'
   const usesFile = type === 'document'
+  const filteredRepos = repos.filter((repo) => {
+    const query = repoSearch.trim().toLowerCase()
+    if (!query) return true
+    return `${repo.full_name} ${repo.description ?? ''} ${repo.language ?? ''}`.toLowerCase().includes(query)
+  })
+
+  useEffect(() => {
+    if (!open) return
+    fetch('/api/github/user-repos')
+      .then(async (response) => {
+        const data = await response.json()
+        if (!response.ok) {
+          setRepoError(data.error ?? 'Kunne ikke hente repoer.')
+          setRepos([])
+          return
+        }
+        setRepos(Array.isArray(data) ? data : [])
+        setRepoError(null)
+      })
+      .catch(() => {
+        setRepoError('Kunne ikke hente repoer akkurat nå.')
+        setRepos([])
+      })
+      .finally(() => setReposLoading(false))
+  }, [open])
 
   function reset() {
     setType('github')
@@ -936,6 +960,15 @@ function CreateItemModal({
     setBody('')
     setUrl('')
     setFile(null)
+    setRepoSearch('')
+    setRepoMode('existing')
+    setNewRepoName('')
+    setNewRepoDescription('')
+    setNewRepoPrivate(false)
+    setCreatingRepo(false)
+    setCreateRepoError(null)
+    setReposLoading(true)
+    setRepoError(null)
   }
 
   function handleSubmit(event: React.FormEvent) {
@@ -958,91 +991,295 @@ function CreateItemModal({
     onClose()
   }
 
-  return (
-    <Modal open={open} onClose={onClose} title="Add Resource" className="max-w-2xl">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Type</label>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {resourceTypes.map((resource) => {
-              const meta = itemTypeMeta[resource.type]
-              const Icon = meta.icon
-              const active = type === resource.type
+  function addRepo(repo: GitHubUserRepo) {
+    onCreate({
+      type: 'github',
+      title: repo.full_name,
+      body: repo.description ?? '',
+      url: repo.html_url,
+      status: repo.private ? 'Private repo' : 'Connected',
+    })
+    reset()
+    onClose()
+  }
 
-              return (
+  async function createRepo(event: React.FormEvent) {
+    event.preventDefault()
+    if (!newRepoName.trim()) return
+    setCreatingRepo(true)
+    setCreateRepoError(null)
+
+    try {
+      const response = await fetch('/api/github/create-repo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newRepoName.trim(),
+          description: newRepoDescription.trim() || undefined,
+          private: newRepoPrivate,
+        }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        setCreateRepoError(data.error ?? 'Kunne ikke lage repo.')
+        setCreatingRepo(false)
+        return
+      }
+
+      onCreate({
+        type: 'github',
+        title: data.repo.full_name,
+        body: newRepoDescription.trim(),
+        url: data.repo.html_url,
+        status: newRepoPrivate ? 'Private repo' : 'Created',
+      })
+      reset()
+      onClose()
+    } catch {
+      setCreateRepoError('Kunne ikke lage repo akkurat nå.')
+      setCreatingRepo(false)
+    }
+  }
+
+  function selectQuickResource(nextType: ResourceType | 'docs' | 'sheets' | 'word') {
+    setType(nextType)
+    const defaults: Partial<Record<typeof nextType, { title: string; url: string; body: string }>> = {
+      notion: { title: 'Notion-side', url: 'https://www.notion.so/new', body: 'Notion-side for prosjektet.' },
+      docs: { title: 'Google Docs', url: 'https://docs.new', body: 'Google Docs-ressurs for prosjektet.' },
+      sheets: { title: 'Google Sheets', url: 'https://sheets.new', body: 'Google Sheets-ressurs for prosjektet.' },
+      word: { title: 'Word dokument', url: 'https://www.office.com/launch/word', body: 'Word-ressurs for prosjektet.' },
+    }
+    const preset = defaults[nextType]
+    setTitle(preset?.title ?? '')
+    setUrl(preset?.url ?? '')
+    setBody(preset?.body ?? '')
+    setFile(null)
+  }
+
+  return (
+    <Modal open={open} onClose={() => { reset(); onClose() }} title="Add Resource" className="max-w-4xl">
+      <div className="space-y-5">
+        <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          {[
+            { type: 'github' as const, label: 'Repos', icon: FolderGit2 },
+            { type: 'url' as const, label: 'Link', icon: Globe2 },
+            { type: 'document' as const, label: 'Upload', icon: Upload },
+            { type: 'local_folder' as const, label: 'Folder', icon: FolderOpen },
+            { type: 'notion' as const, label: 'Notion', icon: PanelsTopLeft },
+            { type: 'docs' as const, label: 'Docs', icon: FilePenLine },
+          ].map((option) => {
+            const Icon = option.icon
+            const active = type === option.type
+
+            return (
+              <button
+                key={option.type}
+                type="button"
+                onClick={() => selectQuickResource(option.type)}
+                className={`flex h-20 flex-col items-center justify-center gap-2 rounded-lg border text-sm font-medium transition ${
+                  active
+                    ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-200'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800'
+                }`}
+              >
+                <Icon size={20} />
+                {option.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {type === 'github' ? (
+          <div className="space-y-4">
+            <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-gray-800 dark:bg-gray-950/40">
+              {(['existing', 'new'] as const).map((mode) => (
                 <button
-                  key={resource.type}
+                  key={mode}
                   type="button"
-                  onClick={() => setType(resource.type)}
-                  className={`flex min-h-24 items-start gap-3 rounded-lg border p-3 text-left transition ${
-                    active
-                      ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-200'
-                      : 'border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800'
+                  onClick={() => setRepoMode(mode)}
+                  className={`h-9 flex-1 rounded-md text-sm font-medium transition ${
+                    repoMode === mode
+                      ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-800 dark:text-gray-100'
+                      : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
                   }`}
                 >
-                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 dark:bg-gray-900 dark:text-purple-300">
-                    <Icon size={18} />
-                  </span>
-                  <span>
-                    <span className="block text-sm font-medium">{resource.label}</span>
-                    <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                      {resource.description}
-                    </span>
-                  </span>
+                  {mode === 'existing' ? 'Velg repo' : 'Lag nytt repo'}
                 </button>
-              )
-            })}
-          </div>
-        </div>
+              ))}
+            </div>
 
-        <Input label="Navn" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="F.eks. Frontend repo, Brand docs, Figma brief" required={!usesFile} />
-        {usesUrl && (
-          <Input
-            label="URL"
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://..."
-            type="url"
-            required
-          />
-        )}
-        {usesPath && (
-          <Input
-            label="Mappe-sti"
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder="/Users/navn/Prosjekter/app"
-            required
-          />
-        )}
-        {usesFile && (
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Fil</label>
-            <input
-              type="file"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 file:mr-3 file:rounded-md file:border-0 file:bg-purple-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-purple-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:file:bg-purple-950 dark:file:text-purple-200"
-              required
-            />
+            {repoMode === 'existing' ? (
+              <div className="space-y-3">
+                <Input
+                  value={repoSearch}
+                  onChange={(event) => setRepoSearch(event.target.value)}
+                  placeholder="Søk i repoene dine"
+                />
+                <div className="max-h-80 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
+                  {reposLoading ? (
+                    <div className="flex min-h-36 items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+                      Henter repoer...
+                    </div>
+                  ) : repoError ? (
+                    <div className="flex min-h-36 flex-col items-center justify-center gap-3 px-6 text-center">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{repoError}</p>
+                      <a href="/api/github/connect">
+                        <Button size="sm">Koble til GitHub</Button>
+                      </a>
+                    </div>
+                  ) : filteredRepos.length === 0 ? (
+                    <div className="flex min-h-36 flex-col items-center justify-center gap-3 px-6 text-center">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Fant ingen repoer her.</p>
+                      <Button size="sm" onClick={() => setRepoMode('new')}>
+                        <Plus size={16} />
+                        Lag nytt repo
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-200 dark:divide-gray-800">
+                      {filteredRepos.map((repo) => (
+                        <button
+                          key={repo.id}
+                          type="button"
+                          onClick={() => addRepo(repo)}
+                          className="flex w-full items-start justify-between gap-4 p-3 text-left transition hover:bg-gray-50 dark:hover:bg-gray-800/70"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">
+                              {repo.full_name}
+                            </span>
+                            <span className="mt-1 line-clamp-2 block text-xs text-gray-500 dark:text-gray-400">
+                              {repo.description || 'Ingen beskrivelse'}
+                            </span>
+                          </span>
+                          <span className="shrink-0 rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                            {repo.language ?? (repo.private ? 'Private' : 'Repo')}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={createRepo} className="space-y-4">
+                <Input
+                  label="Repository name"
+                  value={newRepoName}
+                  onChange={(event) => setNewRepoName(event.target.value.replace(/\s+/g, '-'))}
+                  placeholder="mitt-nye-prosjekt"
+                  required
+                />
+                <Textarea
+                  label="Beskrivelse"
+                  value={newRepoDescription}
+                  onChange={(event) => setNewRepoDescription(event.target.value)}
+                  rows={3}
+                />
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={newRepoPrivate}
+                    onChange={(event) => setNewRepoPrivate(event.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  Privat repo
+                </label>
+                {createRepoError && (
+                  <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-300">
+                    {createRepoError}
+                  </p>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="secondary" onClick={() => setRepoMode('existing')}>
+                    Tilbake
+                  </Button>
+                  <Button type="submit" loading={creatingRepo}>
+                    Lag repo og legg til
+                  </Button>
+                </div>
+              </form>
+            )}
           </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid gap-2 sm:grid-cols-4">
+              {[
+                { type: 'sheets' as const, label: 'Sheets', icon: FileSpreadsheet },
+                { type: 'word' as const, label: 'Word', icon: FilePenLine },
+                { type: 'notion' as const, label: 'Notion', icon: PanelsTopLeft },
+                { type: 'docs' as const, label: 'Docs', icon: FilePenLine },
+              ].map((option) => {
+                const Icon = option.icon
+                return (
+                  <button
+                    key={option.type}
+                    type="button"
+                    onClick={() => selectQuickResource(option.type)}
+                    className={`flex h-14 items-center justify-center gap-2 rounded-lg border text-sm transition ${
+                      type === option.type
+                        ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-200'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    <Icon size={17} />
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
+
+            <Input label="Navn" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="F.eks. Brand docs, Figma brief, lokal mappe" required={!usesFile} />
+            {usesUrl && (
+              <Input
+                label="URL"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="https://..."
+                type="url"
+                required
+              />
+            )}
+            {usesPath && (
+              <Input
+                label="Mappe-sti"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="/Users/navn/Prosjekter/app"
+                required
+              />
+            )}
+            {usesFile && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Fil</label>
+                <input
+                  type="file"
+                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 file:mr-3 file:rounded-md file:border-0 file:bg-purple-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-purple-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:file:bg-purple-950 dark:file:text-purple-200"
+                  required
+                />
+              </div>
+            )}
+            <Textarea
+              label="Notat"
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+              placeholder="Valgfri status, eier, miljø, eller hvorfor ressursen hører til prosjektet."
+              rows={4}
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="secondary" onClick={() => { reset(); onClose() }}>
+                Avbryt
+              </Button>
+              <Button type="submit">
+                <Plus size={16} />
+                Legg til
+              </Button>
+            </div>
+          </form>
         )}
-        <Textarea
-          label="Notat"
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          placeholder="Valgfri status, eier, miljø, eller hvorfor ressursen hører til prosjektet."
-          rows={4}
-        />
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={() => { reset(); onClose() }}>
-            Avbryt
-          </Button>
-          <Button type="submit">
-            <Plus size={16} />
-            Legg til
-          </Button>
-        </div>
-      </form>
+      </div>
     </Modal>
   )
 }
