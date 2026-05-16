@@ -2,16 +2,20 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowLeft,
   CheckSquare,
   Eye,
   FilePenLine,
+  File as FileIcon,
   FileSpreadsheet,
   FileText,
   Folder,
+  FolderGit2,
   FolderPlus,
   FolderOpen,
+  Globe2,
+  Image as ImageIcon,
   Link2,
+  PanelsTopLeft,
   Plus,
   Search,
   StickyNote,
@@ -29,23 +33,47 @@ type ProjectFolder = {
   name: string
   description: string
   color: string
+  logo?: ProjectLogo
   createdAt: string
   items: ProjectItem[]
 }
 
+type ProjectLogo = {
+  type: 'icon' | 'emoji' | 'image'
+  value: string
+}
+
 type ProjectItem = {
   id: string
-  type: 'note' | 'link' | 'file' | 'task' | 'docs' | 'sheets' | 'word' | 'excel' | 'folder'
+  type:
+    | 'note'
+    | 'link'
+    | 'file'
+    | 'task'
+    | 'docs'
+    | 'sheets'
+    | 'word'
+    | 'excel'
+    | 'folder'
+    | 'github'
+    | 'local_folder'
+    | 'notion'
+    | 'url'
+    | 'document'
   title: string
   body: string
   url?: string
+  path?: string
   fileName?: string
   fileSize?: number
   done?: boolean
+  status?: string
   createdAt: string
+  updatedAt?: string
 }
 
 type ItemType = ProjectItem['type']
+type ResourceType = 'github' | 'local_folder' | 'notion' | 'url' | 'document'
 
 const STORAGE_KEY = 'sync-project-folders-v1'
 
@@ -57,11 +85,25 @@ const folderColors = [
   { label: 'Red', value: 'from-rose-500 to-red-400' },
 ]
 
+const logoPresets: ProjectLogo[] = [
+  { type: 'icon', value: 'folder' },
+  { type: 'emoji', value: '🚀' },
+  { type: 'emoji', value: '✨' },
+  { type: 'emoji', value: '🧠' },
+  { type: 'emoji', value: '🛠️' },
+  { type: 'emoji', value: '📦' },
+]
+
 const itemTypeMeta: Record<ItemType, { label: string; icon: React.ElementType }> = {
   note: { label: 'Notat', icon: StickyNote },
   link: { label: 'Lenke', icon: Link2 },
   file: { label: 'Fil', icon: Upload },
   task: { label: 'Oppgave', icon: CheckSquare },
+  github: { label: 'GitHub repo', icon: FolderGit2 },
+  local_folder: { label: 'Lokal mappe', icon: FolderOpen },
+  notion: { label: 'Notion', icon: PanelsTopLeft },
+  url: { label: 'URL', icon: Globe2 },
+  document: { label: 'Dokument', icon: FileIcon },
   docs: { label: 'Google Docs', icon: FilePenLine },
   sheets: { label: 'Google Sheets', icon: FileSpreadsheet },
   word: { label: 'Word', icon: FilePenLine },
@@ -69,18 +111,16 @@ const itemTypeMeta: Record<ItemType, { label: string; icon: React.ElementType }>
   folder: { label: 'Mappe', icon: FolderPlus },
 }
 
-const packagePresets: Array<{
-  type: ItemType
+const resourceTypes: Array<{
+  type: ResourceType
   label: string
-  provider: 'Google' | 'Microsoft'
-  url: string
+  description: string
 }> = [
-  { type: 'docs', label: 'Docs', provider: 'Google', url: 'https://docs.new' },
-  { type: 'sheets', label: 'Sheets', provider: 'Google', url: 'https://sheets.new' },
-  { type: 'folder', label: 'Drive-mappe', provider: 'Google', url: 'https://drive.google.com/drive/my-drive' },
-  { type: 'word', label: 'Word', provider: 'Microsoft', url: 'https://www.office.com/launch/word' },
-  { type: 'excel', label: 'Excel', provider: 'Microsoft', url: 'https://www.office.com/launch/excel' },
-  { type: 'folder', label: 'OneDrive-mappe', provider: 'Microsoft', url: 'https://onedrive.live.com' },
+  { type: 'github', label: 'GitHub repository', description: 'Koble repo, README eller issues.' },
+  { type: 'local_folder', label: 'Lokal mappe', description: 'Legg inn sti til en arbeidsmappe.' },
+  { type: 'notion', label: 'Notion-side', description: 'Samle research, specs eller docs.' },
+  { type: 'url', label: 'Lenke / URL', description: 'Nettside, demo, design eller referanse.' },
+  { type: 'document', label: 'Dokument / fil', description: 'Last opp eller registrer en fil.' },
 ]
 
 function makeId(prefix: string) {
@@ -92,6 +132,20 @@ function formatFileSize(size?: number) {
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
   return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+function formatUpdatedAt(value?: string) {
+  if (!value) return 'Akkurat nå'
+  return new Intl.DateTimeFormat('no', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
+function projectLogo(folder: ProjectFolder): ProjectLogo {
+  return folder.logo ?? { type: 'icon', value: 'folder' }
 }
 
 export default function ProjectsPage() {
@@ -131,7 +185,10 @@ export default function ProjectsPage() {
     if (!query) return folders
     return folders.filter((folder) => {
       const folderText = `${folder.name} ${folder.description}`.toLowerCase()
-      const itemText = folder.items.map((item) => `${item.title} ${item.body} ${item.url ?? ''}`).join(' ').toLowerCase()
+      const itemText = folder.items
+        .map((item) => `${item.title} ${item.body} ${item.url ?? ''} ${item.path ?? ''}`)
+        .join(' ')
+        .toLowerCase()
       return folderText.includes(query) || itemText.includes(query)
     })
   }, [folders, search])
@@ -139,7 +196,7 @@ export default function ProjectsPage() {
   const previewFolder =
     visibleFolders.find((folder) => folder.id === previewFolderId) ?? visibleFolders[0] ?? null
 
-  function createFolder(folder: Pick<ProjectFolder, 'name' | 'description' | 'color'>) {
+  function createFolder(folder: Pick<ProjectFolder, 'name' | 'description' | 'color' | 'logo'>) {
     const nextFolder: ProjectFolder = {
       ...folder,
       id: makeId('folder'),
@@ -150,12 +207,19 @@ export default function ProjectsPage() {
     setSelectedFolderId(nextFolder.id)
   }
 
-  function createItem(item: Omit<ProjectItem, 'id' | 'createdAt'>) {
+  function updateFolder(folderId: string, updates: Partial<Pick<ProjectFolder, 'name' | 'description' | 'logo' | 'color'>>) {
+    setFolders((current) =>
+      current.map((folder) => (folder.id === folderId ? { ...folder, ...updates } : folder))
+    )
+  }
+
+  function createItem(item: Omit<ProjectItem, 'id' | 'createdAt' | 'updatedAt'>) {
     if (!selectedFolder) return
     const nextItem: ProjectItem = {
       ...item,
       id: makeId('item'),
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     }
     setFolders((current) =>
       current.map((folder) =>
@@ -203,54 +267,6 @@ export default function ProjectsPage() {
       />
 
       <div className="flex-1 overflow-y-auto px-6 py-8">
-        {selectedFolder ? (
-          <div className="mx-auto max-w-6xl">
-            <button
-              onClick={() => setSelectedFolderId(null)}
-              className="mb-6 inline-flex h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100"
-            >
-              <ArrowLeft size={16} />
-              Tilbake til prosjektmapper
-            </button>
-
-            <main className="min-h-[64vh] rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-              <div className="flex flex-col gap-4 border-b border-gray-200 p-5 dark:border-gray-800 md:flex-row md:items-start md:justify-between">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-3">
-                    <span className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${selectedFolder.color} text-white`}>
-                      <FolderOpen size={21} />
-                    </span>
-                    <div className="min-w-0">
-                      <h1 className="truncate text-xl font-semibold text-gray-950 dark:text-gray-100">{selectedFolder.name}</h1>
-                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{selectedFolder.description || 'Ingen beskrivelse'}</p>
-                    </div>
-                  </div>
-                </div>
-                <Button size="sm" onClick={() => setItemOpen(true)}>
-                  <Plus size={16} />
-                  Legg til
-                </Button>
-              </div>
-
-              {selectedFolder.items.length === 0 ? (
-                <div className="flex min-h-80 flex-col items-center justify-center px-6 text-center">
-                  <FileText size={38} className="mb-4 text-gray-300 dark:text-gray-700" />
-                  <h2 className="font-medium text-gray-950 dark:text-gray-100">Mappen er tom</h2>
-                  <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-                    Legg inn notater, lenker, filer eller oppgaver når du vil samle noe for prosjektet.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid gap-3 p-5 lg:grid-cols-2">
-                  {selectedFolder.items.map((item) => (
-                    <ProjectItemCard key={item.id} item={item} onToggle={toggleTask} onRemove={removeItem} />
-                  ))}
-                </div>
-              )}
-            </main>
-          </div>
-        ) : (
-          <>
             <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <h1 className="text-2xl font-semibold text-gray-950 dark:text-gray-100">Prosjektmapper</h1>
@@ -322,9 +338,7 @@ export default function ProjectsPage() {
                             : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700'
                         }`}
                       >
-                        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${folder.color} text-white shadow-sm`}>
-                          <Folder size={22} />
-                        </span>
+                        <ProjectLogoThumbnail folder={folder} className="h-11 w-11" iconSize={22} />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
                           <span className="mt-1 line-clamp-2 block text-sm text-gray-500 dark:text-gray-400">
@@ -344,9 +358,7 @@ export default function ProjectsPage() {
                     <>
                       <div className="border-b border-gray-200 p-5 dark:border-gray-800">
                         <div className="flex items-center gap-3">
-                          <span className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${previewFolder.color} text-white`}>
-                            <FolderOpen size={21} />
-                          </span>
+                          <ProjectLogoThumbnail folder={previewFolder} className="h-10 w-10" iconSize={21} open />
                           <div className="min-w-0">
                             <h2 className="truncate text-xl font-semibold text-gray-950 dark:text-gray-100">{previewFolder.name}</h2>
                             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{previewFolder.description || 'Ingen beskrivelse'}</p>
@@ -388,9 +400,7 @@ export default function ProjectsPage() {
                     }}
                     className="group flex min-h-36 w-full items-start gap-4 rounded-lg border border-gray-200 bg-white p-5 text-left transition hover:border-purple-400 hover:bg-purple-50/60 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
                   >
-                    <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${folder.color} text-white shadow-sm`}>
-                      <Folder size={24} />
-                    </span>
+                    <ProjectLogoThumbnail folder={folder} className="h-12 w-12" iconSize={24} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-lg font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
                       <span className="mt-2 line-clamp-2 block text-sm text-gray-500 dark:text-gray-400">
@@ -404,11 +414,21 @@ export default function ProjectsPage() {
                 ))}
               </div>
             )}
-          </>
-        )}
       </div>
 
       <CreateFolderModal open={folderOpen} onClose={() => setFolderOpen(false)} onCreate={createFolder} />
+      <ProjectDetailModal
+        folder={selectedFolder}
+        open={!!selectedFolder}
+        onClose={() => {
+          setSelectedFolderId(null)
+          setItemOpen(false)
+        }}
+        onAddResource={() => setItemOpen(true)}
+        onUpdate={updateFolder}
+        onToggleTask={toggleTask}
+        onRemoveItem={removeItem}
+      />
       <CreateItemModal open={itemOpen} onClose={() => setItemOpen(false)} onCreate={createItem} />
     </>
   )
@@ -439,6 +459,9 @@ function ProjectItemCard({
               <span className="rounded-md bg-white px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
                 {meta.label}
               </span>
+              <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                {item.status ?? (item.done ? 'Done' : 'Active')}
+              </span>
             </div>
             {item.body && <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">{item.body}</p>}
             {item.url && (
@@ -452,11 +475,20 @@ function ProjectItemCard({
                 <span className="truncate">{item.url}</span>
               </a>
             )}
+            {item.path && (
+              <p className="mt-3 inline-flex max-w-full items-center gap-1 truncate text-sm text-gray-500 dark:text-gray-400">
+                <FolderOpen size={14} />
+                <span className="truncate">{item.path}</span>
+              </p>
+            )}
             {item.fileName && (
               <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
                 {item.fileName} {formatFileSize(item.fileSize)}
               </p>
             )}
+            <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+              Sist oppdatert {formatUpdatedAt(item.updatedAt ?? item.createdAt)}
+            </p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -486,6 +518,223 @@ function ProjectItemCard({
   )
 }
 
+function ProjectLogoThumbnail({
+  folder,
+  className,
+  iconSize = 20,
+  open = false,
+}: {
+  folder: ProjectFolder
+  className: string
+  iconSize?: number
+  open?: boolean
+}) {
+  const logo = projectLogo(folder)
+  const Icon = open ? FolderOpen : Folder
+
+  if (logo.type === 'image') {
+    return (
+      <span className={`shrink-0 overflow-hidden rounded-lg bg-gray-100 shadow-sm dark:bg-gray-800 ${className}`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={logo.value} alt="" className="h-full w-full object-cover" />
+      </span>
+    )
+  }
+
+  if (logo.type === 'emoji') {
+    return (
+      <span className={`flex shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${folder.color} text-xl shadow-sm ${className}`}>
+        {logo.value}
+      </span>
+    )
+  }
+
+  return (
+    <span className={`flex shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${folder.color} text-white shadow-sm ${className}`}>
+      <Icon size={iconSize} />
+    </span>
+  )
+}
+
+function ProjectDetailModal({
+  folder,
+  open,
+  onClose,
+  onAddResource,
+  onUpdate,
+  onToggleTask,
+  onRemoveItem,
+}: {
+  folder: ProjectFolder | null
+  open: boolean
+  onClose: () => void
+  onAddResource: () => void
+  onUpdate: (folderId: string, updates: Partial<Pick<ProjectFolder, 'name' | 'description' | 'logo' | 'color'>>) => void
+  onToggleTask: (itemId: string) => void
+  onRemoveItem: (itemId: string) => void
+}) {
+  if (!folder) return null
+
+  return (
+    <Modal open={open} onClose={onClose} title={folder.name} className="max-w-5xl">
+      <ProjectDetailContent
+        key={folder.id}
+        folder={folder}
+        onAddResource={onAddResource}
+        onUpdate={onUpdate}
+        onToggleTask={onToggleTask}
+        onRemoveItem={onRemoveItem}
+      />
+    </Modal>
+  )
+}
+
+function ProjectDetailContent({
+  folder,
+  onAddResource,
+  onUpdate,
+  onToggleTask,
+  onRemoveItem,
+}: {
+  folder: ProjectFolder
+  onAddResource: () => void
+  onUpdate: (folderId: string, updates: Partial<Pick<ProjectFolder, 'name' | 'description' | 'logo' | 'color'>>) => void
+  onToggleTask: (itemId: string) => void
+  onRemoveItem: (itemId: string) => void
+}) {
+  const [name, setName] = useState(folder.name)
+  const [description, setDescription] = useState(folder.description)
+  const [logo, setLogo] = useState<ProjectLogo>(projectLogo(folder))
+
+  function saveProject() {
+    if (!folder || !name.trim()) return
+    onUpdate(folder.id, {
+      name: name.trim(),
+      description: description.trim(),
+      logo,
+    })
+  }
+
+  function handleLogoUpload(file: File | null) {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') setLogo({ type: 'image', value: reader.result })
+    }
+    reader.readAsDataURL(file)
+  }
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
+        <section className="space-y-5">
+          <div className="rounded-2xl border border-gray-100 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-gray-950/40">
+            <div className="mb-4 flex items-center gap-3">
+              <ProjectLogoThumbnail
+                folder={{ ...folder, logo }}
+                className="h-14 w-14"
+                iconSize={28}
+                open
+              />
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  Project details
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Navn og logo vises i oversikten.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Input label="Prosjektnavn" value={name} onChange={(event) => setName(event.target.value)} />
+              <Textarea
+                label="Beskrivelse"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                rows={3}
+              />
+            </div>
+
+            <div className="mt-4">
+              <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Logo</p>
+              <div className="flex flex-wrap gap-2">
+                {logoPresets.map((preset, index) => (
+                  <button
+                    key={`${preset.type}-${preset.value}-${index}`}
+                    type="button"
+                    onClick={() => setLogo(preset)}
+                    className={`flex h-10 w-10 items-center justify-center rounded-lg border text-lg transition ${
+                      logo.type === preset.type && logo.value === preset.value
+                        ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40'
+                        : 'border-gray-200 bg-white hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800'
+                    }`}
+                    aria-label="Velg logo"
+                  >
+                    {preset.type === 'emoji' ? preset.value : <Folder size={18} />}
+                  </button>
+                ))}
+                <label className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-gray-300 bg-white px-3 text-sm text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800">
+                  <ImageIcon size={16} />
+                  Upload
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => handleLogoUpload(event.target.files?.[0] ?? null)}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <Button className="mt-5 w-full" onClick={saveProject}>
+              Lagre endringer
+            </Button>
+          </div>
+        </section>
+
+        <section className="min-w-0">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Resources</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                GitHub, mapper, Notion, lenker og dokumenter samlet ett sted.
+              </p>
+            </div>
+            <Button size="sm" onClick={onAddResource}>
+              <Plus size={16} />
+              Add Resource
+            </Button>
+          </div>
+
+          {folder.items.length === 0 ? (
+            <div className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-6 text-center dark:border-gray-800 dark:bg-gray-950/40">
+              <FileText size={34} className="mb-3 text-gray-300 dark:text-gray-700" />
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Ingen ressurser enda</h4>
+              <p className="mt-1 max-w-sm text-xs text-gray-500 dark:text-gray-400">
+                Legg til repoer, Notion-sider, mapper, dokumenter eller nyttige lenker.
+              </p>
+              <Button className="mt-4" size="sm" onClick={onAddResource}>
+                <Plus size={16} />
+                Add Resource
+              </Button>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {folder.items.map((item) => (
+                <ProjectItemCard
+                  key={item.id}
+                  item={item}
+                  onToggle={onToggleTask}
+                  onRemove={onRemoveItem}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+    </div>
+  )
+}
+
 function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
   const meta = itemTypeMeta[item.type]
   const Icon = meta.icon
@@ -502,6 +751,9 @@ function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
             <span className="rounded-md bg-white px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
               {meta.label}
             </span>
+            <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+              {item.status ?? (item.done ? 'Done' : 'Active')}
+            </span>
           </div>
           {item.body && <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">{item.body}</p>}
           {item.url && (
@@ -515,11 +767,20 @@ function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
               <span className="truncate">{item.url}</span>
             </a>
           )}
+          {item.path && (
+            <p className="mt-3 inline-flex max-w-full items-center gap-1 truncate text-sm text-gray-500 dark:text-gray-400">
+              <FolderOpen size={14} />
+              <span className="truncate">{item.path}</span>
+            </p>
+          )}
           {item.fileName && (
             <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
               {item.fileName} {formatFileSize(item.fileSize)}
             </p>
           )}
+          <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+            Sist oppdatert {formatUpdatedAt(item.updatedAt ?? item.createdAt)}
+          </p>
         </div>
       </div>
     </article>
@@ -533,7 +794,7 @@ function CreateFolderModal({
 }: {
   open: boolean
   onClose: () => void
-  onCreate: (folder: Pick<ProjectFolder, 'name' | 'description' | 'color'>) => void
+  onCreate: (folder: Pick<ProjectFolder, 'name' | 'description' | 'color' | 'logo'>) => void
 }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -542,7 +803,7 @@ function CreateFolderModal({
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     if (!name.trim()) return
-    onCreate({ name: name.trim(), description: description.trim(), color })
+    onCreate({ name: name.trim(), description: description.trim(), color, logo: logoPresets[0] })
     setName('')
     setDescription('')
     setColor(folderColors[0].value)
@@ -591,34 +852,28 @@ function CreateItemModal({
 }: {
   open: boolean
   onClose: () => void
-  onCreate: (item: Omit<ProjectItem, 'id' | 'createdAt'>) => void
+  onCreate: (item: Omit<ProjectItem, 'id' | 'createdAt' | 'updatedAt'>) => void
 }) {
-  const [type, setType] = useState<ItemType>('note')
+  const [type, setType] = useState<ResourceType>('github')
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [url, setUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
-  const documentTypes: ItemType[] = ['docs', 'sheets', 'word', 'excel', 'folder']
-  const usesUrl = type === 'link' || documentTypes.includes(type)
+  const usesUrl = type === 'github' || type === 'notion' || type === 'url'
+  const usesPath = type === 'local_folder'
+  const usesFile = type === 'document'
 
   function reset() {
-    setType('note')
+    setType('github')
     setTitle('')
     setBody('')
     setUrl('')
     setFile(null)
   }
 
-  function applyPreset(preset: (typeof packagePresets)[number]) {
-    setType(preset.type)
-    setTitle((current) => current || `${preset.provider} ${preset.label}`)
-    setUrl(preset.url)
-    setBody((current) => current || `${preset.provider}-ressurs for prosjektet.`)
-  }
-
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
-    const fallbackTitle = file?.name ?? url.trim() ?? ''
+    const fallbackTitle = file?.name ?? url.trim().split('/').filter(Boolean).at(-1) ?? ''
     const itemTitle = title.trim() || fallbackTitle
     if (!itemTitle) return
 
@@ -627,86 +882,73 @@ function CreateItemModal({
       title: itemTitle,
       body: body.trim(),
       url: usesUrl ? url.trim() : undefined,
-      fileName: type === 'file' ? file?.name : undefined,
-      fileSize: type === 'file' ? file?.size : undefined,
-      done: type === 'task' ? false : undefined,
+      path: usesPath ? url.trim() : undefined,
+      fileName: usesFile ? file?.name : undefined,
+      fileSize: usesFile ? file?.size : undefined,
+      status: usesFile ? 'Uploaded' : 'Connected',
     })
     reset()
     onClose()
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Legg til i mappe">
+    <Modal open={open} onClose={onClose} title="Add Resource" className="max-w-2xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Google og Microsoft</label>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {packagePresets.map((preset) => {
-              const meta = itemTypeMeta[preset.type]
+          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Type</label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {resourceTypes.map((resource) => {
+              const meta = itemTypeMeta[resource.type]
               const Icon = meta.icon
-              const active = type === preset.type && url === preset.url
+              const active = type === resource.type
 
               return (
                 <button
-                  key={`${preset.provider}-${preset.label}`}
+                  key={resource.type}
                   type="button"
-                  onClick={() => applyPreset(preset)}
-                  className={`flex min-h-20 flex-col items-start justify-between rounded-lg border p-3 text-left transition ${
+                  onClick={() => setType(resource.type)}
+                  className={`flex min-h-24 items-start gap-3 rounded-lg border p-3 text-left transition ${
                     active
                       ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-200'
                       : 'border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800'
                   }`}
                 >
-                  <span className="flex w-full items-center justify-between gap-2">
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 dark:bg-gray-900 dark:text-purple-300">
                     <Icon size={18} />
-                    <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500 dark:bg-gray-900 dark:text-gray-400">
-                      {preset.provider}
+                  </span>
+                  <span>
+                    <span className="block text-sm font-medium">{resource.label}</span>
+                    <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {resource.description}
                     </span>
                   </span>
-                  <span className="text-sm font-medium">{preset.label}</span>
                 </button>
               )
             })}
           </div>
         </div>
 
-        <div>
-          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Annet</label>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {(['note', 'link', 'file', 'task'] as ItemType[]).map((key) => {
-            const meta = itemTypeMeta[key]
-            const Icon = meta.icon
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setType(key)}
-                className={`flex h-16 flex-col items-center justify-center gap-1 rounded-lg border text-sm transition ${
-                  type === key
-                    ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-200'
-                    : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-gray-800'
-                }`}
-              >
-                <Icon size={18} />
-                {meta.label}
-              </button>
-            )
-          })}
-          </div>
-        </div>
-
-        <Input label="Tittel" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Hva vil du lagre?" required={type !== 'file'} />
+        <Input label="Navn" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="F.eks. Frontend repo, Brand docs, Figma brief" required={!usesFile} />
         {usesUrl && (
           <Input
-            label={type === 'link' ? 'Lenke' : 'Lenke til dokument eller mappe'}
+            label="URL"
             value={url}
             onChange={(event) => setUrl(event.target.value)}
             placeholder="https://..."
             type="url"
-            required={type === 'link'}
+            required
           />
         )}
-        {type === 'file' && (
+        {usesPath && (
+          <Input
+            label="Mappe-sti"
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="/Users/navn/Prosjekter/app"
+            required
+          />
+        )}
+        {usesFile && (
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Fil</label>
             <input
@@ -718,10 +960,10 @@ function CreateItemModal({
           </div>
         )}
         <Textarea
-          label={type === 'task' || type === 'folder' ? 'Detaljer' : 'Tekst'}
+          label="Notat"
           value={body}
           onChange={(event) => setBody(event.target.value)}
-          placeholder={type === 'note' ? 'Skriv notatet her...' : 'Valgfri informasjon'}
+          placeholder="Valgfri status, eier, miljø, eller hvorfor ressursen hører til prosjektet."
           rows={4}
         />
         <div className="flex justify-end gap-2 pt-2">
