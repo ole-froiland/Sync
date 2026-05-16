@@ -604,18 +604,139 @@ function ProjectDetailContent({
   onToggleTask: (itemId: string) => void
   onRemoveItem: (itemId: string) => void
 }) {
-  const [name, setName] = useState(folder.name)
-  const [description, setDescription] = useState(folder.description)
-  const [logo, setLogo] = useState<ProjectLogo>(projectLogo(folder))
+  const [logoOpen, setLogoOpen] = useState(false)
 
-  function saveProject() {
-    if (!folder || !name.trim()) return
-    onUpdate(folder.id, {
-      name: name.trim(),
-      description: description.trim(),
-      logo,
-    })
+  return (
+    <>
+      <div className="flex flex-col gap-4 border-b border-gray-200 pb-5 dark:border-gray-800 md:flex-row md:items-start md:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setLogoOpen(true)}
+            className="rounded-lg outline-none ring-offset-2 transition hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-purple-500 dark:ring-offset-gray-900"
+            aria-label="Endre prosjektlogo"
+          >
+            <ProjectLogoThumbnail folder={folder} className="h-11 w-11" iconSize={22} open />
+          </button>
+          <div className="min-w-0">
+            <EditableProjectName
+              name={folder.name}
+              onSave={(name) => onUpdate(folder.id, { name })}
+            />
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {folder.description || 'Ingen beskrivelse'}
+            </p>
+          </div>
+        </div>
+        <Button size="sm" onClick={onAddResource}>
+          <Plus size={16} />
+          Add Resource
+        </Button>
+      </div>
+
+      <section className="pt-5">
+        {folder.items.length === 0 ? (
+          <div className="flex min-h-80 flex-col items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/70 px-6 text-center dark:border-gray-800 dark:bg-gray-950/40">
+            <FileText size={38} className="mb-4 text-gray-300 dark:text-gray-700" />
+            <h2 className="font-medium text-gray-950 dark:text-gray-100">Mappen er tom</h2>
+            <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+              Legg til repoer, Notion-sider, mapper, dokumenter eller nyttige lenker.
+            </p>
+            <Button className="mt-5" onClick={onAddResource}>
+              <Plus size={16} />
+              Add Resource
+            </Button>
+          </div>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {folder.items.map((item) => (
+              <ProjectItemCard
+                key={item.id}
+                item={item}
+                onToggle={onToggleTask}
+                onRemove={onRemoveItem}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <LogoEditorModal
+        key={`${folder.id}-${logoOpen}`}
+        open={logoOpen}
+        onClose={() => setLogoOpen(false)}
+        folder={folder}
+        onSave={(logo) => {
+          onUpdate(folder.id, { logo })
+          setLogoOpen(false)
+        }}
+      />
+    </>
+  )
+}
+
+function EditableProjectName({
+  name,
+  onSave,
+}: {
+  name: string
+  onSave: (name: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(name)
+
+  function save() {
+    const nextName = draft.trim()
+    if (nextName && nextName !== name) onSave(nextName)
+    if (!nextName) setDraft(name)
+    setEditing(false)
   }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={save}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') save()
+          if (event.key === 'Escape') {
+            setDraft(name)
+            setEditing(false)
+          }
+        }}
+        className="h-9 max-w-full rounded-lg border border-purple-400 bg-white px-2 text-xl font-semibold text-gray-950 outline-none ring-2 ring-purple-500/20 dark:bg-gray-950 dark:text-gray-100"
+      />
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setDraft(name)
+        setEditing(true)
+      }}
+      className="block max-w-full truncate rounded-md text-left text-xl font-semibold text-gray-950 outline-none transition hover:text-purple-600 focus-visible:ring-2 focus-visible:ring-purple-500 dark:text-gray-100 dark:hover:text-purple-300"
+    >
+      {name}
+    </button>
+  )
+}
+
+function LogoEditorModal({
+  open,
+  onClose,
+  folder,
+  onSave,
+}: {
+  open: boolean
+  onClose: () => void
+  folder: ProjectFolder
+  onSave: (logo: ProjectLogo) => void
+}) {
+  const [logo, setLogo] = useState<ProjectLogo>(projectLogo(folder))
 
   function handleLogoUpload(file: File | null) {
     if (!file) return
@@ -627,116 +748,60 @@ function ProjectDetailContent({
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
-        <section className="space-y-5">
-          <div className="rounded-2xl border border-gray-100 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-gray-950/40">
-            <div className="mb-4 flex items-center gap-3">
-              <ProjectLogoThumbnail
-                folder={{ ...folder, logo }}
-                className="h-14 w-14"
-                iconSize={28}
-                open
-              />
-              <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  Project details
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Navn og logo vises i oversikten.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <Input label="Prosjektnavn" value={name} onChange={(event) => setName(event.target.value)} />
-              <Textarea
-                label="Beskrivelse"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                rows={3}
-              />
-            </div>
-
-            <div className="mt-4">
-              <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Logo</p>
-              <div className="flex flex-wrap gap-2">
-                {logoPresets.map((preset, index) => (
-                  <button
-                    key={`${preset.type}-${preset.value}-${index}`}
-                    type="button"
-                    onClick={() => setLogo(preset)}
-                    className={`flex h-10 w-10 items-center justify-center rounded-lg border text-lg transition ${
-                      logo.type === preset.type && logo.value === preset.value
-                        ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40'
-                        : 'border-gray-200 bg-white hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800'
-                    }`}
-                    aria-label="Velg logo"
-                  >
-                    {preset.type === 'emoji' ? preset.value : <Folder size={18} />}
-                  </button>
-                ))}
-                <label className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-gray-300 bg-white px-3 text-sm text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800">
-                  <ImageIcon size={16} />
-                  Upload
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(event) => handleLogoUpload(event.target.files?.[0] ?? null)}
-                  />
-                </label>
-              </div>
-            </div>
-
-            <Button className="mt-5 w-full" onClick={saveProject}>
-              Lagre endringer
-            </Button>
+    <Modal open={open} onClose={onClose} title="Endre prosjektlogo" className="max-w-md">
+      <div className="space-y-5">
+        <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950/40">
+          <ProjectLogoThumbnail folder={{ ...folder, logo }} className="h-14 w-14" iconSize={28} open />
+          <div>
+            <p className="text-sm font-medium text-gray-950 dark:text-gray-100">Logo i prosjektoversikten</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Velg ikon, emoji eller last opp bilde.</p>
           </div>
-        </section>
+        </div>
 
-        <section className="min-w-0">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Resources</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                GitHub, mapper, Notion, lenker og dokumenter samlet ett sted.
-              </p>
-            </div>
-            <Button size="sm" onClick={onAddResource}>
-              <Plus size={16} />
-              Add Resource
-            </Button>
+        <div>
+          <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Presets</p>
+          <div className="flex flex-wrap gap-2">
+            {logoPresets.map((preset, index) => (
+              <button
+                key={`${preset.type}-${preset.value}-${index}`}
+                type="button"
+                onClick={() => setLogo(preset)}
+                className={`flex h-11 w-11 items-center justify-center rounded-lg border text-lg transition ${
+                  logo.type === preset.type && logo.value === preset.value
+                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40'
+                    : 'border-gray-200 bg-white hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800'
+                }`}
+                aria-label="Velg logo"
+              >
+                {preset.type === 'emoji' ? preset.value : <Folder size={18} />}
+              </button>
+            ))}
           </div>
+        </div>
 
-          {folder.items.length === 0 ? (
-            <div className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-6 text-center dark:border-gray-800 dark:bg-gray-950/40">
-              <FileText size={34} className="mb-3 text-gray-300 dark:text-gray-700" />
-              <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Ingen ressurser enda</h4>
-              <p className="mt-1 max-w-sm text-xs text-gray-500 dark:text-gray-400">
-                Legg til repoer, Notion-sider, mapper, dokumenter eller nyttige lenker.
-              </p>
-              <Button className="mt-4" size="sm" onClick={onAddResource}>
-                <Plus size={16} />
-                Add Resource
-              </Button>
-            </div>
-          ) : (
-            <div className="grid gap-3">
-              {folder.items.map((item) => (
-                <ProjectItemCard
-                  key={item.id}
-                  item={item}
-                  onToggle={onToggleTask}
-                  onRemove={onRemoveItem}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-    </div>
+        <label className="flex h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-gray-300 bg-white px-3 text-sm text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800">
+          <ImageIcon size={16} />
+          Upload
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => handleLogoUpload(event.target.files?.[0] ?? null)}
+          />
+        </label>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Avbryt
+          </Button>
+          <Button type="button" onClick={() => onSave(logo)}>
+            Lagre logo
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
-
 function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
   const meta = itemTypeMeta[item.type]
   const Icon = meta.icon
