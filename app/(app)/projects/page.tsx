@@ -356,14 +356,18 @@ export default function ProjectsPage() {
                 <main className="min-h-[56vh] rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
                   {previewFolder ? (
                     <>
-                      <div className="border-b border-gray-200 p-5 dark:border-gray-800">
-                        <div className="flex items-center gap-3">
+                      <div className="flex flex-col gap-4 border-b border-gray-200 p-5 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-center gap-3">
                           <ProjectLogoThumbnail folder={previewFolder} className="h-10 w-10" iconSize={21} open />
                           <div className="min-w-0">
                             <h2 className="truncate text-xl font-semibold text-gray-950 dark:text-gray-100">{previewFolder.name}</h2>
                             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{previewFolder.description || 'Ingen beskrivelse'}</p>
                           </div>
                         </div>
+                        <Button size="sm" onClick={() => setSelectedFolderId(previewFolder.id)}>
+                          <FolderOpen size={16} />
+                          Åpne mappe
+                        </Button>
                       </div>
 
                       {previewFolder.items.length === 0 ? (
@@ -394,6 +398,7 @@ export default function ProjectsPage() {
                 {visibleFolders.map((folder) => (
                   <button
                     key={folder.id}
+                    onClick={() => setSelectedFolderId(folder.id)}
                     onDoubleClick={() => setSelectedFolderId(folder.id)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') setSelectedFolderId(folder.id)
