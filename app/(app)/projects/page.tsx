@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ArrowLeft,
   CheckSquare,
   Eye,
   FilePenLine,
@@ -206,8 +207,9 @@ export default function ProjectsPage() {
           <div className="mx-auto max-w-6xl">
             <button
               onClick={() => setSelectedFolderId(null)}
-              className="mb-6 text-sm text-gray-400 transition hover:text-gray-700 dark:hover:text-gray-300"
+              className="mb-6 inline-flex h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100"
             >
+              <ArrowLeft size={16} />
               Tilbake til prosjektmapper
             </button>
 
