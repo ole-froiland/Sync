@@ -3,8 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CheckSquare,
+  FilePenLine,
+  FileSpreadsheet,
   FileText,
   Folder,
+  FolderPlus,
   FolderOpen,
   Link2,
   Plus,
@@ -30,7 +33,7 @@ type ProjectFolder = {
 
 type ProjectItem = {
   id: string
-  type: 'note' | 'link' | 'file' | 'task'
+  type: 'note' | 'link' | 'file' | 'task' | 'docs' | 'sheets' | 'word' | 'excel' | 'folder'
   title: string
   body: string
   url?: string
@@ -57,7 +60,26 @@ const itemTypeMeta: Record<ItemType, { label: string; icon: React.ElementType }>
   link: { label: 'Lenke', icon: Link2 },
   file: { label: 'Fil', icon: Upload },
   task: { label: 'Oppgave', icon: CheckSquare },
+  docs: { label: 'Google Docs', icon: FilePenLine },
+  sheets: { label: 'Google Sheets', icon: FileSpreadsheet },
+  word: { label: 'Word', icon: FilePenLine },
+  excel: { label: 'Excel', icon: FileSpreadsheet },
+  folder: { label: 'Mappe', icon: FolderPlus },
 }
+
+const packagePresets: Array<{
+  type: ItemType
+  label: string
+  provider: 'Google' | 'Microsoft'
+  url: string
+}> = [
+  { type: 'docs', label: 'Docs', provider: 'Google', url: 'https://docs.new' },
+  { type: 'sheets', label: 'Sheets', provider: 'Google', url: 'https://sheets.new' },
+  { type: 'folder', label: 'Drive-mappe', provider: 'Google', url: 'https://drive.google.com/drive/my-drive' },
+  { type: 'word', label: 'Word', provider: 'Microsoft', url: 'https://www.office.com/launch/word' },
+  { type: 'excel', label: 'Excel', provider: 'Microsoft', url: 'https://www.office.com/launch/excel' },
+  { type: 'folder', label: 'OneDrive-mappe', provider: 'Microsoft', url: 'https://onedrive.live.com' },
+]
 
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -437,6 +459,8 @@ function CreateItemModal({
   const [body, setBody] = useState('')
   const [url, setUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const documentTypes: ItemType[] = ['docs', 'sheets', 'word', 'excel', 'folder']
+  const usesUrl = type === 'link' || documentTypes.includes(type)
 
   function reset() {
     setType('note')
@@ -444,6 +468,13 @@ function CreateItemModal({
     setBody('')
     setUrl('')
     setFile(null)
+  }
+
+  function applyPreset(preset: (typeof packagePresets)[number]) {
+    setType(preset.type)
+    setTitle((current) => current || `${preset.provider} ${preset.label}`)
+    setUrl(preset.url)
+    setBody((current) => current || `${preset.provider}-ressurs for prosjektet.`)
   }
 
   function handleSubmit(event: React.FormEvent) {
@@ -456,7 +487,7 @@ function CreateItemModal({
       type,
       title: itemTitle,
       body: body.trim(),
-      url: type === 'link' ? url.trim() : undefined,
+      url: usesUrl ? url.trim() : undefined,
       fileName: type === 'file' ? file?.name : undefined,
       fileSize: type === 'file' ? file?.size : undefined,
       done: type === 'task' ? false : undefined,
@@ -468,8 +499,42 @@ function CreateItemModal({
   return (
     <Modal open={open} onClose={onClose} title="Legg til i mappe">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {(Object.keys(itemTypeMeta) as ItemType[]).map((key) => {
+        <div>
+          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Google og Microsoft</label>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {packagePresets.map((preset) => {
+              const meta = itemTypeMeta[preset.type]
+              const Icon = meta.icon
+              const active = type === preset.type && url === preset.url
+
+              return (
+                <button
+                  key={`${preset.provider}-${preset.label}`}
+                  type="button"
+                  onClick={() => applyPreset(preset)}
+                  className={`flex min-h-20 flex-col items-start justify-between rounded-lg border p-3 text-left transition ${
+                    active
+                      ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-200'
+                      : 'border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <span className="flex w-full items-center justify-between gap-2">
+                    <Icon size={18} />
+                    <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500 dark:bg-gray-900 dark:text-gray-400">
+                      {preset.provider}
+                    </span>
+                  </span>
+                  <span className="text-sm font-medium">{preset.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Annet</label>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {(['note', 'link', 'file', 'task'] as ItemType[]).map((key) => {
             const meta = itemTypeMeta[key]
             const Icon = meta.icon
             return (
@@ -488,10 +553,20 @@ function CreateItemModal({
               </button>
             )
           })}
+          </div>
         </div>
 
         <Input label="Tittel" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Hva vil du lagre?" required={type !== 'file'} />
-        {type === 'link' && <Input label="Lenke" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://..." type="url" required />}
+        {usesUrl && (
+          <Input
+            label={type === 'link' ? 'Lenke' : 'Lenke til dokument eller mappe'}
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="https://..."
+            type="url"
+            required={type === 'link'}
+          />
+        )}
         {type === 'file' && (
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Fil</label>
@@ -504,7 +579,7 @@ function CreateItemModal({
           </div>
         )}
         <Textarea
-          label={type === 'task' ? 'Detaljer' : 'Tekst'}
+          label={type === 'task' || type === 'folder' ? 'Detaljer' : 'Tekst'}
           value={body}
           onChange={(event) => setBody(event.target.value)}
           placeholder={type === 'note' ? 'Skriv notatet her...' : 'Valgfri informasjon'}
