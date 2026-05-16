@@ -31,16 +31,18 @@ type FollowSet = Record<string, true>
 type Toast = { id: number; tone: 'success' | 'error'; message: string }
 type SyncBusyAction = 'sync' | 'accept' | 'reject'
 type UsageStats = {
+  source: 'live' | 'snapshot'
   codexLimits: Array<{
     label: string
     resetLabel: string
+    percentLeft: number | null
   }>
   codex: {
     requests: number
     totalTokens: number
     inputTokens: number
     outputTokens: number
-    remainingPercent: number
+    remainingPercent: number | null
     resetLabel: string
     lastActiveLabel: string
     mostUsedModel: string
@@ -50,6 +52,8 @@ type UsageStats = {
     dateLabel: string
     requests: number
     tokens: number
+    inputTokens?: number
+    outputTokens?: number
     limitTokens: number
     status: 'normal' | 'heavy' | 'used_up'
   }>
@@ -73,6 +77,7 @@ export default function PeoplePage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [pendingByUser, setPendingByUser] = useState<Record<string, 'follow' | SyncBusyAction | null>>({})
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null)
+  const [liveUsageStats, setLiveUsageStats] = useState<UsageStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -163,10 +168,39 @@ export default function PeoplePage() {
     [visibleProfiles, selectedProfileId]
   )
 
-  const usageStats = useMemo(
+  const fallbackUsageStats = useMemo(
     () => (currentProfile ? buildUsageStats(currentProfile) : null),
     [currentProfile]
   )
+  const usageStats = liveUsageStats ?? fallbackUsageStats
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadUsage() {
+      if (!currentProfile) {
+        setLiveUsageStats(null)
+        return
+      }
+
+      try {
+        const res = await fetch('/api/openai/usage', { cache: 'no-store' })
+        if (!res.ok) {
+          if (!cancelled) setLiveUsageStats(null)
+          return
+        }
+        const data = (await res.json()) as UsageStats
+        if (!cancelled && data.source === 'live') setLiveUsageStats(data)
+      } catch {
+        if (!cancelled) setLiveUsageStats(null)
+      }
+    }
+
+    loadUsage()
+    return () => {
+      cancelled = true
+    }
+  }, [currentProfile])
 
   function getProjectsForUser(userId: string) {
     return projects.filter((p) =>
@@ -713,11 +747,22 @@ function ProfileModal({
           <section className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                  Your Codex Usage
-                </h4>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                    Your Codex Usage
+                  </h4>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      usageStats.source === 'live'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                        : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                    }`}
+                  >
+                    {usageStats.source === 'live' ? 'Live API data' : 'Local snapshot'}
+                  </span>
+                </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Token usage and daily limit pressure for your Codex access.
+                  Token usage, reset windows, and daily limit pressure.
                 </p>
               </div>
               <a
@@ -730,18 +775,31 @@ function ProfileModal({
               </a>
             </div>
 
-            <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900">
-              {usageStats.codexLimits.map((limit, index) => (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {usageStats.codexLimits.map((limit) => (
                 <div
                   key={limit.label}
-                  className={`px-5 py-5 ${index > 0 ? 'border-t border-gray-100 dark:border-gray-800' : ''}`}
+                  className="rounded-2xl border border-gray-100 bg-white p-5 dark:border-gray-800 dark:bg-gray-900"
                 >
-                  <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                    {limit.label}
-                  </p>
-                  <p className="mt-2 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    {limit.resetLabel}
-                  </p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        {limit.label}
+                      </p>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {limit.resetLabel}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
+                      {limit.percentLeft === null ? 'Tracked' : `${limit.percentLeft}% left`}
+                    </span>
+                  </div>
+                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-purple-500 to-fuchsia-400"
+                      style={{ width: `${limit.percentLeft ?? 100}%` }}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
@@ -750,7 +808,11 @@ function ProfileModal({
               <UsageMetricCard
                 label="Codex requests"
                 value={usageStats.codex.requests.toLocaleString()}
-                detail={`${usageStats.codex.remainingPercent}% usage left`}
+                detail={
+                  usageStats.codex.remainingPercent === null
+                    ? 'From OpenAI Usage API'
+                    : `${usageStats.codex.remainingPercent}% usage left`
+                }
               />
               <UsageMetricCard
                 label="Tokens"
@@ -787,15 +849,15 @@ function ProfileModal({
                 </p>
               </div>
 
-              <div className="grid grid-cols-7 items-end gap-2">
+              <div className="grid grid-cols-7 items-end gap-2 rounded-2xl bg-gray-50 p-3 dark:bg-gray-950/40">
                 {usageStats.dailyCodex.map((day) => {
                   const percent = Math.min(100, Math.round((day.tokens / day.limitTokens) * 100))
 
                   return (
                     <div key={day.dateLabel} className="flex min-w-0 flex-col items-center gap-2">
-                      <div className="flex h-28 w-full items-end rounded-lg bg-gray-50 p-1 dark:bg-gray-950/50">
+                      <div className="flex h-24 w-full items-end rounded-xl bg-white p-1 shadow-sm dark:bg-gray-900">
                         <div
-                          className={`w-full rounded-md ${usageStatusBarClass(day.status)}`}
+                          className={`w-full rounded-lg ${usageStatusBarClass(day.status)}`}
                           style={{ height: `${Math.max(10, percent)}%` }}
                           title={`${day.dateLabel}: ${formatCompactNumber(day.tokens)} tokens`}
                         />
@@ -1003,14 +1065,17 @@ function buildUsageStats(profile: Profile): UsageStats {
   const heaviestDay = dailyCodex.reduce((max, day) => (day.tokens > max.tokens ? day : max), dailyCodex[0])
 
   return {
+    source: 'snapshot',
     codexLimits: [
       {
         label: '5 hour usage limit',
         resetLabel: `Resets ${formatTimeOfDayFromNow(8 + seededNumber(seed, 0, 180))}`,
+        percentLeft: Math.max(12, 100 - Math.round((heaviestDay.tokens / heaviestDay.limitTokens) * 100)),
       },
       {
         label: 'Weekly usage limit',
         resetLabel: `Resets ${formatMonthDayFromNow(2 + seededNumber(seed, 2, 6))}`,
+        percentLeft: 58 + seededNumber(seed, 7, 34),
       },
     ],
     codex: {
