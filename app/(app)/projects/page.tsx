@@ -664,8 +664,8 @@ function ProjectDetailContent({
         open={logoOpen}
         onClose={() => setLogoOpen(false)}
         folder={folder}
-        onSave={(logo) => {
-          onUpdate(folder.id, { logo })
+        onSave={({ logo, color }) => {
+          onUpdate(folder.id, { logo, color })
           setLogoOpen(false)
         }}
       />
@@ -732,9 +732,10 @@ function LogoEditorModal({
   open: boolean
   onClose: () => void
   folder: ProjectFolder
-  onSave: (logo: ProjectLogo) => void
+  onSave: (updates: Pick<ProjectFolder, 'logo' | 'color'>) => void
 }) {
   const [logo, setLogo] = useState<ProjectLogo>(projectLogo(folder))
+  const [color, setColor] = useState(folder.color)
 
   function handleLogoUpload(file: File | null) {
     if (!file) return
@@ -749,10 +750,10 @@ function LogoEditorModal({
     <Modal open={open} onClose={onClose} title="Endre prosjektlogo" className="max-w-md">
       <div className="space-y-5">
         <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950/40">
-          <ProjectLogoThumbnail folder={{ ...folder, logo }} className="h-14 w-14" iconSize={28} open />
+          <ProjectLogoThumbnail folder={{ ...folder, logo, color }} className="h-14 w-14" iconSize={28} open />
           <div>
             <p className="text-sm font-medium text-gray-950 dark:text-gray-100">Logo i prosjektoversikten</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Velg ikon, emoji eller last opp bilde.</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Velg ikon, emoji, farge eller last opp bilde.</p>
           </div>
         </div>
 
@@ -788,11 +789,28 @@ function LogoEditorModal({
           />
         </label>
 
+        <div>
+          <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Farge</p>
+          <div className="flex flex-wrap gap-2">
+            {folderColors.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setColor(option.value)}
+                className={`h-9 w-9 rounded-lg bg-gradient-to-br ${option.value} ring-offset-2 transition ${
+                  color === option.value ? 'ring-2 ring-purple-500 dark:ring-offset-gray-900' : ''
+                }`}
+                aria-label={option.label}
+              />
+            ))}
+          </div>
+        </div>
+
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="secondary" onClick={onClose}>
             Avbryt
           </Button>
-          <Button type="button" onClick={() => onSave(logo)}>
+          <Button type="button" onClick={() => onSave({ logo, color })}>
             Lagre logo
           </Button>
         </div>
