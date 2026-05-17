@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowUp, Search, Send, X } from 'lucide-react'
+import { ArrowUp, ChevronDown, ChevronLeft, ChevronRight, Search, Send, X } from 'lucide-react'
 import Image from 'next/image'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
@@ -107,6 +107,33 @@ function todayInputValue() {
   return new Date().toISOString().slice(0, 10)
 }
 
+function dateKey(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function dateFromKey(key: string) {
+  return new Date(`${key}T00:00:00`)
+}
+
+function monthTitle(date: Date) {
+  return new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(date)
+}
+
+function calendarDays(month: Date) {
+  const first = new Date(month.getFullYear(), month.getMonth(), 1)
+  const start = new Date(first)
+  start.setDate(first.getDate() - ((first.getDay() + 6) % 7))
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start)
+    date.setDate(start.getDate() + index)
+    return date
+  })
+}
+
 function matchesTimeFilter(idea: Idea, filter: TimeFilter, customFrom: string, customTo: string) {
   const createdAt = new Date(idea.createdAt).getTime()
   const now = Date.now()
@@ -133,6 +160,20 @@ function ideaMatchesQuery(idea: Idea, query: string) {
     .includes(needle)
 }
 
+function activeTimeLabel(filter: TimeFilter, customFrom: string, customTo: string) {
+  if (filter !== 'custom') return timeFilters.find((item) => item.id === filter)?.label ?? 'Today'
+  if (customFrom && customTo && customFrom !== customTo) return `${customFrom.slice(5)} - ${customTo.slice(5)}`
+  if (customFrom) return customFrom.slice(5)
+  return 'Customize'
+}
+
+function isBetween(value: string, start: string, end: string) {
+  const time = dateFromKey(value).getTime()
+  const startTime = dateFromKey(start).getTime()
+  const endTime = dateFromKey(end).getTime()
+  return time >= Math.min(startTime, endTime) && time <= Math.max(startTime, endTime)
+}
+
 export default function IdeasPage() {
   const profile = useUser()
   const [ideas, setIdeas] = useState<Idea[]>(seedIdeas)
@@ -143,6 +184,10 @@ export default function IdeasPage() {
   const [customTo, setCustomTo] = useState(todayInputValue())
   const [votes, setVotes] = useState<string[]>([])
   const [storageLoaded, setStorageLoaded] = useState(false)
+  const [timeMenuOpen, setTimeMenuOpen] = useState(false)
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date())
+  const [rangeAnchor, setRangeAnchor] = useState<string | null>(null)
+  const [hoverDate, setHoverDate] = useState<string | null>(null)
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -248,6 +293,54 @@ export default function IdeasPage() {
     setDraftImage(null)
   }
 
+  function choosePreset(filter: TimeFilter) {
+    setActiveTime(filter)
+    if (filter !== 'custom') {
+      setTimeMenuOpen(false)
+      setRangeAnchor(null)
+      setHoverDate(null)
+      return
+    }
+
+    setTimeMenuOpen(true)
+    setRangeAnchor(null)
+    setHoverDate(null)
+  }
+
+  function chooseCalendarDate(key: string) {
+    setActiveTime('custom')
+
+    if (!rangeAnchor || (customFrom && customTo && !hoverDate)) {
+      setCustomFrom(key)
+      setCustomTo('')
+      setRangeAnchor(key)
+      setHoverDate(null)
+      return
+    }
+
+    const start = dateFromKey(rangeAnchor).getTime() <= dateFromKey(key).getTime() ? rangeAnchor : key
+    const end = start === rangeAnchor ? key : rangeAnchor
+    setCustomFrom(start)
+    setCustomTo(end)
+    setRangeAnchor(null)
+    setHoverDate(null)
+    setTimeMenuOpen(false)
+  }
+
+  function calendarDayClass(day: Date) {
+    const key = dateKey(day)
+    const inCurrentMonth = day.getMonth() === calendarMonth.getMonth()
+    const isSelectedStart = customFrom === key
+    const isSelectedEnd = customTo === key
+    const isHoveredRange = rangeAnchor && hoverDate ? isBetween(key, rangeAnchor, hoverDate) : false
+    const isSelectedRange = customFrom && customTo ? isBetween(key, customFrom, customTo) : false
+
+    if (isSelectedStart || isSelectedEnd) return 'bg-purple-600 text-white shadow-sm shadow-purple-500/30'
+    if (isHoveredRange || isSelectedRange) return 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-200'
+    if (!inCurrentMonth) return 'text-gray-300 hover:bg-gray-50 dark:text-gray-700 dark:hover:bg-gray-800'
+    return 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800'
+  }
+
   return (
     <>
       <TopBar title="Ideas" />
@@ -274,6 +367,86 @@ export default function IdeasPage() {
                   <Send size={16} />
                   Post
                 </Button>
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setTimeMenuOpen((open) => !open)}
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm font-medium text-gray-700 outline-none transition hover:bg-gray-100 focus:border-purple-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 sm:w-36"
+                  >
+                    <span className="truncate">{activeTimeLabel(activeTime, customFrom, customTo)}</span>
+                    <ChevronDown size={15} />
+                  </button>
+
+                  {timeMenuOpen && (
+                    <div className="absolute right-0 top-14 z-20 w-72 overflow-hidden rounded-xl border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                      <div className="grid gap-1">
+                        {timeFilters.map((filter) => (
+                          <button
+                            key={filter.id}
+                            type="button"
+                            onClick={() => choosePreset(filter.id)}
+                            className={`rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
+                              activeTime === filter.id
+                                ? 'bg-purple-600 text-white'
+                                : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800'
+                            }`}
+                          >
+                            {filter.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {activeTime === 'custom' && (
+                        <div className="mt-2 border-t border-gray-100 pt-3 dark:border-gray-800">
+                          <div className="mb-2 flex items-center justify-between">
+                            <button
+                              type="button"
+                              onClick={() => setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                              aria-label="Previous month"
+                            >
+                              <ChevronLeft size={16} />
+                            </button>
+                            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{monthTitle(calendarMonth)}</p>
+                            <button
+                              type="button"
+                              onClick={() => setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                              aria-label="Next month"
+                            >
+                              <ChevronRight size={16} />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-medium uppercase text-gray-400 dark:text-gray-500">
+                            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, index) => (
+                              <span key={`${day}-${index}`} className="py-1">
+                                {day}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="mt-1 grid grid-cols-7 gap-1">
+                            {calendarDays(calendarMonth).map((day) => {
+                              const key = dateKey(day)
+                              return (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  onClick={() => chooseCalendarDate(key)}
+                                  onMouseEnter={() => {
+                                    if (rangeAnchor) setHoverDate(key)
+                                  }}
+                                  className={`h-8 rounded-lg text-sm transition ${calendarDayClass(day)}`}
+                                >
+                                  {day.getDate()}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {draftImage && (
@@ -293,42 +466,6 @@ export default function IdeasPage() {
               )}
             </form>
 
-            <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-800">
-              <select
-                value={activeTime}
-                onChange={(event) => setActiveTime(event.target.value as TimeFilter)}
-                className="h-10 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm font-medium text-gray-700 outline-none transition focus:border-purple-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-              >
-                {timeFilters.map((filter) => (
-                  <option key={filter.id} value={filter.id}>
-                    {filter.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {activeTime === 'custom' && (
-              <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 dark:border-gray-800 sm:grid-cols-2">
-                <label className="text-xs font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                  From
-                  <input
-                    type="date"
-                    value={customFrom}
-                    onChange={(event) => setCustomFrom(event.target.value)}
-                    className="mt-2 h-10 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm normal-case tracking-normal text-gray-900 outline-none focus:border-purple-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                  />
-                </label>
-                <label className="text-xs font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                  To
-                  <input
-                    type="date"
-                    value={customTo}
-                    onChange={(event) => setCustomTo(event.target.value)}
-                    className="mt-2 h-10 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm normal-case tracking-normal text-gray-900 outline-none focus:border-purple-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                  />
-                </label>
-              </div>
-            )}
           </section>
 
           <section className="mt-4 space-y-3">
