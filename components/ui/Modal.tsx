@@ -3,6 +3,7 @@
 import { cn } from '@/lib/utils'
 import { X } from 'lucide-react'
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 interface ModalProps {
   open: boolean
@@ -21,8 +22,8 @@ export default function Modal({ open, onClose, title, children, className }: Mod
 
   if (!open) return null
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div
         className={cn(
@@ -41,6 +42,7 @@ export default function Modal({ open, onClose, title, children, className }: Mod
         </div>
         <div className="p-6">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
