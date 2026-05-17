@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUp, ImageIcon, Search, Send, Sparkles, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ArrowUp, Search, Send, Sparkles, X } from 'lucide-react'
 import Image from 'next/image'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
@@ -135,7 +135,6 @@ function ideaMatchesQuery(idea: Idea, query: string) {
 
 export default function IdeasPage() {
   const profile = useUser()
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const [ideas, setIdeas] = useState<Idea[]>(seedIdeas)
   const [activeTime, setActiveTime] = useState<TimeFilter>('today')
   const [query, setQuery] = useState('')
@@ -195,8 +194,7 @@ export default function IdeasPage() {
     )
   }
 
-  function handleImageChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
+  function attachImage(file: File) {
     if (!file) return
 
     const reader = new FileReader()
@@ -204,6 +202,12 @@ export default function IdeasPage() {
       if (typeof reader.result === 'string') setDraftImage(reader.result)
     }
     reader.readAsDataURL(file)
+  }
+
+  function handlePaste(event: React.ClipboardEvent<HTMLInputElement>) {
+    const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith('image/'))
+    const file = imageItem?.getAsFile()
+    if (file) attachImage(file)
   }
 
   function submitIdea(event: React.FormEvent<HTMLFormElement>) {
@@ -229,7 +233,6 @@ export default function IdeasPage() {
     setActiveTime('today')
     setQuery('')
     setDraftImage(null)
-    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   return (
@@ -249,25 +252,11 @@ export default function IdeasPage() {
                   <input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
+                    onPaste={handlePaste}
                     placeholder="Search or write a new idea..."
                     className="h-12 w-full rounded-xl border border-gray-200 bg-gray-50 pl-11 pr-4 text-sm text-gray-900 outline-none transition focus:border-purple-400 focus:bg-white dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:bg-gray-950"
                   />
                 </label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageChange}
-                  className="sr-only"
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                >
-                  <ImageIcon size={16} />
-                  Image
-                </button>
                 <Button type="submit" className="h-12 shrink-0 gap-2" disabled={!query.trim() && !draftImage}>
                   <Send size={16} />
                   Post
@@ -281,10 +270,7 @@ export default function IdeasPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setDraftImage(null)
-                      if (fileInputRef.current) fileInputRef.current.value = ''
-                    }}
+                    onClick={() => setDraftImage(null)}
                     className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-gray-950/70 text-white transition hover:bg-gray-950"
                     aria-label="Remove image"
                   >
