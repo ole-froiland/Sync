@@ -142,6 +142,7 @@ export default function IdeasPage() {
   const [customFrom, setCustomFrom] = useState(todayInputValue())
   const [customTo, setCustomTo] = useState(todayInputValue())
   const [votes, setVotes] = useState<string[]>([])
+  const [storageLoaded, setStorageLoaded] = useState(false)
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -150,7 +151,7 @@ export default function IdeasPage() {
         const rawVotes = window.localStorage.getItem(VOTE_KEY)
         if (rawIdeas) {
           const parsed = JSON.parse(rawIdeas) as Idea[]
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (Array.isArray(parsed)) {
             setIdeas(
               parsed.map((idea) => ({
                 ...idea,
@@ -165,17 +166,29 @@ export default function IdeasPage() {
         }
       } catch {
         // ignore invalid local data
+      } finally {
+        setStorageLoaded(true)
       }
     })
   }, [])
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ideas))
-  }, [ideas])
+    if (!storageLoaded) return
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ideas))
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [ideas, storageLoaded])
 
   useEffect(() => {
-    window.localStorage.setItem(VOTE_KEY, JSON.stringify(votes))
-  }, [votes])
+    if (!storageLoaded) return
+    try {
+      window.localStorage.setItem(VOTE_KEY, JSON.stringify(votes))
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [storageLoaded, votes])
 
   const filteredIdeas = useMemo(() => {
     return ideas
