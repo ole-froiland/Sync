@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowUp, Search, Send, Sparkles } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowUp, ImageIcon, Search, Send, Sparkles, X } from 'lucide-react'
+import Image from 'next/image'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
@@ -9,7 +10,7 @@ import { useUser } from '@/context/UserContext'
 
 type IdeaStatus = 'under-review' | 'planned' | 'in-progress' | 'shipped'
 type IdeaTag = 'ux' | 'chat' | 'calendar' | 'mobile' | 'integrations'
-type TimeFilter = 'today' | 'week' | 'month'
+type TimeFilter = 'today' | 'week' | 'month' | 'custom'
 
 type Idea = {
   id: string
@@ -21,6 +22,7 @@ type Idea = {
   votes: number
   author: string
   createdAt: string
+  imageUrl?: string | null
 }
 
 const STORAGE_KEY = 'sync-ideas-board'
@@ -72,6 +74,7 @@ const timeFilters: { id: TimeFilter; label: string }[] = [
   { id: 'today', label: 'Today' },
   { id: 'week', label: 'This week' },
   { id: 'month', label: 'This month' },
+  { id: 'custom', label: 'Customize' },
 ]
 
 function statusLabel(status: IdeaStatus) {
@@ -100,7 +103,11 @@ function statusClass(status: IdeaStatus) {
   }
 }
 
-function matchesTimeFilter(idea: Idea, filter: TimeFilter) {
+function todayInputValue() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function matchesTimeFilter(idea: Idea, filter: TimeFilter, customFrom: string, customTo: string) {
   const createdAt = new Date(idea.createdAt).getTime()
   const now = Date.now()
   const age = now - createdAt
@@ -109,7 +116,11 @@ function matchesTimeFilter(idea: Idea, filter: TimeFilter) {
   if (Number.isNaN(createdAt)) return true
   if (filter === 'today') return age <= day
   if (filter === 'week') return age <= 7 * day
-  return age <= 31 * day
+  if (filter === 'month') return age <= 31 * day
+
+  const from = customFrom ? new Date(`${customFrom}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY
+  const to = customTo ? new Date(`${customTo}T23:59:59`).getTime() : Number.POSITIVE_INFINITY
+  return createdAt >= from && createdAt <= to
 }
 
 function ideaMatchesQuery(idea: Idea, query: string) {
@@ -124,9 +135,13 @@ function ideaMatchesQuery(idea: Idea, query: string) {
 
 export default function IdeasPage() {
   const profile = useUser()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [ideas, setIdeas] = useState<Idea[]>(seedIdeas)
   const [activeTime, setActiveTime] = useState<TimeFilter>('today')
   const [query, setQuery] = useState('')
+  const [draftImage, setDraftImage] = useState<string | null>(null)
+  const [customFrom, setCustomFrom] = useState(todayInputValue())
+  const [customTo, setCustomTo] = useState(todayInputValue())
   const [votes, setVotes] = useState<string[]>([])
 
   useEffect(() => {
@@ -165,10 +180,10 @@ export default function IdeasPage() {
 
   const filteredIdeas = useMemo(() => {
     return ideas
-      .filter((idea) => matchesTimeFilter(idea, activeTime))
+      .filter((idea) => matchesTimeFilter(idea, activeTime, customFrom, customTo))
       .filter((idea) => ideaMatchesQuery(idea, query))
       .sort((a, b) => b.votes - a.votes || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-  }, [activeTime, ideas, query])
+  }, [activeTime, customFrom, customTo, ideas, query])
 
   function toggleVote(id: string) {
     const hasVoted = votes.includes(id)
@@ -180,27 +195,41 @@ export default function IdeasPage() {
     )
   }
 
+  function handleImageChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') setDraftImage(reader.result)
+    }
+    reader.readAsDataURL(file)
+  }
+
   function submitIdea(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const value = query.trim()
-    if (!value) return
+    if (!value && !draftImage) return
 
     const nextIdea: Idea = {
       id: `idea-${Date.now()}`,
-      title: value,
-      summary: 'New idea from the feed composer.',
+      title: value || 'Image idea',
+      summary: draftImage ? 'Image attached from the feed composer.' : 'New idea from the feed composer.',
       detail: value,
       status: 'under-review',
       tag: 'ux',
       votes: 1,
       author: profile?.first_name ?? profile?.name ?? 'You',
       createdAt: new Date().toISOString(),
+      imageUrl: draftImage,
     }
 
     setIdeas((prev) => [nextIdea, ...prev])
     setVotes((prev) => [...prev, nextIdea.id])
     setActiveTime('today')
     setQuery('')
+    setDraftImage(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   return (
@@ -210,23 +239,59 @@ export default function IdeasPage() {
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <main className="mx-auto max-w-4xl">
           <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <form onSubmit={submitIdea} className="flex flex-col gap-3 sm:flex-row">
-              <label className="relative flex-1">
-                <Search
-                  size={18}
-                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
-                />
+            <form onSubmit={submitIdea} className="space-y-3">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <label className="relative flex-1">
+                  <Search
+                    size={18}
+                    className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                  />
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Search or write a new idea..."
+                    className="h-12 w-full rounded-xl border border-gray-200 bg-gray-50 pl-11 pr-4 text-sm text-gray-900 outline-none transition focus:border-purple-400 focus:bg-white dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:bg-gray-950"
+                  />
+                </label>
                 <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search or write a new idea..."
-                  className="h-12 w-full rounded-xl border border-gray-200 bg-gray-50 pl-11 pr-4 text-sm text-gray-900 outline-none transition focus:border-purple-400 focus:bg-white dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:bg-gray-950"
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="sr-only"
                 />
-              </label>
-              <Button type="submit" className="h-12 shrink-0 gap-2" disabled={!query.trim()}>
-                <Send size={16} />
-                Post
-              </Button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                >
+                  <ImageIcon size={16} />
+                  Image
+                </button>
+                <Button type="submit" className="h-12 shrink-0 gap-2" disabled={!query.trim() && !draftImage}>
+                  <Send size={16} />
+                  Post
+                </Button>
+              </div>
+
+              {draftImage && (
+                <div className="relative w-fit overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-800">
+                  <div className="relative h-24 w-36 overflow-hidden rounded-lg">
+                    <Image src={draftImage} alt="" fill sizes="144px" className="object-cover" unoptimized />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraftImage(null)
+                      if (fileInputRef.current) fileInputRef.current.value = ''
+                    }}
+                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-gray-950/70 text-white transition hover:bg-gray-950"
+                    aria-label="Remove image"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
             </form>
 
             <div className="mt-4 flex flex-col gap-3 border-t border-gray-100 pt-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
@@ -237,7 +302,7 @@ export default function IdeasPage() {
                   {filteredIdeas.length}
                 </Badge>
               </div>
-              <div className="grid grid-cols-3 gap-2 sm:inline-grid">
+              <div className="grid grid-cols-2 gap-2 sm:inline-grid sm:grid-cols-4">
                 {timeFilters.map((filter) => (
                   <button
                     key={filter.id}
@@ -254,6 +319,29 @@ export default function IdeasPage() {
                 ))}
               </div>
             </div>
+
+            {activeTime === 'custom' && (
+              <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 dark:border-gray-800 sm:grid-cols-2">
+                <label className="text-xs font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                  From
+                  <input
+                    type="date"
+                    value={customFrom}
+                    onChange={(event) => setCustomFrom(event.target.value)}
+                    className="mt-2 h-10 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm normal-case tracking-normal text-gray-900 outline-none focus:border-purple-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                  />
+                </label>
+                <label className="text-xs font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                  To
+                  <input
+                    type="date"
+                    value={customTo}
+                    onChange={(event) => setCustomTo(event.target.value)}
+                    className="mt-2 h-10 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm normal-case tracking-normal text-gray-900 outline-none focus:border-purple-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                  />
+                </label>
+              </div>
+            )}
           </section>
 
           <section className="mt-4 space-y-3">
@@ -283,6 +371,11 @@ export default function IdeasPage() {
                         <Badge className={statusClass(idea.status)}>{statusLabel(idea.status)}</Badge>
                       </div>
                       <p className="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">{idea.summary}</p>
+                      {idea.imageUrl && (
+                        <div className="relative mt-3 h-72 w-full overflow-hidden rounded-xl border border-gray-100 dark:border-gray-800">
+                          <Image src={idea.imageUrl} alt="" fill sizes="(max-width: 896px) 100vw, 768px" className="object-cover" unoptimized />
+                        </div>
+                      )}
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
                         <span>{idea.tag}</span>
                         <span>•</span>
