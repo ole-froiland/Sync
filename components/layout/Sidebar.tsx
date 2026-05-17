@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
@@ -17,8 +17,11 @@ import {
   Lightbulb,
   UserCircle,
   HelpCircle,
+  Camera,
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
+import Button from '@/components/ui/Button'
+import Modal from '@/components/ui/Modal'
 import type { Profile } from '@/types'
 import { CHAT_META_EVENT, readChatReadMap, readMutedUserIds } from '@/lib/chat-meta'
 
@@ -41,8 +44,13 @@ interface SidebarProps {
 
 export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const [chatBadgeCount, setChatBadgeCount] = useState(0)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const [profileModalOpen, setProfileModalOpen] = useState(false)
+  const [draftName, setDraftName] = useState(profile?.name ?? '')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
   const profileId = profile?.id ?? null
 
@@ -134,6 +142,39 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
     return () => window.removeEventListener('mousedown', closeOnOutsideClick)
   }, [profileMenuOpen])
 
+  function openProfileModal() {
+    setProfileMenuOpen(false)
+    setDraftName(profile?.name ?? 'User')
+    setProfileSaveError(null)
+    setProfileModalOpen(true)
+  }
+
+  async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!profile || !draftName.trim()) return
+
+    setProfileSaving(true)
+    setProfileSaveError(null)
+
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('profiles')
+        .update({ name: draftName.trim() })
+        .eq('id', profile.id)
+
+      if (error) throw error
+
+      router.refresh()
+      setProfileModalOpen(false)
+    } catch (error) {
+      setProfileSaveError(error instanceof Error ? error.message : 'Kunne ikke lagre profilen.')
+    } finally {
+      setProfileSaving(false)
+    }
+  }
+
   return (
     <aside className="w-60 flex-shrink-0 h-screen sticky top-0 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex flex-col">
       {/* Logo */}
@@ -180,14 +221,14 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
       <div ref={profileMenuRef} className="relative px-3 py-3 border-t border-gray-100 dark:border-gray-800">
         {profileMenuOpen && (
           <div className="absolute bottom-full left-3 right-3 z-30 mb-2 overflow-hidden rounded-xl border border-gray-200 bg-white py-1.5 shadow-xl dark:border-gray-700 dark:bg-gray-900">
-            <Link
-              href="/people"
-              onClick={() => setProfileMenuOpen(false)}
-              className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+            <button
+              type="button"
+              onClick={openProfileModal}
+              className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
             >
               <UserCircle size={16} />
               Bruker
-            </Link>
+            </button>
             <Link
               href="/settings"
               onClick={() => setProfileMenuOpen(false)}
@@ -231,6 +272,71 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
           </div>
         </button>
       </div>
+
+      <Modal
+        open={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        title="Rediger profil"
+        className="max-w-2xl"
+      >
+        <form onSubmit={saveProfile} className="space-y-6">
+          <div className="flex justify-center">
+            <div className="relative">
+              <Avatar
+                name={draftName || profile?.name || 'User'}
+                src={profile?.avatar_url}
+                size="lg"
+                className="h-32 w-32 border-4 border-blue-600 text-4xl shadow-sm"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setProfileModalOpen(false)
+                  router.push('/settings')
+                }}
+                className="absolute bottom-3 right-0 flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                aria-label="Endre profilbilde"
+              >
+                <Camera size={18} />
+              </button>
+            </div>
+          </div>
+
+          <label className="block rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900">
+            <span className="text-sm text-gray-500 dark:text-gray-400">Visningsnavn</span>
+            <input
+              value={draftName}
+              onChange={(event) => setDraftName(event.target.value)}
+              className="mt-1 w-full bg-transparent text-base text-gray-900 outline-none dark:text-gray-100"
+              placeholder="Visningsnavn"
+            />
+          </label>
+
+          <label className="block rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900">
+            <span className="text-sm text-gray-500 dark:text-gray-400">E-post</span>
+            <input
+              value={profile?.email ?? ''}
+              readOnly
+              className="mt-1 w-full bg-transparent text-base text-gray-500 outline-none dark:text-gray-400"
+            />
+          </label>
+
+          {profileSaveError && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-300">
+              {profileSaveError}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setProfileModalOpen(false)}>
+              Avbryt
+            </Button>
+            <Button type="submit" loading={profileSaving} disabled={!draftName.trim()}>
+              Lagre
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </aside>
   )
 }
