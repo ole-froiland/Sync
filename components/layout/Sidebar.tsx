@@ -17,7 +17,6 @@ import {
   Lightbulb,
   UserCircle,
   HelpCircle,
-  Camera,
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
@@ -49,9 +48,11 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
   const [draftName, setDraftName] = useState(profile?.name ?? '')
+  const [draftAvatarUrl, setDraftAvatarUrl] = useState<string | null>(profile?.avatar_url ?? null)
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
+  const profileAvatarInputRef = useRef<HTMLInputElement>(null)
   const profileId = profile?.id ?? null
 
   const supabaseConfigured = useMemo(
@@ -145,8 +146,27 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
   function openProfileModal() {
     setProfileMenuOpen(false)
     setDraftName(profile?.name ?? 'User')
+    setDraftAvatarUrl(profile?.avatar_url ?? null)
     setProfileSaveError(null)
     setProfileModalOpen(true)
+  }
+
+  function attachProfileImage(file: File) {
+    if (!file.type.startsWith('image/')) return
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setDraftAvatarUrl(reader.result)
+        setProfileSaveError(null)
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function avatarDisplaySrc(src: string | null | undefined) {
+    if (!src || src.startsWith('data:image/svg+xml')) return null
+    return src
   }
 
   async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
@@ -161,7 +181,11 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
       const supabase = createClient()
       const { error } = await supabase
         .from('profiles')
-        .update({ name: draftName.trim() })
+        .update({
+          name: draftName.trim(),
+          avatar_url: draftAvatarUrl,
+          selected_avatar: null,
+        })
         .eq('id', profile.id)
 
       if (error) throw error
@@ -281,24 +305,39 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
       >
         <form onSubmit={saveProfile} className="space-y-6">
           <div className="flex justify-center">
-            <div className="relative">
+            <div
+              className="flex flex-col items-center gap-3"
+              onDrop={(event) => {
+                event.preventDefault()
+                const file = event.dataTransfer.files[0]
+                if (file) attachProfileImage(file)
+              }}
+              onDragOver={(event) => event.preventDefault()}
+            >
               <Avatar
                 name={draftName || profile?.name || 'User'}
-                src={profile?.avatar_url}
+                src={avatarDisplaySrc(draftAvatarUrl)}
                 size="lg"
                 className="h-32 w-32 border-4 border-blue-600 text-4xl shadow-sm"
               />
+              <input
+                ref={profileAvatarInputRef}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) attachProfileImage(file)
+                }}
+              />
               <button
                 type="button"
-                onClick={() => {
-                  setProfileModalOpen(false)
-                  router.push('/settings')
-                }}
-                className="absolute bottom-3 right-0 flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
-                aria-label="Endre profilbilde"
+                onClick={() => profileAvatarInputRef.current?.click()}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
               >
-                <Camera size={18} />
+                Last opp bilde
               </button>
+              <p className="text-xs text-gray-400 dark:text-gray-500">eller dra og slipp et bilde her</p>
             </div>
           </div>
 

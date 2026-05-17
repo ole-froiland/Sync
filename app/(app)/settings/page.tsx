@@ -1,17 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
 import Card from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import Avatar from '@/components/ui/Avatar'
-import AvatarPicker from '@/components/onboarding/AvatarPicker'
 import { useUser } from '@/context/UserContext'
 import { useGitHub } from '@/context/GitHubContext'
-import { avatarToUrl, getAvatar } from '@/lib/avatars'
-import { GitBranch, CheckCircle, AlertCircle, X, Camera } from 'lucide-react'
+import { GitBranch, CheckCircle, AlertCircle, X } from 'lucide-react'
 
 const TOOL_OPTIONS = [
   'Claude', 'Cursor', 'GitHub', 'Figma', 'Codex',
@@ -27,24 +25,24 @@ const GITHUB_ERROR_MESSAGES: Record<string, string> = {
   save_failed: 'Token was received but could not be saved. Check Supabase table and RLS policies.',
 }
 
+function avatarDisplaySrc(src: string | null | undefined) {
+  if (!src || src.startsWith('data:image/svg+xml')) return null
+  return src
+}
+
 export default function SettingsPage() {
   const router = useRouter()
   const profile = useUser()
   const github = useGitHub()
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   const [name, setName] = useState(profile?.name ?? '')
   const [role, setRole] = useState(profile?.role ?? '')
   const [tools, setTools] = useState<string[]>(profile?.tools_used ?? [])
-  const [avatarId, setAvatarId] = useState(profile?.selected_avatar ?? '')
-  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(profile?.avatar_url ?? null)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [disconnecting, setDisconnecting] = useState(false)
-
-  const selectedAvatar = avatarId ? getAvatar(avatarId) : null
-  const avatarUrl = selectedAvatar
-    ? avatarToUrl(selectedAvatar.emoji, selectedAvatar.color)
-    : profile?.avatar_url ?? null
 
   // Read URL params once on mount to set the initial flash — no useEffect setState needed
   const [flash, setFlash] = useState<{ type: 'success' | 'error'; message: string } | null>(() => {
@@ -80,6 +78,20 @@ export default function SettingsPage() {
     )
   }
 
+  function attachAvatarImage(file: File) {
+    if (!file.type.startsWith('image/')) return
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setAvatarUrl(reader.result)
+        setSaveError(null)
+        setSaved(false)
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     if (!profile) return
@@ -95,8 +107,8 @@ export default function SettingsPage() {
           name,
           role: role || null,
           tools_used: tools,
-          selected_avatar: avatarId || profile.selected_avatar,
           avatar_url: avatarUrl,
+          selected_avatar: null,
         })
         .eq('id', profile.id)
 
@@ -152,39 +164,38 @@ export default function SettingsPage() {
           <Card>
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">Profile</h2>
             <div className="flex items-center gap-4 mb-5">
-              <div className="relative shrink-0">
+              <div
+                className="flex shrink-0 flex-col items-center gap-2"
+                onDrop={(event) => {
+                  event.preventDefault()
+                  const file = event.dataTransfer.files[0]
+                  if (file) attachAvatarImage(file)
+                }}
+                onDragOver={(event) => event.preventDefault()}
+              >
+                <Avatar name={name || 'User'} src={avatarDisplaySrc(avatarUrl)} size="lg" className="h-16 w-16" />
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (file) attachAvatarImage(file)
+                  }}
+                />
                 <button
                   type="button"
-                  onClick={() => setAvatarPickerOpen((open) => !open)}
-                  className="group relative block rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
-                  aria-expanded={avatarPickerOpen}
-                  aria-label="Change profile picture"
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
                 >
-                  <Avatar name={name || 'User'} src={avatarUrl} size="lg" className="h-16 w-16" />
-                  <span className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm transition-colors group-hover:text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:group-hover:text-white">
-                    <Camera size={15} />
-                  </span>
+                  Last opp bilde
                 </button>
-                {avatarPickerOpen && (
-                  <div className="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-4rem)] rounded-xl border border-gray-200 bg-white p-3 shadow-xl dark:border-gray-700 dark:bg-gray-900">
-                    <AvatarPicker
-                      value={avatarId}
-                      onChange={(nextAvatarId) => {
-                        setAvatarId(nextAvatarId)
-                        setAvatarPickerOpen(false)
-                        setSaveError(null)
-                        setSaved(false)
-                      }}
-                      label="Choose avatar"
-                      showSelected={false}
-                      gridClassName="grid-cols-5 max-h-64 border-0 bg-transparent p-1 dark:bg-transparent"
-                    />
-                  </div>
-                )}
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{name || 'User'}</p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">{profile?.email}</p>
+                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Dra og slipp et bilde på avataren.</p>
               </div>
             </div>
             <div className="flex flex-col gap-3">
