@@ -22,7 +22,7 @@ export default function TopBar({ title }: TopBarProps) {
   }
 
   const aiButtonClass =
-    'inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 shadow-sm transition-all duration-200 hover:scale-[1.02] hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+    'inline-flex h-8 w-8 items-center justify-center text-gray-700 transition-all duration-200 hover:scale-[1.04] hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 dark:text-gray-200'
 
   return (
     <header
