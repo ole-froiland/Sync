@@ -51,8 +51,8 @@ export default function TopBar({ title }: TopBarProps) {
           <Image
             src="/brand/chatgpt-logo.png"
             alt=""
-            width={18}
-            height={18}
+            width={24}
+            height={24}
             aria-hidden="true"
             className="rounded-sm"
           />
