@@ -559,9 +559,6 @@ function PersonCard({
               Wants to Sync with you
             </p>
           )}
-          <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-            {profile.role ?? 'Member'}
-          </p>
           <p className="truncate text-xs text-gray-400 dark:text-gray-600">{profile.email}</p>
         </div>
         <div
@@ -680,7 +677,6 @@ function ProfileModal({
                 )}
               </div>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{profile.email}</p>
-              <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">Role: Member</p>
               {profile.role && (
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   Focus: {profile.role}
