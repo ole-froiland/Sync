@@ -34,17 +34,6 @@ function daysAgo(days: number) {
 
 const seedIdeas: Idea[] = [
   {
-    id: 'idea-1',
-    title: 'Unread state per conversation',
-    summary: 'Show who has replied since you last looked.',
-    detail: 'Add a real unread model for direct messages and request threads so the sidebar feels alive instead of static.',
-    status: 'in-progress',
-    tag: 'chat',
-    votes: 14,
-    author: 'Ole',
-    createdAt: daysAgo(0),
-  },
-  {
     id: 'idea-2',
     title: 'Calendar drag and resize',
     summary: 'Move planning blocks directly inside the month view.',
