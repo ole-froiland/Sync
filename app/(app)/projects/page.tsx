@@ -316,9 +316,6 @@ export default function ProjectsPage() {
             <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <h1 className="text-2xl font-semibold text-gray-950 dark:text-gray-100">Prosjektmapper</h1>
-                <p className="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-                  Lag mapper for prosjektene dine og samle notater, lenker, filer og oppgaver på ett sted.
-                </p>
               </div>
               <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
                 <div className="relative w-full lg:w-80">
