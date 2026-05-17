@@ -372,21 +372,15 @@ export default function ProjectsPage() {
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') setPreviewFolderId(folder.id)
                         }}
-                        className={`group flex w-full items-start gap-3 rounded-lg border p-4 text-left transition ${
+                        className={`group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
                           active
                             ? 'border-purple-400 bg-purple-50 shadow-sm dark:border-purple-700 dark:bg-purple-950/30'
                             : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700'
                         }`}
                       >
-                        <ProjectLogoThumbnail folder={folder} className="h-11 w-11" iconSize={22} />
+                        <ProjectLogoThumbnail folder={folder} className="h-9 w-9" iconSize={18} />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
-                          <span className="mt-1 line-clamp-2 block text-sm text-gray-500 dark:text-gray-400">
-                            {folder.description || 'Tom prosjektmappe'}
-                          </span>
-                          <span className="mt-3 block text-xs text-gray-400 dark:text-gray-500">
-                            {folder.items.length} {folder.items.length === 1 ? 'ting lagret' : 'ting lagret'}
-                          </span>
+                          <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
                         </span>
                       </button>
                     )
@@ -434,7 +428,7 @@ export default function ProjectsPage() {
                 </main>
               </div>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {visibleFolders.map((folder) => (
                   <button
                     key={folder.id}
@@ -443,17 +437,11 @@ export default function ProjectsPage() {
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') setSelectedFolderId(folder.id)
                     }}
-                    className="group flex min-h-36 w-full items-start gap-4 rounded-lg border border-gray-200 bg-white p-5 text-left transition hover:border-purple-400 hover:bg-purple-50/60 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
+                    className="group flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left transition hover:border-purple-400 hover:bg-purple-50/60 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
                   >
-                    <ProjectLogoThumbnail folder={folder} className="h-12 w-12" iconSize={24} />
+                    <ProjectLogoThumbnail folder={folder} className="h-9 w-9" iconSize={18} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-lg font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
-                      <span className="mt-2 line-clamp-2 block text-sm text-gray-500 dark:text-gray-400">
-                        {folder.description || 'Tom prosjektmappe'}
-                      </span>
-                      <span className="mt-5 block text-xs text-gray-400 dark:text-gray-500">
-                        {folder.items.length} {folder.items.length === 1 ? 'ting lagret' : 'ting lagret'}
-                      </span>
+                      <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
                     </span>
                   </button>
                 ))}
