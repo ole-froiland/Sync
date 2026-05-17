@@ -118,23 +118,6 @@ function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function formatFileSize(size?: number) {
-  if (!size) return ''
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
-  return `${(size / 1024 / 1024).toFixed(1)} MB`
-}
-
-function formatUpdatedAt(value?: string) {
-  if (!value) return 'Akkurat nå'
-  return new Intl.DateTimeFormat('no', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value))
-}
-
 function projectLogo(folder: ProjectFolder): ProjectLogo {
   return folder.logo ?? { type: 'icon', value: 'folder' }
 }
@@ -455,6 +438,20 @@ export default function ProjectsPage() {
   )
 }
 
+function projectItemTypeLabel(item: ProjectItem) {
+  const meta = itemTypeMeta[item.type]
+  if (item.type === 'github') return 'Repo'
+  if (item.type === 'docs') return 'Docs'
+  if (item.type === 'sheets') return 'Sheets'
+  if (item.type === 'notion') return 'Notion'
+  if (item.type === 'word') return 'Word'
+  if (item.type === 'excel') return 'Excel'
+  if (item.type === 'url') return 'URL'
+  if (item.type === 'document') return 'Document'
+  if (item.type === 'local_folder') return 'Folder'
+  return meta.label
+}
+
 function ProjectItemCard({
   item,
   onToggle,
@@ -468,48 +465,19 @@ function ProjectItemCard({
   const Icon = meta.icon
 
   return (
-    <article className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/40">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-300">
-            <Icon size={18} />
+    <article className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-950/40">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-300">
+            <Icon size={19} />
           </span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className={`font-medium text-gray-950 dark:text-gray-100 ${item.done ? 'line-through opacity-60' : ''}`}>{item.title}</h3>
-              <span className="rounded-md bg-white px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
-                {meta.label}
-              </span>
-              <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                {item.status ?? (item.done ? 'Done' : 'Active')}
+              <h3 className={`truncate text-sm font-medium text-gray-950 dark:text-gray-100 ${item.done ? 'line-through opacity-60' : ''}`}>{item.title}</h3>
+              <span className="shrink-0 rounded-md bg-white px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
+                {projectItemTypeLabel(item)}
               </span>
             </div>
-            {item.body && <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">{item.body}</p>}
-            {item.url && (
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-flex max-w-full items-center gap-1 truncate text-sm text-purple-600 hover:underline dark:text-purple-300"
-              >
-                <Link2 size={14} />
-                <span className="truncate">{item.url}</span>
-              </a>
-            )}
-            {item.path && (
-              <p className="mt-3 inline-flex max-w-full items-center gap-1 truncate text-sm text-gray-500 dark:text-gray-400">
-                <FolderOpen size={14} />
-                <span className="truncate">{item.path}</span>
-              </p>
-            )}
-            {item.fileName && (
-              <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-                {item.fileName} {formatFileSize(item.fileSize)}
-              </p>
-            )}
-            <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
-              Sist oppdatert {formatUpdatedAt(item.updatedAt ?? item.createdAt)}
-            </p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -646,7 +614,7 @@ function ProjectDetailContent({
             </Button>
           </div>
         ) : (
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {folder.items.map((item) => (
               <ProjectItemCard
                 key={item.id}
@@ -823,47 +791,18 @@ function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
   const Icon = meta.icon
 
   return (
-    <article className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/40">
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-300">
-          <Icon size={18} />
+    <article className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-950/40">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-300">
+          <Icon size={19} />
         </span>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className={`font-medium text-gray-950 dark:text-gray-100 ${item.done ? 'line-through opacity-60' : ''}`}>{item.title}</h3>
-            <span className="rounded-md bg-white px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
-              {meta.label}
-            </span>
-            <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-              {item.status ?? (item.done ? 'Done' : 'Active')}
+            <h3 className={`truncate text-sm font-medium text-gray-950 dark:text-gray-100 ${item.done ? 'line-through opacity-60' : ''}`}>{item.title}</h3>
+            <span className="shrink-0 rounded-md bg-white px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
+              {projectItemTypeLabel(item)}
             </span>
           </div>
-          {item.body && <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">{item.body}</p>}
-          {item.url && (
-            <a
-              href={item.url}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-3 inline-flex max-w-full items-center gap-1 truncate text-sm text-purple-600 hover:underline dark:text-purple-300"
-            >
-              <Link2 size={14} />
-              <span className="truncate">{item.url}</span>
-            </a>
-          )}
-          {item.path && (
-            <p className="mt-3 inline-flex max-w-full items-center gap-1 truncate text-sm text-gray-500 dark:text-gray-400">
-              <FolderOpen size={14} />
-              <span className="truncate">{item.path}</span>
-            </p>
-          )}
-          {item.fileName && (
-            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-              {item.fileName} {formatFileSize(item.fileSize)}
-            </p>
-          )}
-          <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
-            Sist oppdatert {formatUpdatedAt(item.updatedAt ?? item.createdAt)}
-          </p>
         </div>
       </div>
     </article>
