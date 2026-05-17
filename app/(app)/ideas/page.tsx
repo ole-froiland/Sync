@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowUp, Search, Send, Sparkles, X } from 'lucide-react'
+import { ArrowUp, Search, Send, X } from 'lucide-react'
 import Image from 'next/image'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
@@ -293,30 +293,18 @@ export default function IdeasPage() {
               )}
             </form>
 
-            <div className="mt-4 flex flex-col gap-3 border-t border-gray-100 pt-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles size={16} className="text-purple-500" />
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Suggestion feed</p>
-                <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                  {filteredIdeas.length}
-                </Badge>
-              </div>
-              <div className="grid grid-cols-2 gap-2 sm:inline-grid sm:grid-cols-4">
+            <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-800">
+              <select
+                value={activeTime}
+                onChange={(event) => setActiveTime(event.target.value as TimeFilter)}
+                className="h-10 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm font-medium text-gray-700 outline-none transition focus:border-purple-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              >
                 {timeFilters.map((filter) => (
-                  <button
-                    key={filter.id}
-                    type="button"
-                    onClick={() => setActiveTime(filter.id)}
-                    className={`h-9 rounded-lg px-3 text-sm font-medium transition ${
-                      activeTime === filter.id
-                        ? 'bg-purple-600 text-white shadow-sm shadow-purple-500/20'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
-                    }`}
-                  >
+                  <option key={filter.id} value={filter.id}>
                     {filter.label}
-                  </button>
+                  </option>
                 ))}
-              </div>
+              </select>
             </div>
 
             {activeTime === 'custom' && (
