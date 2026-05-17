@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -15,6 +15,8 @@ import {
   Handshake,
   CalendarDays,
   Lightbulb,
+  UserCircle,
+  HelpCircle,
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
 import type { Profile } from '@/types'
@@ -40,6 +42,8 @@ interface SidebarProps {
 export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps) {
   const pathname = usePathname()
   const [chatBadgeCount, setChatBadgeCount] = useState(0)
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const profileMenuRef = useRef<HTMLDivElement>(null)
   const profileId = profile?.id ?? null
 
   const supabaseConfigured = useMemo(
@@ -117,6 +121,19 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
     }
   }, [profileId, supabaseConfigured])
 
+  useEffect(() => {
+    if (!profileMenuOpen) return
+
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (!profileMenuRef.current?.contains(event.target as Node)) {
+        setProfileMenuOpen(false)
+      }
+    }
+
+    window.addEventListener('mousedown', closeOnOutsideClick)
+    return () => window.removeEventListener('mousedown', closeOnOutsideClick)
+  }, [profileMenuOpen])
+
   return (
     <aside className="w-60 flex-shrink-0 h-screen sticky top-0 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex flex-col">
       {/* Logo */}
@@ -160,26 +177,58 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
       </nav>
 
       {/* Bottom: profile */}
-      <div className="px-3 py-3 border-t border-gray-100 dark:border-gray-800">
-        <Link
-          href="/settings"
-          className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-all duration-200 group"
+      <div ref={profileMenuRef} className="relative px-3 py-3 border-t border-gray-100 dark:border-gray-800">
+        {profileMenuOpen && (
+          <div className="absolute bottom-full left-3 right-3 z-30 mb-2 overflow-hidden rounded-xl border border-gray-200 bg-white py-1.5 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+            <Link
+              href="/people"
+              onClick={() => setProfileMenuOpen(false)}
+              className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+            >
+              <UserCircle size={16} />
+              Bruker
+            </Link>
+            <Link
+              href="/settings"
+              onClick={() => setProfileMenuOpen(false)}
+              className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+            >
+              <Settings size={16} />
+              Innstillinger
+            </Link>
+            <Link
+              href="/how-to-sync"
+              onClick={() => setProfileMenuOpen(false)}
+              className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+            >
+              <HelpCircle size={16} />
+              Hjelp
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setProfileMenuOpen(false)
+                onSignOut()
+              }}
+              disabled={signingOut}
+              className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-60 disabled:pointer-events-none dark:text-red-300 dark:hover:bg-red-950/30"
+            >
+              <LogOut size={16} />
+              {signingOut ? 'Logger ut...' : 'Logg ut'}
+            </button>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setProfileMenuOpen((open) => !open)}
+          className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-all duration-200"
+          aria-expanded={profileMenuOpen}
+          aria-haspopup="menu"
         >
           <Avatar name={profile?.name || 'User'} src={profile?.avatar_url} size="sm" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{profile?.name || 'User'}</p>
           </div>
-          <Settings size={14} className="text-gray-300 dark:text-gray-600 group-hover:text-gray-500 dark:group-hover:text-gray-400 flex-shrink-0" />
-        </Link>
-        <button
-          type="button"
-          onClick={onSignOut}
-          disabled={signingOut}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-700 dark:hover:text-red-300 disabled:opacity-60 disabled:pointer-events-none transition-all duration-200 mt-1"
-          aria-label="Log out and return to login"
-        >
-          <LogOut size={15} />
-          {signingOut ? 'Logging out...' : 'Log out'}
         </button>
       </div>
     </aside>
