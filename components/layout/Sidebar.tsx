@@ -168,7 +168,6 @@ export default function Sidebar({ profile, onSignOut, signingOut }: SidebarProps
           <Avatar name={profile?.name || 'User'} src={profile?.avatar_url} size="sm" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{profile?.name || 'User'}</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{profile?.role || 'Member'}</p>
           </div>
           <Settings size={14} className="text-gray-300 dark:text-gray-600 group-hover:text-gray-500 dark:group-hover:text-gray-400 flex-shrink-0" />
         </Link>
