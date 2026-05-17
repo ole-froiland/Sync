@@ -1,15 +1,15 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowUp, Compass, MessageSquareQuote, Plus, Sparkles } from 'lucide-react'
+import { ArrowUp, Search, Send, Sparkles } from 'lucide-react'
 import TopBar from '@/components/layout/TopBar'
-import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import { useUser } from '@/context/UserContext'
 
 type IdeaStatus = 'under-review' | 'planned' | 'in-progress' | 'shipped'
 type IdeaTag = 'ux' | 'chat' | 'calendar' | 'mobile' | 'integrations'
+type TimeFilter = 'today' | 'week' | 'month'
 
 type Idea = {
   id: string
@@ -20,10 +20,17 @@ type Idea = {
   tag: IdeaTag
   votes: number
   author: string
+  createdAt: string
 }
 
 const STORAGE_KEY = 'sync-ideas-board'
 const VOTE_KEY = 'sync-idea-votes'
+
+function daysAgo(days: number) {
+  const date = new Date()
+  date.setDate(date.getDate() - days)
+  return date.toISOString()
+}
 
 const seedIdeas: Idea[] = [
   {
@@ -35,6 +42,7 @@ const seedIdeas: Idea[] = [
     tag: 'chat',
     votes: 14,
     author: 'Ole',
+    createdAt: daysAgo(0),
   },
   {
     id: 'idea-2',
@@ -45,6 +53,7 @@ const seedIdeas: Idea[] = [
     tag: 'calendar',
     votes: 11,
     author: 'Elias',
+    createdAt: daysAgo(2),
   },
   {
     id: 'idea-3',
@@ -55,6 +64,7 @@ const seedIdeas: Idea[] = [
     tag: 'mobile',
     votes: 9,
     author: 'Sebastian',
+    createdAt: daysAgo(9),
   },
   {
     id: 'idea-4',
@@ -65,10 +75,15 @@ const seedIdeas: Idea[] = [
     tag: 'integrations',
     votes: 18,
     author: 'Arvind',
+    createdAt: daysAgo(18),
   },
 ]
 
-const statusOrder: IdeaStatus[] = ['under-review', 'planned', 'in-progress', 'shipped']
+const timeFilters: { id: TimeFilter; label: string }[] = [
+  { id: 'today', label: 'Today' },
+  { id: 'week', label: 'This week' },
+  { id: 'month', label: 'This month' },
+]
 
 function statusLabel(status: IdeaStatus) {
   switch (status) {
@@ -96,14 +111,33 @@ function statusClass(status: IdeaStatus) {
   }
 }
 
+function matchesTimeFilter(idea: Idea, filter: TimeFilter) {
+  const createdAt = new Date(idea.createdAt).getTime()
+  const now = Date.now()
+  const age = now - createdAt
+  const day = 24 * 60 * 60 * 1000
+
+  if (Number.isNaN(createdAt)) return true
+  if (filter === 'today') return age <= day
+  if (filter === 'week') return age <= 7 * day
+  return age <= 31 * day
+}
+
+function ideaMatchesQuery(idea: Idea, query: string) {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return true
+
+  return [idea.title, idea.summary, idea.detail, idea.author, idea.tag, statusLabel(idea.status)]
+    .join(' ')
+    .toLowerCase()
+    .includes(needle)
+}
+
 export default function IdeasPage() {
   const profile = useUser()
   const [ideas, setIdeas] = useState<Idea[]>(seedIdeas)
-  const [activeStatus, setActiveStatus] = useState<IdeaStatus | 'all'>('all')
-  const [selectedId, setSelectedId] = useState<string>(seedIdeas[0].id)
-  const [draftTitle, setDraftTitle] = useState('')
-  const [draftSummary, setDraftSummary] = useState('')
-  const [draftTag, setDraftTag] = useState<IdeaTag>('ux')
+  const [activeTime, setActiveTime] = useState<TimeFilter>('today')
+  const [query, setQuery] = useState('')
   const [votes, setVotes] = useState<string[]>([])
 
   useEffect(() => {
@@ -113,7 +147,14 @@ export default function IdeasPage() {
         const rawVotes = window.localStorage.getItem(VOTE_KEY)
         if (rawIdeas) {
           const parsed = JSON.parse(rawIdeas) as Idea[]
-          if (Array.isArray(parsed) && parsed.length > 0) setIdeas(parsed)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setIdeas(
+              parsed.map((idea) => ({
+                ...idea,
+                createdAt: idea.createdAt ?? new Date().toISOString(),
+              }))
+            )
+          }
         }
         if (rawVotes) {
           const parsed = JSON.parse(rawVotes) as string[]
@@ -134,14 +175,11 @@ export default function IdeasPage() {
   }, [votes])
 
   const filteredIdeas = useMemo(() => {
-    const list = activeStatus === 'all' ? ideas : ideas.filter((idea) => idea.status === activeStatus)
-    return [...list].sort((a, b) => b.votes - a.votes)
-  }, [activeStatus, ideas])
-
-  const selectedIdea = useMemo(
-    () => filteredIdeas.find((idea) => idea.id === selectedId) ?? filteredIdeas[0] ?? null,
-    [filteredIdeas, selectedId]
-  )
+    return ideas
+      .filter((idea) => matchesTimeFilter(idea, activeTime))
+      .filter((idea) => ideaMatchesQuery(idea, query))
+      .sort((a, b) => b.votes - a.votes || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  }, [activeTime, ideas, query])
 
   function toggleVote(id: string) {
     const hasVoted = votes.includes(id)
@@ -153,209 +191,125 @@ export default function IdeasPage() {
     )
   }
 
-  function submitIdea() {
-    if (!draftTitle.trim() || !draftSummary.trim()) return
+  function submitIdea(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const value = query.trim()
+    if (!value) return
+
     const nextIdea: Idea = {
       id: `idea-${Date.now()}`,
-      title: draftTitle.trim(),
-      summary: draftSummary.trim(),
-      detail: draftSummary.trim(),
+      title: value,
+      summary: 'New idea from the feed composer.',
+      detail: value,
       status: 'under-review',
-      tag: draftTag,
+      tag: 'ux',
       votes: 1,
       author: profile?.first_name ?? profile?.name ?? 'You',
+      createdAt: new Date().toISOString(),
     }
+
     setIdeas((prev) => [nextIdea, ...prev])
     setVotes((prev) => [...prev, nextIdea.id])
-    setSelectedId(nextIdea.id)
-    setDraftTitle('')
-    setDraftSummary('')
+    setActiveTime('today')
+    setQuery('')
   }
 
   return (
     <>
-      <TopBar
-        title="Ideas"
-        actions={
-          <div className="flex items-center gap-2">
-            <Badge className="bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
-              {ideas.length} tracked
-            </Badge>
-          </div>
-        }
-      />
+      <TopBar title="Ideas" />
 
       <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="mx-auto grid max-w-7xl gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <div className="space-y-6">
-            <Card>
-              <div className="flex items-center gap-2">
-                <div className="rounded-xl bg-purple-50 p-2 text-purple-600 dark:bg-purple-950/40 dark:text-purple-300">
-                  <Plus size={16} />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Pitch an improvement</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Collect friction, fixes and bigger product bets.</p>
-                </div>
-              </div>
-              <div className="mt-4 space-y-3">
+        <main className="mx-auto max-w-4xl">
+          <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <form onSubmit={submitIdea} className="flex flex-col gap-3 sm:flex-row">
+              <label className="relative flex-1">
+                <Search
+                  size={18}
+                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                />
                 <input
-                  value={draftTitle}
-                  onChange={(event) => setDraftTitle(event.target.value)}
-                  placeholder="Title your idea"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none ring-0 transition focus:border-purple-400 focus:bg-white dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:bg-gray-900"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search or write a new idea..."
+                  className="h-12 w-full rounded-xl border border-gray-200 bg-gray-50 pl-11 pr-4 text-sm text-gray-900 outline-none transition focus:border-purple-400 focus:bg-white dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:bg-gray-950"
                 />
-                <textarea
-                  value={draftSummary}
-                  onChange={(event) => setDraftSummary(event.target.value)}
-                  placeholder="What should improve, and why is it worth building?"
-                  rows={4}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-purple-400 focus:bg-white dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:bg-gray-900"
-                />
-                <div className="flex items-center justify-between gap-3">
-                  <select
-                    value={draftTag}
-                    onChange={(event) => setDraftTag(event.target.value as IdeaTag)}
-                    className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 outline-none focus:border-purple-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                  >
-                    <option value="ux">UX</option>
-                    <option value="chat">Chat</option>
-                    <option value="calendar">Calendar</option>
-                    <option value="mobile">Mobile</option>
-                    <option value="integrations">Integrations</option>
-                  </select>
-                  <Button size="sm" onClick={submitIdea}>
-                    Submit
-                  </Button>
-                </div>
-              </div>
-            </Card>
+              </label>
+              <Button type="submit" className="h-12 shrink-0 gap-2" disabled={!query.trim()}>
+                <Send size={16} />
+                Post
+              </Button>
+            </form>
 
-            <Card>
+            <div className="mt-4 flex flex-col gap-3 border-t border-gray-100 pt-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
-                <Compass size={16} className="text-gray-400 dark:text-gray-500" />
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Browse</p>
+                <Sparkles size={16} className="text-purple-500" />
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Suggestion feed</p>
+                <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                  {filteredIdeas.length}
+                </Badge>
               </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  onClick={() => setActiveStatus('all')}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium ${activeStatus === 'all' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'}`}
-                >
-                  All
-                </button>
-                {statusOrder.map((status) => (
+              <div className="grid grid-cols-3 gap-2 sm:inline-grid">
+                {timeFilters.map((filter) => (
                   <button
-                    key={status}
-                    onClick={() => setActiveStatus(status)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium ${activeStatus === status ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'}`}
+                    key={filter.id}
+                    type="button"
+                    onClick={() => setActiveTime(filter.id)}
+                    className={`h-9 rounded-lg px-3 text-sm font-medium transition ${
+                      activeTime === filter.id
+                        ? 'bg-purple-600 text-white shadow-sm shadow-purple-500/20'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                    }`}
                   >
-                    {statusLabel(status)}
+                    {filter.label}
                   </button>
                 ))}
               </div>
-            </Card>
-          </div>
+            </div>
+          </section>
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-            <Card className="overflow-hidden">
-              <div className="flex items-center justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-400 dark:text-gray-500">
-                    Suggestion feed
-                  </p>
-                  <h2 className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">
-                    Vote on what ships next
-                  </h2>
-                </div>
-                <Sparkles size={18} className="text-purple-500" />
-              </div>
-
-              <div className="mt-5 space-y-3">
-                {filteredIdeas.map((idea) => {
-                  const voted = votes.includes(idea.id)
-                  const selected = selectedIdea?.id === idea.id
-                  return (
+          <section className="mt-4 space-y-3">
+            {filteredIdeas.length > 0 ? (
+              filteredIdeas.map((idea) => {
+                const voted = votes.includes(idea.id)
+                return (
+                  <article
+                    key={idea.id}
+                    className="flex items-start gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700"
+                  >
                     <button
-                      key={idea.id}
-                      onClick={() => setSelectedId(idea.id)}
-                      className={`flex w-full items-start gap-4 rounded-2xl border p-4 text-left transition ${
-                        selected
-                          ? 'border-purple-300 bg-purple-50/70 dark:border-purple-800 dark:bg-purple-950/20'
-                          : 'border-gray-100 hover:border-gray-200 dark:border-gray-800 dark:hover:border-gray-700'
+                      type="button"
+                      onClick={() => toggleVote(idea.id)}
+                      className={`mt-0.5 flex h-11 w-11 flex-shrink-0 flex-col items-center justify-center rounded-xl border text-xs font-semibold transition ${
+                        voted
+                          ? 'border-purple-500 bg-purple-600 text-white'
+                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-purple-300 hover:text-purple-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-purple-700 dark:hover:text-purple-300'
                       }`}
                     >
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          toggleVote(idea.id)
-                        }}
-                        className={`mt-0.5 flex h-11 w-11 flex-shrink-0 flex-col items-center justify-center rounded-2xl border text-xs font-semibold ${
-                          voted
-                            ? 'border-purple-300 bg-purple-600 text-white dark:border-purple-700'
-                            : 'border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300'
-                        }`}
-                      >
-                        <ArrowUp size={13} />
-                        {idea.votes}
-                      </button>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{idea.title}</p>
-                          <Badge className={statusClass(idea.status)}>{statusLabel(idea.status)}</Badge>
-                        </div>
-                        <p className="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-                          {idea.summary}
-                        </p>
-                        <div className="mt-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                          <span>{idea.tag}</span>
-                          <span>•</span>
-                          <span>{idea.author}</span>
-                        </div>
-                      </div>
+                      <ArrowUp size={13} />
+                      {idea.votes}
                     </button>
-                  )
-                })}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{idea.title}</h2>
+                        <Badge className={statusClass(idea.status)}>{statusLabel(idea.status)}</Badge>
+                      </div>
+                      <p className="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">{idea.summary}</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                        <span>{idea.tag}</span>
+                        <span>•</span>
+                        <span>{idea.author}</span>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })
+            ) : (
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-12 text-center dark:border-gray-800 dark:bg-gray-900">
+                <p className="text-sm text-gray-500 dark:text-gray-400">No ideas match this view.</p>
               </div>
-            </Card>
-
-            <Card>
-              {selectedIdea ? (
-                <>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-400 dark:text-gray-500">
-                        Selected idea
-                      </p>
-                      <h3 className="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100">
-                        {selectedIdea.title}
-                      </h3>
-                    </div>
-                    <Badge className={statusClass(selectedIdea.status)}>{statusLabel(selectedIdea.status)}</Badge>
-                  </div>
-
-                  <p className="mt-4 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                    {selectedIdea.detail}
-                  </p>
-
-                  <div className="mt-6 rounded-2xl bg-gray-50 p-4 dark:bg-gray-800/70">
-                    <div className="flex items-center gap-2">
-                      <MessageSquareQuote size={16} className="text-gray-400 dark:text-gray-500" />
-                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Decision lens</p>
-                    </div>
-                    <ul className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                      <li>How often does this pain show up in the current flow?</li>
-                      <li>Does it sharpen focus, speed or trust?</li>
-                      <li>Can we ship a small first slice instead of the whole thing?</li>
-                    </ul>
-                  </div>
-                </>
-              ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400">No ideas match this filter.</p>
-              )}
-            </Card>
-          </div>
-        </div>
+            )}
+          </section>
+        </main>
       </div>
     </>
   )
