@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   BookOpen,
   ChevronDown,
   ExternalLink,
   GitFork,
+  Search,
   Star,
   TrendingUp,
 } from 'lucide-react'
@@ -77,6 +78,7 @@ export default function TrendingView() {
   const [language, setLanguage] = useState('all')
   const [languages, setLanguages] = useState<TrendingLanguage[]>([])
   const [sourceUrl, setSourceUrl] = useState('https://github.com/trending?since=daily')
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     const controller = new AbortController()
@@ -138,7 +140,41 @@ export default function TrendingView() {
     setLanguage(value)
   }
 
-  const hasResults = kind === 'repositories' ? repositories.length > 0 : developers.length > 0
+  const filteredRepositories = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return repositories
+    return repositories.filter((repo) =>
+      [
+        repo.fullName,
+        repo.description,
+        repo.language,
+        repo.builtBy?.map((user) => user.username).join(' '),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query)
+    )
+  }, [repositories, search])
+
+  const filteredDevelopers = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return developers
+    return developers.filter((developer) =>
+      [
+        developer.name,
+        developer.username,
+        developer.popularRepo,
+        developer.repoDescription,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query)
+    )
+  }, [developers, search])
+
+  const hasResults = kind === 'repositories' ? filteredRepositories.length > 0 : filteredDevelopers.length > 0
 
   return (
     <div className="mx-auto max-w-[1012px] px-4 pb-10 pt-7 sm:px-6">
@@ -167,6 +203,19 @@ export default function TrendingView() {
           </div>
 
           <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:items-center lg:gap-3">
+            <label className="relative block sm:col-span-2 lg:w-64">
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={kind === 'repositories' ? 'Search repositories' : 'Search developers'}
+                className="h-8 w-full rounded-md border border-gray-200 bg-white pl-8 pr-3 text-sm text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:placeholder:text-gray-500"
+              />
+            </label>
+
             <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
               <span className="shrink-0 font-medium">Language:</span>
               <span className="relative block w-full sm:w-44">
@@ -242,12 +291,12 @@ export default function TrendingView() {
           <div className="px-4 py-20 text-center">
             <TrendingUp size={24} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              No trending {kind} found for this filter
+              {search.trim() ? `No ${kind} matching "${search.trim()}"` : `No trending ${kind} found for this filter`}
             </p>
           </div>
         ) : kind === 'repositories' ? (
           <div>
-            {repositories.map((repo) => (
+            {filteredRepositories.map((repo) => (
               <article
                 key={repo.fullName}
                 className="grid gap-3 border-b border-gray-200 px-4 py-4 last:border-b-0 dark:border-gray-800 sm:grid-cols-[2rem_minmax(0,1fr)_auto] sm:gap-4"
@@ -347,7 +396,7 @@ export default function TrendingView() {
           </div>
         ) : (
           <div>
-            {developers.map((developer) => (
+            {filteredDevelopers.map((developer) => (
               <article
                 key={developer.username}
                 className="grid gap-3 border-b border-gray-200 px-4 py-4 last:border-b-0 dark:border-gray-800 sm:grid-cols-[2rem_minmax(0,1fr)_auto] sm:gap-4"
