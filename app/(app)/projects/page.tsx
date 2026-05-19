@@ -838,6 +838,14 @@ function ProjectDetailContent({
       }
       return
     }
+    if (event.key === 'Backspace' && activeItemFolder) {
+      event.preventDefault()
+      const parentFolder = folder.items.find(
+        (item) => item.id === activeItemFolder.parentId && item.type === 'local_folder'
+      )
+      onOpenItemFolder(parentFolder?.id ?? null)
+      return
+    }
     if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
       event.preventDefault()
       moveSelection(1, event.shiftKey)
