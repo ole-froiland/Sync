@@ -68,6 +68,7 @@ type ProjectItem = {
   path?: string
   fileName?: string
   fileSize?: number
+  parentId?: string
   done?: boolean
   status?: string
   createdAt: string
@@ -128,6 +129,7 @@ export default function ProjectsPage() {
   const [folderOpen, setFolderOpen] = useState(false)
   const [itemOpen, setItemOpen] = useState(false)
   const [localFolderOpen, setLocalFolderOpen] = useState(false)
+  const [activeItemFolderId, setActiveItemFolderId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [previewMode, setPreviewMode] = useState(false)
   const [previewFolderId, setPreviewFolderId] = useState<string | null>(null)
@@ -154,6 +156,8 @@ export default function ProjectsPage() {
   }, [folders])
 
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) ?? null
+  const activeItemFolder =
+    selectedFolder?.items.find((item) => item.id === activeItemFolderId && item.type === 'local_folder') ?? null
 
   const visibleFolders = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -193,6 +197,7 @@ export default function ProjectsPage() {
     const nextItem: ProjectItem = {
       ...item,
       id: makeId('item'),
+      parentId: activeItemFolderId ?? undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -224,7 +229,27 @@ export default function ProjectsPage() {
     setFolders((current) =>
       current.map((folder) =>
         folder.id === selectedFolder.id
-          ? { ...folder, items: folder.items.filter((item) => item.id !== itemId) }
+          ? { ...folder, items: folder.items.filter((item) => item.id !== itemId && item.parentId !== itemId) }
+          : folder
+      )
+    )
+    if (activeItemFolderId === itemId) setActiveItemFolderId(null)
+  }
+
+  function moveItemToFolder(itemId: string, targetFolderId: string) {
+    if (!selectedFolder || itemId === targetFolderId) return
+    const target = selectedFolder.items.find((item) => item.id === targetFolderId)
+    if (target?.type !== 'local_folder') return
+
+    setFolders((current) =>
+      current.map((folder) =>
+        folder.id === selectedFolder.id
+          ? {
+              ...folder,
+              items: folder.items.map((item) =>
+                item.id === itemId ? { ...item, parentId: targetFolderId, updatedAt: new Date().toISOString() } : item
+              ),
+            }
           : folder
       )
     )
@@ -253,6 +278,7 @@ export default function ProjectsPage() {
           <button
             onClick={() => {
               setSelectedFolderId(null)
+              setActiveItemFolderId(null)
               setItemOpen(false)
               setLocalFolderOpen(false)
             }}
@@ -265,11 +291,14 @@ export default function ProjectsPage() {
           <main className="min-h-[64vh] rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
             <ProjectDetailContent
               folder={selectedFolder}
+              activeItemFolder={activeItemFolder}
               onAddResource={() => setItemOpen(true)}
               onAddLocalFolder={() => setLocalFolderOpen(true)}
               onUpdate={updateFolder}
               onToggleTask={toggleTask}
               onRemoveItem={removeItem}
+              onOpenItemFolder={setActiveItemFolderId}
+              onMoveItemToFolder={moveItemToFolder}
             />
           </main>
         </div>
@@ -456,53 +485,103 @@ function ProjectItemCard({
   item,
   onToggle,
   onRemove,
+  onOpenFolder,
+  onMoveToFolder,
 }: {
   item: ProjectItem
   onToggle: (itemId: string) => void
   onRemove: (itemId: string) => void
+  onOpenFolder: (itemId: string) => void
+  onMoveToFolder: (itemId: string, targetFolderId: string) => void
 }) {
   const meta = itemTypeMeta[item.type]
   const Icon = meta.icon
+  const isFolder = item.type === 'local_folder'
 
-  return (
-    <article className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-950/40">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-300">
-            <Icon size={19} />
-          </span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className={`truncate text-sm font-medium text-gray-950 dark:text-gray-100 ${item.done ? 'line-through opacity-60' : ''}`}>{item.title}</h3>
-              <span className="shrink-0 rounded-md bg-white px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
-                {projectItemTypeLabel(item)}
-              </span>
-            </div>
+  function handleDragStart(event: React.DragEvent<HTMLElement>) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', item.id)
+  }
+
+  function handleDrop(event: React.DragEvent<HTMLElement>) {
+    if (!isFolder) return
+    event.preventDefault()
+    event.stopPropagation()
+    const draggedItemId = event.dataTransfer.getData('text/plain')
+    if (draggedItemId) onMoveToFolder(draggedItemId, item.id)
+  }
+
+  const content = (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-300">
+          <Icon size={19} />
+        </span>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className={`truncate text-sm font-medium text-gray-950 dark:text-gray-100 ${item.done ? 'line-through opacity-60' : ''}`}>{item.title}</h3>
+            <span className="shrink-0 rounded-md bg-white px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
+              {projectItemTypeLabel(item)}
+            </span>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {item.type === 'task' && (
-            <button
-              onClick={() => onToggle(item.id)}
-              className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${
-                item.done
-                  ? 'border-emerald-500 bg-emerald-500 text-white'
-                  : 'border-gray-300 text-gray-500 hover:bg-white dark:border-gray-700 dark:hover:bg-gray-900'
-              }`}
-              aria-label="Bytt oppgavestatus"
-            >
-              <CheckSquare size={16} />
-            </button>
-          )}
-          <button
-            onClick={() => onRemove(item.id)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-white hover:text-red-500 dark:hover:bg-gray-900"
-            aria-label="Fjern innhold"
-          >
-            <X size={16} />
-          </button>
-        </div>
       </div>
+      <div className="flex shrink-0 items-center gap-1">
+        {item.type === 'task' && (
+          <button
+            onClick={(event) => {
+              event.stopPropagation()
+              onToggle(item.id)
+            }}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+              item.done
+                ? 'border-emerald-500 bg-emerald-500 text-white'
+                : 'border-gray-300 text-gray-500 hover:bg-white dark:border-gray-700 dark:hover:bg-gray-900'
+            }`}
+            aria-label="Bytt oppgavestatus"
+          >
+            <CheckSquare size={16} />
+          </button>
+        )}
+        <button
+          onClick={(event) => {
+            event.stopPropagation()
+            onRemove(item.id)
+          }}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-white hover:text-red-500 dark:hover:bg-gray-900"
+          aria-label="Fjern innhold"
+        >
+          <X size={16} />
+        </button>
+      </div>
+    </div>
+  )
+
+  if (isFolder) {
+    return (
+      <article
+        role="button"
+        tabIndex={0}
+        onClick={() => onOpenFolder(item.id)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') onOpenFolder(item.id)
+        }}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={handleDrop}
+        className="cursor-pointer rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-left transition hover:border-purple-400 hover:bg-purple-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
+      >
+        {content}
+      </article>
+    )
+  }
+
+  return (
+    <article
+      draggable
+      onDragStart={handleDragStart}
+      className="cursor-grab rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 active:cursor-grabbing dark:border-gray-800 dark:bg-gray-950/40"
+    >
+      {content}
     </article>
   )
 }
@@ -547,20 +626,27 @@ function ProjectLogoThumbnail({
 
 function ProjectDetailContent({
   folder,
+  activeItemFolder,
   onAddResource,
   onAddLocalFolder,
   onUpdate,
   onToggleTask,
   onRemoveItem,
+  onOpenItemFolder,
+  onMoveItemToFolder,
 }: {
   folder: ProjectFolder
+  activeItemFolder: ProjectItem | null
   onAddResource: () => void
   onAddLocalFolder: () => void
   onUpdate: (folderId: string, updates: Partial<Pick<ProjectFolder, 'name' | 'description' | 'logo' | 'color'>>) => void
   onToggleTask: (itemId: string) => void
   onRemoveItem: (itemId: string) => void
+  onOpenItemFolder: (itemId: string | null) => void
+  onMoveItemToFolder: (itemId: string, targetFolderId: string) => void
 }) {
   const [logoOpen, setLogoOpen] = useState(false)
+  const visibleItems = folder.items.filter((item) => (item.parentId ?? null) === (activeItemFolder?.id ?? null))
 
   return (
     <>
@@ -597,12 +683,32 @@ function ProjectDetailContent({
       </div>
 
       <section className="pt-5">
-        {folder.items.length === 0 ? (
+        {activeItemFolder && (
+          <div className="mb-4 flex items-center gap-2 text-sm">
+            <button
+              type="button"
+              onClick={() => onOpenItemFolder(null)}
+              className="font-medium text-gray-500 transition hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300"
+            >
+              {folder.name}
+            </button>
+            <span className="text-gray-400 dark:text-gray-600">/</span>
+            <span className="font-semibold text-gray-950 dark:text-gray-100">{activeItemFolder.title}</span>
+          </div>
+        )}
+
+        {visibleItems.length === 0 ? (
           <div className="flex min-h-80 flex-col items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/70 px-6 text-center dark:border-gray-800 dark:bg-gray-950/40">
-            <FileText size={38} className="mb-4 text-gray-300 dark:text-gray-700" />
+            {activeItemFolder ? (
+              <FolderOpen size={38} className="mb-4 text-gray-300 dark:text-gray-700" />
+            ) : (
+              <FileText size={38} className="mb-4 text-gray-300 dark:text-gray-700" />
+            )}
             <h2 className="font-medium text-gray-950 dark:text-gray-100">Mappen er tom</h2>
             <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-              Legg til repoer, Notion-sider, mapper, dokumenter eller nyttige lenker.
+              {activeItemFolder
+                ? 'Dra inn et repo hit, eller legg til en ressurs mens denne mappen er åpen.'
+                : 'Legg til repoer, Notion-sider, mapper, dokumenter eller nyttige lenker.'}
             </p>
             <Button className="mt-5" onClick={onAddResource}>
               <Plus size={16} />
@@ -615,12 +721,14 @@ function ProjectDetailContent({
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {folder.items.map((item) => (
+            {visibleItems.map((item) => (
               <ProjectItemCard
                 key={item.id}
                 item={item}
                 onToggle={onToggleTask}
                 onRemove={onRemoveItem}
+                onOpenFolder={onOpenItemFolder}
+                onMoveToFolder={onMoveItemToFolder}
               />
             ))}
           </div>
