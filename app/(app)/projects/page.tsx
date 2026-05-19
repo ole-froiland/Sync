@@ -78,6 +78,7 @@ type ProjectItem = {
 type ItemType = ProjectItem['type']
 type ResourceMode = 'github' | 'url' | 'document' | 'app'
 type AppResourceType = 'notion' | 'docs' | 'sheets' | 'word' | 'excel'
+type ProjectClipboard = { mode: 'copy' | 'cut'; itemIds: string[] } | null
 
 const STORAGE_KEY = 'sync-project-folders-v1'
 
@@ -130,6 +131,8 @@ export default function ProjectsPage() {
   const [itemOpen, setItemOpen] = useState(false)
   const [localFolderOpen, setLocalFolderOpen] = useState(false)
   const [activeItemFolderId, setActiveItemFolderId] = useState<string | null>(null)
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
+  const [clipboard, setClipboard] = useState<ProjectClipboard>(null)
   const [search, setSearch] = useState('')
   const [previewMode, setPreviewMode] = useState(false)
   const [previewFolderId, setPreviewFolderId] = useState<string | null>(null)
@@ -206,6 +209,7 @@ export default function ProjectsPage() {
         folder.id === selectedFolder.id ? { ...folder, items: [nextItem, ...folder.items] } : folder
       )
     )
+    setSelectedItemIds([nextItem.id])
   }
 
   function toggleTask(itemId: string) {
@@ -234,12 +238,15 @@ export default function ProjectsPage() {
       )
     )
     if (activeItemFolderId === itemId) setActiveItemFolderId(null)
+    setSelectedItemIds((current) => current.filter((id) => id !== itemId))
   }
 
-  function moveItemToFolder(itemId: string, targetFolderId: string) {
-    if (!selectedFolder || itemId === targetFolderId) return
+  function moveItemsToFolder(itemIds: string[], targetFolderId: string) {
+    if (!selectedFolder) return
     const target = selectedFolder.items.find((item) => item.id === targetFolderId)
     if (target?.type !== 'local_folder') return
+    const movableIds = itemIds.filter((itemId) => itemId !== targetFolderId)
+    if (movableIds.length === 0) return
 
     setFolders((current) =>
       current.map((folder) =>
@@ -247,12 +254,80 @@ export default function ProjectsPage() {
           ? {
               ...folder,
               items: folder.items.map((item) =>
-                item.id === itemId ? { ...item, parentId: targetFolderId, updatedAt: new Date().toISOString() } : item
+                movableIds.includes(item.id)
+                  ? { ...item, parentId: targetFolderId, updatedAt: new Date().toISOString() }
+                  : item
               ),
             }
           : folder
       )
     )
+    setSelectedItemIds(movableIds)
+  }
+
+  function copyItemsToFolder(itemIds: string[], targetFolderId: string | null) {
+    if (!selectedFolder || itemIds.length === 0) return
+    const sourceItems = selectedFolder.items
+    const selected = new Set(itemIds)
+    const itemsToCopy = sourceItems.filter((item) => {
+      if (selected.has(item.id)) return true
+      let parentId = item.parentId
+      while (parentId) {
+        if (selected.has(parentId)) return true
+        parentId = sourceItems.find((candidate) => candidate.id === parentId)?.parentId
+      }
+      return false
+    })
+    if (itemsToCopy.length === 0) return
+
+    const idMap = new Map(itemsToCopy.map((item) => [item.id, makeId('item')]))
+    const now = new Date().toISOString()
+    const copies = itemsToCopy.map((item) => {
+      const copiedParentId = item.parentId ? idMap.get(item.parentId) : undefined
+      const copiedId = idMap.get(item.id) ?? makeId('item')
+      return {
+        ...item,
+        id: copiedId,
+        parentId: copiedParentId ?? targetFolderId ?? undefined,
+        title: selected.has(item.id) ? `${item.title} copy` : item.title,
+        createdAt: now,
+        updatedAt: now,
+      }
+    })
+
+    setFolders((current) =>
+      current.map((folder) =>
+        folder.id === selectedFolder.id ? { ...folder, items: [...copies, ...folder.items] } : folder
+      )
+    )
+    setSelectedItemIds(itemIds.map((itemId) => idMap.get(itemId)).filter(Boolean) as string[])
+  }
+
+  function pasteItems(targetFolderId: string | null) {
+    if (!clipboard) return
+    if (clipboard.mode === 'cut') {
+      if (targetFolderId) moveItemsToFolder(clipboard.itemIds, targetFolderId)
+      else {
+        setFolders((current) =>
+          current.map((folder) =>
+            folder.id === selectedFolder?.id
+              ? {
+                  ...folder,
+                  items: folder.items.map((item) =>
+                    clipboard.itemIds.includes(item.id)
+                      ? { ...item, parentId: undefined, updatedAt: new Date().toISOString() }
+                      : item
+                  ),
+                }
+              : folder
+          )
+        )
+        setSelectedItemIds(clipboard.itemIds)
+      }
+      setClipboard(null)
+      return
+    }
+    copyItemsToFolder(clipboard.itemIds, targetFolderId)
   }
 
   if (selectedFolder) {
@@ -279,6 +354,8 @@ export default function ProjectsPage() {
             onClick={() => {
               setSelectedFolderId(null)
               setActiveItemFolderId(null)
+              setSelectedItemIds([])
+              setClipboard(null)
               setItemOpen(false)
               setLocalFolderOpen(false)
             }}
@@ -292,13 +369,22 @@ export default function ProjectsPage() {
             <ProjectDetailContent
               folder={selectedFolder}
               activeItemFolder={activeItemFolder}
+              selectedItemIds={selectedItemIds}
+              cutItemIds={clipboard?.mode === 'cut' ? clipboard.itemIds : []}
               onAddResource={() => setItemOpen(true)}
               onAddLocalFolder={() => setLocalFolderOpen(true)}
               onUpdate={updateFolder}
               onToggleTask={toggleTask}
               onRemoveItem={removeItem}
-              onOpenItemFolder={setActiveItemFolderId}
-              onMoveItemToFolder={moveItemToFolder}
+              onOpenItemFolder={(itemId) => {
+                setActiveItemFolderId(itemId)
+                setSelectedItemIds([])
+              }}
+              onMoveItemsToFolder={moveItemsToFolder}
+              onSelectItems={setSelectedItemIds}
+              onCopyItems={(itemIds) => setClipboard({ mode: 'copy', itemIds })}
+              onCutItems={(itemIds) => setClipboard({ mode: 'cut', itemIds })}
+              onPasteItems={pasteItems}
             />
           </main>
         </div>
@@ -483,23 +569,33 @@ function projectItemTypeLabel(item: ProjectItem) {
 
 function ProjectItemCard({
   item,
+  selected,
+  cut,
   onToggle,
   onRemove,
+  onSelect,
   onOpenFolder,
+  onDragItems,
   onMoveToFolder,
 }: {
   item: ProjectItem
+  selected: boolean
+  cut: boolean
   onToggle: (itemId: string) => void
   onRemove: (itemId: string) => void
+  onSelect: (itemId: string, event: React.MouseEvent<HTMLElement>) => void
   onOpenFolder: (itemId: string) => void
-  onMoveToFolder: (itemId: string, targetFolderId: string) => void
+  onDragItems: (itemId: string) => string[]
+  onMoveToFolder: (itemIds: string[], targetFolderId: string) => void
 }) {
   const meta = itemTypeMeta[item.type]
   const Icon = meta.icon
   const isFolder = item.type === 'local_folder'
 
   function handleDragStart(event: React.DragEvent<HTMLElement>) {
+    const draggedIds = onDragItems(item.id)
     event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('application/x-sync-project-items', JSON.stringify(draggedIds))
     event.dataTransfer.setData('text/plain', item.id)
   }
 
@@ -507,8 +603,15 @@ function ProjectItemCard({
     if (!isFolder) return
     event.preventDefault()
     event.stopPropagation()
-    const draggedItemId = event.dataTransfer.getData('text/plain')
-    if (draggedItemId) onMoveToFolder(draggedItemId, item.id)
+    const fallback = event.dataTransfer.getData('text/plain')
+    let draggedItemIds = fallback ? [fallback] : []
+    try {
+      const encoded = event.dataTransfer.getData('application/x-sync-project-items')
+      if (encoded) draggedItemIds = JSON.parse(encoded) as string[]
+    } catch {
+      draggedItemIds = fallback ? [fallback] : []
+    }
+    if (draggedItemIds.length > 0) onMoveToFolder(draggedItemIds, item.id)
   }
 
   const content = (
@@ -562,13 +665,18 @@ function ProjectItemCard({
       <article
         role="button"
         tabIndex={0}
-        onClick={() => onOpenFolder(item.id)}
+        onClick={(event) => onSelect(item.id, event)}
+        onDoubleClick={() => onOpenFolder(item.id)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') onOpenFolder(item.id)
         }}
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
-        className="cursor-pointer rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-left transition hover:border-purple-400 hover:bg-purple-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
+        className={`cursor-pointer rounded-lg border px-3 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 ${
+          selected
+            ? 'border-purple-400 bg-purple-50/80 dark:border-purple-700 dark:bg-purple-950/30'
+            : 'border-gray-200 bg-gray-50 hover:border-purple-400 hover:bg-purple-50/70 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-purple-700 dark:hover:bg-purple-950/20'
+        } ${cut ? 'opacity-45' : ''}`}
       >
         {content}
       </article>
@@ -578,8 +686,15 @@ function ProjectItemCard({
   return (
     <article
       draggable
+      role="button"
+      tabIndex={0}
+      onClick={(event) => onSelect(item.id, event)}
       onDragStart={handleDragStart}
-      className="cursor-grab rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 active:cursor-grabbing dark:border-gray-800 dark:bg-gray-950/40"
+      className={`cursor-grab rounded-lg border px-3 py-2.5 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 ${
+        selected
+          ? 'border-purple-400 bg-purple-50/80 dark:border-purple-700 dark:bg-purple-950/30'
+          : 'border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950/40'
+      } ${cut ? 'opacity-45' : ''}`}
     >
       {content}
     </article>
@@ -627,26 +742,117 @@ function ProjectLogoThumbnail({
 function ProjectDetailContent({
   folder,
   activeItemFolder,
+  selectedItemIds,
+  cutItemIds,
   onAddResource,
   onAddLocalFolder,
   onUpdate,
   onToggleTask,
   onRemoveItem,
   onOpenItemFolder,
-  onMoveItemToFolder,
+  onMoveItemsToFolder,
+  onSelectItems,
+  onCopyItems,
+  onCutItems,
+  onPasteItems,
 }: {
   folder: ProjectFolder
   activeItemFolder: ProjectItem | null
+  selectedItemIds: string[]
+  cutItemIds: string[]
   onAddResource: () => void
   onAddLocalFolder: () => void
   onUpdate: (folderId: string, updates: Partial<Pick<ProjectFolder, 'name' | 'description' | 'logo' | 'color'>>) => void
   onToggleTask: (itemId: string) => void
   onRemoveItem: (itemId: string) => void
   onOpenItemFolder: (itemId: string | null) => void
-  onMoveItemToFolder: (itemId: string, targetFolderId: string) => void
+  onMoveItemsToFolder: (itemIds: string[], targetFolderId: string) => void
+  onSelectItems: (itemIds: string[]) => void
+  onCopyItems: (itemIds: string[]) => void
+  onCutItems: (itemIds: string[]) => void
+  onPasteItems: (targetFolderId: string | null) => void
 }) {
   const [logoOpen, setLogoOpen] = useState(false)
   const visibleItems = folder.items.filter((item) => (item.parentId ?? null) === (activeItemFolder?.id ?? null))
+  const selectedVisibleIndex = visibleItems.findIndex((item) => selectedItemIds.includes(item.id))
+
+  function selectItem(itemId: string, event?: React.MouseEvent<HTMLElement>) {
+    const currentIndex = visibleItems.findIndex((item) => item.id === itemId)
+    if (currentIndex < 0) return
+
+    if (event?.shiftKey && selectedVisibleIndex >= 0) {
+      const start = Math.min(selectedVisibleIndex, currentIndex)
+      const end = Math.max(selectedVisibleIndex, currentIndex)
+      onSelectItems(visibleItems.slice(start, end + 1).map((item) => item.id))
+      return
+    }
+
+    if (event?.metaKey || event?.ctrlKey) {
+      onSelectItems(
+        selectedItemIds.includes(itemId)
+          ? selectedItemIds.filter((id) => id !== itemId)
+          : [...selectedItemIds, itemId]
+      )
+      return
+    }
+
+    onSelectItems([itemId])
+  }
+
+  function moveSelection(offset: number, extend: boolean) {
+    if (visibleItems.length === 0) return
+    const currentIndex = selectedVisibleIndex >= 0 ? selectedVisibleIndex : 0
+    const nextIndex = Math.max(0, Math.min(visibleItems.length - 1, currentIndex + offset))
+    if (!extend) {
+      onSelectItems([visibleItems[nextIndex].id])
+      return
+    }
+    const start = Math.min(currentIndex, nextIndex)
+    const end = Math.max(currentIndex, nextIndex)
+    onSelectItems(visibleItems.slice(start, end + 1).map((item) => item.id))
+  }
+
+  function handleExplorerKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+    const command = event.metaKey || event.ctrlKey
+    const selectedIds = selectedItemIds.filter((id) => visibleItems.some((item) => item.id === id))
+    if (command && event.key.toLowerCase() === 'c' && selectedIds.length > 0) {
+      event.preventDefault()
+      onCopyItems(selectedIds)
+      return
+    }
+    if (command && event.key.toLowerCase() === 'x' && selectedIds.length > 0) {
+      event.preventDefault()
+      onCutItems(selectedIds)
+      return
+    }
+    if (command && event.key.toLowerCase() === 'v') {
+      event.preventDefault()
+      onPasteItems(activeItemFolder?.id ?? null)
+      return
+    }
+    if (event.key === 'Enter' && selectedIds.length === 1) {
+      const selected = visibleItems.find((item) => item.id === selectedIds[0])
+      if (selected?.type === 'local_folder') {
+        event.preventDefault()
+        onOpenItemFolder(selected.id)
+      }
+      return
+    }
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      event.preventDefault()
+      moveSelection(1, event.shiftKey)
+      return
+    }
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveSelection(-1, event.shiftKey)
+    }
+  }
+
+  function dragItems(itemId: string) {
+    if (!selectedItemIds.includes(itemId)) onSelectItems([itemId])
+    return selectedItemIds.includes(itemId) ? selectedItemIds : [itemId]
+  }
 
   return (
     <>
@@ -682,7 +888,14 @@ function ProjectDetailContent({
         </div>
       </div>
 
-      <section className="pt-5">
+      <section
+        className="pt-5 focus-visible:outline-none"
+        tabIndex={0}
+        onKeyDown={handleExplorerKeyDown}
+        onClick={(event) => {
+          if (event.currentTarget === event.target) onSelectItems([])
+        }}
+      >
         {activeItemFolder && (
           <div className="mb-4 flex items-center gap-2 text-sm">
             <button
@@ -725,10 +938,14 @@ function ProjectDetailContent({
               <ProjectItemCard
                 key={item.id}
                 item={item}
+                selected={selectedItemIds.includes(item.id)}
+                cut={cutItemIds.includes(item.id)}
                 onToggle={onToggleTask}
                 onRemove={onRemoveItem}
+                onSelect={selectItem}
                 onOpenFolder={onOpenItemFolder}
-                onMoveToFolder={onMoveItemToFolder}
+                onDragItems={dragItems}
+                onMoveToFolder={onMoveItemsToFolder}
               />
             ))}
           </div>
