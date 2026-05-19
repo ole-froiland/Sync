@@ -775,6 +775,7 @@ function ProjectDetailContent({
   const [logoOpen, setLogoOpen] = useState(false)
   const visibleItems = folder.items.filter((item) => (item.parentId ?? null) === (activeItemFolder?.id ?? null))
   const selectedVisibleIndex = visibleItems.findIndex((item) => selectedItemIds.includes(item.id))
+  const selectedVisibleIds = selectedItemIds.filter((id) => visibleItems.some((item) => item.id === id))
 
   function selectItem(itemId: string, event?: React.MouseEvent<HTMLElement>) {
     const currentIndex = visibleItems.findIndex((item) => item.id === itemId)
@@ -812,17 +813,16 @@ function ProjectDetailContent({
     onSelectItems(visibleItems.slice(start, end + 1).map((item) => item.id))
   }
 
-  function handleExplorerKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+  function handleExplorerShortcut(event: Pick<KeyboardEvent | React.KeyboardEvent<HTMLElement>, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'preventDefault'>) {
     const command = event.metaKey || event.ctrlKey
-    const selectedIds = selectedItemIds.filter((id) => visibleItems.some((item) => item.id === id))
-    if (command && event.key.toLowerCase() === 'c' && selectedIds.length > 0) {
+    if (command && event.key.toLowerCase() === 'c' && selectedVisibleIds.length > 0) {
       event.preventDefault()
-      onCopyItems(selectedIds)
+      onCopyItems(selectedVisibleIds)
       return
     }
-    if (command && event.key.toLowerCase() === 'x' && selectedIds.length > 0) {
+    if (command && event.key.toLowerCase() === 'x' && selectedVisibleIds.length > 0) {
       event.preventDefault()
-      onCutItems(selectedIds)
+      onCutItems(selectedVisibleIds)
       return
     }
     if (command && event.key.toLowerCase() === 'v') {
@@ -830,8 +830,8 @@ function ProjectDetailContent({
       onPasteItems(activeItemFolder?.id ?? null)
       return
     }
-    if (event.key === 'Enter' && selectedIds.length === 1) {
-      const selected = visibleItems.find((item) => item.id === selectedIds[0])
+    if (event.key === 'Enter' && selectedVisibleIds.length === 1) {
+      const selected = visibleItems.find((item) => item.id === selectedVisibleIds[0])
       if (selected?.type === 'local_folder') {
         event.preventDefault()
         onOpenItemFolder(selected.id)
@@ -856,6 +856,22 @@ function ProjectDetailContent({
       moveSelection(-1, event.shiftKey)
     }
   }
+
+  useEffect(() => {
+    function isEditableTarget(target: EventTarget | null) {
+      if (!(target instanceof HTMLElement)) return false
+      const tag = target.tagName.toLowerCase()
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable
+    }
+
+    function handleWindowKeyDown(event: KeyboardEvent) {
+      if (isEditableTarget(event.target)) return
+      handleExplorerShortcut(event)
+    }
+
+    window.addEventListener('keydown', handleWindowKeyDown)
+    return () => window.removeEventListener('keydown', handleWindowKeyDown)
+  })
 
   function dragItems(itemId: string) {
     if (!selectedItemIds.includes(itemId)) onSelectItems([itemId])
@@ -899,7 +915,6 @@ function ProjectDetailContent({
       <section
         className="pt-5 focus-visible:outline-none"
         tabIndex={0}
-        onKeyDown={handleExplorerKeyDown}
         onClick={(event) => {
           if (event.currentTarget === event.target) onSelectItems([])
         }}
