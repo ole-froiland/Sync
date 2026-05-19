@@ -1261,13 +1261,13 @@ function CreateLocalFolderModal({
     event.preventDefault()
     const fallbackTitle = path.trim().split('/').filter(Boolean).at(-1) ?? ''
     const itemTitle = title.trim() || fallbackTitle
-    if (!itemTitle || !path.trim()) return
+    if (!itemTitle) return
 
     onCreate({
       type: 'local_folder',
       title: itemTitle,
       body: '',
-      path: path.trim(),
+      path: path.trim() || itemTitle,
       status: 'Folder',
     })
     reset()
@@ -1288,8 +1288,10 @@ function CreateLocalFolderModal({
           value={path}
           onChange={(event) => setPath(event.target.value)}
           placeholder="/Users/navn/Prosjekter/app"
-          required
         />
+        <p className="-mt-2 text-xs text-gray-500 dark:text-gray-400">
+          Valgfritt. Skriv inn sti hvis du vil lagre hvor mappen ligger på maskinen.
+        </p>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={() => { reset(); onClose() }}>
             Avbryt
