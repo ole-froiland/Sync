@@ -3,6 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
 
+type GitHubApiError = {
+  message?: string
+  errors?: Array<{ message?: string; field?: string; code?: string }>
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient()
   const {
@@ -63,8 +68,14 @@ export async function POST(request: Request) {
   const repoData = await repoRes.json()
 
   if (!repoRes.ok) {
+    const githubError = repoData as GitHubApiError
+    const details = githubError.errors
+      ?.map((error) => error.message ?? [error.field, error.code].filter(Boolean).join(' '))
+      .filter(Boolean)
+      .join(', ')
+
     return NextResponse.json(
-      { error: repoData.message ?? 'GitHub API error' },
+      { error: details || githubError.message || 'GitHub API error' },
       { status: repoRes.status }
     )
   }

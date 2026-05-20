@@ -1442,7 +1442,15 @@ function CreateItemModal({
 
   async function createRepo(event: React.FormEvent) {
     event.preventDefault()
-    if (!newRepoName.trim()) return
+    const repoName = newRepoName.trim()
+    if (!repoName) return
+
+    const existingRepo = repos.find((repo) => repo.name.toLowerCase() === repoName.toLowerCase())
+    if (existingRepo) {
+      setCreateRepoError(`Repoet ${existingRepo.full_name} finnes allerede. Velg det fra "Velg repo", eller bruk et nytt navn.`)
+      return
+    }
+
     setCreatingRepo(true)
     setCreateRepoError(null)
 
@@ -1451,7 +1459,7 @@ function CreateItemModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: newRepoName.trim(),
+          name: repoName,
           description: newRepoDescription.trim() || undefined,
           private: newRepoPrivate,
         }),
