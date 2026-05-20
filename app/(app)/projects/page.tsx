@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import {
   ArrowLeft,
   CheckSquare,
+  ExternalLink,
   Eye,
   FilePenLine,
   File as FileIcon,
@@ -79,6 +81,7 @@ type ItemType = ProjectItem['type']
 type ResourceMode = 'github' | 'url' | 'document' | 'app'
 type AppResourceType = 'notion' | 'docs' | 'sheets' | 'word' | 'excel'
 type ProjectClipboard = { mode: 'copy' | 'cut'; itemIds: string[] } | null
+type ProjectItemOpenTarget = { href: string; external: boolean; label: string }
 
 const STORAGE_KEY = 'sync-project-folders-v1'
 
@@ -567,6 +570,50 @@ function projectItemTypeLabel(item: ProjectItem) {
   return meta.label
 }
 
+function githubRepoPath(item: ProjectItem) {
+  const fromTitle = item.title.match(/^([^/\s]+)\/([^/\s]+)$/)
+  if (fromTitle) {
+    return `/repositories/${encodeURIComponent(fromTitle[1])}/${encodeURIComponent(fromTitle[2].replace(/\.git$/, ''))}`
+  }
+
+  if (!item.url) return null
+
+  try {
+    const url = new URL(item.url)
+    if (url.hostname !== 'github.com') return null
+    const [owner, repo] = url.pathname.split('/').filter(Boolean)
+    if (!owner || !repo) return null
+    return `/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo.replace(/\.git$/, ''))}`
+  } catch {
+    return null
+  }
+}
+
+function projectItemOpenTarget(item: ProjectItem): ProjectItemOpenTarget | null {
+  if (item.type === 'github') {
+    const repoPath = githubRepoPath(item)
+    return repoPath ? { href: repoPath, external: false, label: 'Åpne reposide' } : null
+  }
+
+  if (item.url && ['url', 'notion', 'docs', 'sheets', 'word', 'excel'].includes(item.type)) {
+    return { href: item.url, external: true, label: 'Åpne lenke' }
+  }
+
+  return null
+}
+
+function openProjectItem(item: ProjectItem) {
+  const target = projectItemOpenTarget(item)
+  if (!target) return
+
+  if (target.external) {
+    window.open(target.href, '_blank', 'noopener,noreferrer')
+    return
+  }
+
+  window.location.assign(target.href)
+}
+
 function ProjectItemCard({
   item,
   selected,
@@ -591,6 +638,7 @@ function ProjectItemCard({
   const meta = itemTypeMeta[item.type]
   const Icon = meta.icon
   const isFolder = item.type === 'local_folder'
+  const openTarget = projectItemOpenTarget(item)
 
   function handleDragStart(event: React.DragEvent<HTMLElement>) {
     const draggedIds = onDragItems(item.id)
@@ -646,6 +694,31 @@ function ProjectItemCard({
             <CheckSquare size={16} />
           </button>
         )}
+        {openTarget && (
+          openTarget.external ? (
+            <a
+              href={openTarget.href}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(event) => event.stopPropagation()}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-white hover:text-purple-600 dark:hover:bg-gray-900 dark:hover:text-purple-300"
+              aria-label={openTarget.label}
+              title={openTarget.label}
+            >
+              <ExternalLink size={16} />
+            </a>
+          ) : (
+            <Link
+              href={openTarget.href}
+              onClick={(event) => event.stopPropagation()}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-white hover:text-purple-600 dark:hover:bg-gray-900 dark:hover:text-purple-300"
+              aria-label={openTarget.label}
+              title={openTarget.label}
+            >
+              <ExternalLink size={16} />
+            </Link>
+          )
+        )}
         <button
           onClick={(event) => {
             event.stopPropagation()
@@ -689,6 +762,15 @@ function ProjectItemCard({
       role="button"
       tabIndex={0}
       onClick={(event) => onSelect(item.id, event)}
+      onDoubleClick={() => {
+        if (openTarget) openProjectItem(item)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && openTarget) {
+          event.preventDefault()
+          openProjectItem(item)
+        }
+      }}
       onDragStart={handleDragStart}
       className={`cursor-grab rounded-lg border px-3 py-2.5 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 ${
         selected
@@ -835,6 +917,11 @@ function ProjectDetailContent({
       if (selected?.type === 'local_folder') {
         event.preventDefault()
         onOpenItemFolder(selected.id)
+        return
+      }
+      if (selected && projectItemOpenTarget(selected)) {
+        event.preventDefault()
+        openProjectItem(selected)
       }
       return
     }
@@ -1137,21 +1224,47 @@ function LogoEditorModal({
 function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
   const meta = itemTypeMeta[item.type]
   const Icon = meta.icon
+  const openTarget = projectItemOpenTarget(item)
 
   return (
     <article className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-950/40">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-300">
-          <Icon size={19} />
-        </span>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className={`truncate text-sm font-medium text-gray-950 dark:text-gray-100 ${item.done ? 'line-through opacity-60' : ''}`}>{item.title}</h3>
-            <span className="shrink-0 rounded-md bg-white px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
-              {projectItemTypeLabel(item)}
-            </span>
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-300">
+            <Icon size={19} />
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className={`truncate text-sm font-medium text-gray-950 dark:text-gray-100 ${item.done ? 'line-through opacity-60' : ''}`}>{item.title}</h3>
+              <span className="shrink-0 rounded-md bg-white px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
+                {projectItemTypeLabel(item)}
+              </span>
+            </div>
           </div>
         </div>
+        {openTarget && (
+          openTarget.external ? (
+            <a
+              href={openTarget.href}
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 transition hover:bg-white hover:text-purple-600 dark:hover:bg-gray-900 dark:hover:text-purple-300"
+              aria-label={openTarget.label}
+              title={openTarget.label}
+            >
+              <ExternalLink size={16} />
+            </a>
+          ) : (
+            <Link
+              href={openTarget.href}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 transition hover:bg-white hover:text-purple-600 dark:hover:bg-gray-900 dark:hover:text-purple-300"
+              aria-label={openTarget.label}
+              title={openTarget.label}
+            >
+              <ExternalLink size={16} />
+            </Link>
+          )
+        )}
       </div>
     </article>
   )
