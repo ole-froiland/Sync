@@ -63,11 +63,20 @@ type ProjectItemPayload = {
   updatedAt?: string
 }
 
+type ProjectFolderMemberPayload = {
+  id: string
+  name: string
+  avatar_url: string | null
+  role?: 'creator' | 'member'
+}
+
 type ProjectFolderSharePayload = {
   name?: string
   description?: string
   color?: string
   logo?: ProjectLogoPayload | null
+  members?: ProjectFolderMemberPayload[]
+  shared_from?: ProjectFolderMemberPayload | null
   items?: ProjectItemPayload[]
   item_count?: number
 }
@@ -95,7 +104,7 @@ function makeProjectFolderId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function importSharedProjectFolder(payload: ProjectFolderSharePayload) {
+function importSharedProjectFolder(payload: ProjectFolderSharePayload, sender?: DirectMessage['sender']) {
   const now = new Date().toISOString()
   const sourceItems = Array.isArray(payload.items) ? payload.items : []
   const idMap = new Map<string, string>()
@@ -121,6 +130,20 @@ function importSharedProjectFolder(payload: ProjectFolderSharePayload) {
     }
   })
 
+  const sharedFrom =
+    payload.shared_from ??
+    (sender
+      ? {
+          id: sender.id,
+          name: sender.name,
+          avatar_url: sender.avatar_url,
+          role: 'creator' as const,
+        }
+      : null)
+  const memberMap = new Map<string, ProjectFolderMemberPayload>()
+  for (const member of payload.members ?? []) memberMap.set(member.id, member)
+  if (sharedFrom) memberMap.set(sharedFrom.id, sharedFrom)
+
   const folder = {
     id: makeProjectFolderId('folder'),
     name: payload.name ? `${payload.name} copy` : 'Shared project folder',
@@ -128,6 +151,8 @@ function importSharedProjectFolder(payload: ProjectFolderSharePayload) {
     color: payload.color ?? 'from-purple-500 to-fuchsia-500',
     logo: payload.logo ?? { type: 'icon', value: 'folder' },
     createdAt: now,
+    members: [...memberMap.values()],
+    sharedFrom,
     items,
   }
 
@@ -483,7 +508,7 @@ export default function ChatPage() {
           throw new Error(body.error ?? 'Failed to respond')
         }
         if (action === 'accept' && msg.type === 'project_folder_share') {
-          const imported = importSharedProjectFolder((msg.payload ?? {}) as ProjectFolderSharePayload)
+          const imported = importSharedProjectFolder((msg.payload ?? {}) as ProjectFolderSharePayload, msg.sender)
           showToast(`${imported.name} added to Projects`)
         } else {
           const payload = msg.payload as RepoSharePayload | ProjectFolderSharePayload | null

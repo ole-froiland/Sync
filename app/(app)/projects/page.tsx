@@ -35,6 +35,7 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Modal from '@/components/ui/Modal'
 import Textarea from '@/components/ui/Textarea'
+import { useUser } from '@/context/UserContext'
 import type { GitHubUserRepo, Profile } from '@/types'
 
 type ProjectFolder = {
@@ -44,7 +45,16 @@ type ProjectFolder = {
   color: string
   logo?: ProjectLogo
   createdAt: string
+  members?: ProjectFolderMember[]
+  sharedFrom?: ProjectFolderMember
   items: ProjectItem[]
+}
+
+type ProjectFolderMember = {
+  id: string
+  name: string
+  avatar_url: string | null
+  role?: 'creator' | 'member'
 }
 
 type ProjectLogo = {
@@ -133,7 +143,27 @@ function projectLogo(folder: ProjectFolder): ProjectLogo {
   return folder.logo ?? { type: 'icon', value: 'folder' }
 }
 
+function folderMemberFromProfile(profile: Profile | null, role: ProjectFolderMember['role'] = 'creator'): ProjectFolderMember | null {
+  if (!profile) return null
+  return {
+    id: profile.id,
+    name: profile.name,
+    avatar_url: profile.avatar_url,
+    role,
+  }
+}
+
+function projectFolderMembers(folder: ProjectFolder, currentProfile: Profile | null): ProjectFolderMember[] {
+  const map = new Map<string, ProjectFolderMember>()
+  for (const member of folder.members ?? []) map.set(member.id, member)
+  if (folder.sharedFrom) map.set(folder.sharedFrom.id, folder.sharedFrom)
+  const current = folderMemberFromProfile(currentProfile)
+  if (current && map.size === 0) map.set(current.id, current)
+  return [...map.values()]
+}
+
 export default function ProjectsPage() {
+  const currentProfile = useUser()
   const [folders, setFolders] = useState<ProjectFolder[]>([])
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
   const [folderOpen, setFolderOpen] = useState(false)
@@ -189,10 +219,12 @@ export default function ProjectsPage() {
     visibleFolders.find((folder) => folder.id === previewFolderId) ?? visibleFolders[0] ?? null
 
   function createFolder(folder: Pick<ProjectFolder, 'name' | 'description' | 'color' | 'logo'>) {
+    const creator = folderMemberFromProfile(currentProfile)
     const nextFolder: ProjectFolder = {
       ...folder,
       id: makeId('folder'),
       createdAt: new Date().toISOString(),
+      members: creator ? [creator] : [],
       items: [],
     }
     setFolders((current) => [nextFolder, ...current])
@@ -481,6 +513,7 @@ export default function ProjectsPage() {
                 <aside className="space-y-3">
                   {visibleFolders.map((folder) => {
                     const active = folder.id === previewFolder?.id
+                    const members = projectFolderMembers(folder, currentProfile)
 
                     return (
                       <button
@@ -499,7 +532,11 @@ export default function ProjectsPage() {
                         <ProjectLogoThumbnail folder={folder} className="h-9 w-9" iconSize={18} />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
+                          <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+                            {folder.sharedFrom ? `Delt av ${folder.sharedFrom.name}` : 'Din mappe'}
+                          </span>
                         </span>
+                        <ProjectMemberBubbles members={members} max={3} />
                       </button>
                     )
                   })}
@@ -514,6 +551,12 @@ export default function ProjectsPage() {
                           <div className="min-w-0">
                             <h2 className="truncate text-xl font-semibold text-gray-950 dark:text-gray-100">{previewFolder.name}</h2>
                             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{previewFolder.description || 'Ingen beskrivelse'}</p>
+                            <div className="mt-2 flex items-center gap-2">
+                              <ProjectMemberBubbles members={projectFolderMembers(previewFolder, currentProfile)} max={5} />
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                {previewFolder.sharedFrom ? `Delt av ${previewFolder.sharedFrom.name}` : 'Din prosjektmappe'}
+                              </span>
+                            </div>
                           </div>
                         </div>
                         <Button size="sm" onClick={() => setSelectedFolderId(previewFolder.id)}>
@@ -547,22 +590,30 @@ export default function ProjectsPage() {
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {visibleFolders.map((folder) => (
-                  <button
-                    key={folder.id}
-                    onClick={() => setSelectedFolderId(folder.id)}
-                    onDoubleClick={() => setSelectedFolderId(folder.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') setSelectedFolderId(folder.id)
-                    }}
-                    className="group flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left transition hover:border-purple-400 hover:bg-purple-50/60 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
-                  >
-                    <ProjectLogoThumbnail folder={folder} className="h-9 w-9" iconSize={18} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
-                    </span>
-                  </button>
-                ))}
+                {visibleFolders.map((folder) => {
+                  const members = projectFolderMembers(folder, currentProfile)
+
+                  return (
+                    <button
+                      key={folder.id}
+                      onClick={() => setSelectedFolderId(folder.id)}
+                      onDoubleClick={() => setSelectedFolderId(folder.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') setSelectedFolderId(folder.id)
+                      }}
+                      className="group flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left transition hover:border-purple-400 hover:bg-purple-50/60 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
+                    >
+                      <ProjectLogoThumbnail folder={folder} className="h-9 w-9" iconSize={18} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
+                        <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+                          {folder.sharedFrom ? `Delt av ${folder.sharedFrom.name}` : 'Din mappe'}
+                        </span>
+                      </span>
+                      <ProjectMemberBubbles members={members} max={3} />
+                    </button>
+                  )
+                })}
               </div>
             )}
       </div>
@@ -838,6 +889,39 @@ function ProjectLogoThumbnail({
   )
 }
 
+function ProjectMemberBubbles({
+  members,
+  max = 4,
+}: {
+  members: ProjectFolderMember[]
+  max?: number
+}) {
+  const visible = members.slice(0, max)
+  const extra = Math.max(0, members.length - visible.length)
+
+  if (visible.length === 0) return null
+
+  return (
+    <span className="flex shrink-0 items-center -space-x-2" aria-label={`${members.length} medlemmer`}>
+      {visible.map((member) => (
+        <span key={member.id} title={member.role === 'creator' ? `${member.name} creator` : member.name}>
+          <Avatar
+            name={member.name}
+            src={member.avatar_url}
+            size="xs"
+            className="ring-2 ring-white dark:ring-gray-900"
+          />
+        </span>
+      ))}
+      {extra > 0 && (
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-[10px] font-semibold text-gray-500 ring-2 ring-white dark:bg-gray-800 dark:text-gray-400 dark:ring-gray-900">
+          +{extra}
+        </span>
+      )}
+    </span>
+  )
+}
+
 function ProjectDetailContent({
   folder,
   activeItemFolder,
@@ -874,6 +958,8 @@ function ProjectDetailContent({
   onPasteItems: (targetFolderId: string | null) => void
 }) {
   const [logoOpen, setLogoOpen] = useState(false)
+  const currentProfile = useUser()
+  const members = projectFolderMembers(folder, currentProfile)
   const visibleItems = folder.items.filter((item) => (item.parentId ?? null) === (activeItemFolder?.id ?? null))
   const selectedVisibleIndex = visibleItems.findIndex((item) => selectedItemIds.includes(item.id))
   const selectedVisibleIds = selectedItemIds.filter((id) => visibleItems.some((item) => item.id === id))
@@ -1004,6 +1090,12 @@ function ProjectDetailContent({
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               {folder.description || 'Ingen beskrivelse'}
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <ProjectMemberBubbles members={members} max={5} />
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {folder.sharedFrom ? `Delt av ${folder.sharedFrom.name}` : 'Din prosjektmappe'}
+              </span>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -1360,6 +1452,7 @@ function ShareProjectFolderModal({
   onClose: () => void
   folder: ProjectFolder
 }) {
+  const currentProfile = useUser()
   const [synced, setSynced] = useState<Profile[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1423,21 +1516,24 @@ function ShareProjectFolderModal({
     )
   }, [synced, search])
 
-  async function sendFolder(profile: Profile) {
-    setStatusByUser((current) => ({ ...current, [profile.id]: 'sending' }))
+  async function sendFolder(targetProfile: Profile) {
+    const members = projectFolderMembers(folder, currentProfile)
+    setStatusByUser((current) => ({ ...current, [targetProfile.id]: 'sending' }))
 
     try {
       const response = await fetch('/api/direct-messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          receiver_id: profile.id,
+          receiver_id: targetProfile.id,
           type: 'project_folder_share',
           payload: {
             name: folder.name,
             description: folder.description,
             color: folder.color,
             logo: folder.logo ?? null,
+            members,
+            shared_from: folder.sharedFrom ?? folderMemberFromProfile(currentProfile),
             items: folder.items,
             item_count: folder.items.length,
           },
@@ -1449,9 +1545,9 @@ function ShareProjectFolderModal({
         throw new Error(body.error ?? 'Kunne ikke dele prosjektmappen.')
       }
 
-      setStatusByUser((current) => ({ ...current, [profile.id]: 'sent' }))
+      setStatusByUser((current) => ({ ...current, [targetProfile.id]: 'sent' }))
     } catch {
-      setStatusByUser((current) => ({ ...current, [profile.id]: 'error' }))
+      setStatusByUser((current) => ({ ...current, [targetProfile.id]: 'error' }))
     }
   }
 

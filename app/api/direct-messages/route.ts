@@ -17,6 +17,8 @@ type ProjectFolderSharePayload = {
   description?: string
   color?: string
   logo?: unknown
+  members?: unknown[]
+  shared_from?: unknown
   items?: unknown[]
   item_count?: number
 }
