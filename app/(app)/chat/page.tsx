@@ -233,6 +233,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [lightboxImage, setLightboxImage] = useState<ImagePayload | null>(null)
 
   useEffect(() => {
     if (!profileId) return
@@ -925,7 +926,7 @@ export default function ChatPage() {
                         </div>
                       )}
                       {image ? (
-                        <ImageMessage payload={image} />
+                        <ImageMessage payload={image} onOpen={setLightboxImage} />
                       ) : (
                         <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{msg.body}</p>
                       )}
@@ -985,7 +986,7 @@ export default function ChatPage() {
 
                     {msg.type === 'text' ? (
                       parseProjectImageMessage(msg.body) ? (
-                        <ImageMessage payload={parseProjectImageMessage(msg.body)!} />
+                        <ImageMessage payload={parseProjectImageMessage(msg.body)!} onOpen={setLightboxImage} />
                       ) : (
                         <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                           {msg.body}
@@ -1062,6 +1063,7 @@ export default function ChatPage() {
           </div>
         ))}
       </div>
+      <ImageLightbox image={lightboxImage} onClose={() => setLightboxImage(null)} />
     </div>
   )
 }
@@ -1120,7 +1122,13 @@ function EmptyDM({
   )
 }
 
-function ImageMessage({ payload }: { payload: ImagePayload }) {
+function ImageMessage({
+  payload,
+  onOpen,
+}: {
+  payload: ImagePayload
+  onOpen: (payload: ImagePayload) => void
+}) {
   if (!payload.data_url?.startsWith('data:image/')) {
     return (
       <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -1130,11 +1138,10 @@ function ImageMessage({ payload }: { payload: ImagePayload }) {
   }
 
   return (
-    <a
-      href={payload.data_url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="mt-1 inline-block max-w-sm overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 shadow-sm transition hover:border-purple-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-800"
+    <button
+      type="button"
+      onClick={() => onOpen(payload)}
+      className="mt-1 inline-block max-w-sm overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 text-left shadow-sm transition hover:border-purple-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-800"
       title={payload.name ?? 'Open image'}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1143,7 +1150,53 @@ function ImageMessage({ payload }: { payload: ImagePayload }) {
         alt={payload.name ?? 'Pasted image'}
         className="max-h-80 w-full object-contain"
       />
-    </a>
+    </button>
+  )
+}
+
+function ImageLightbox({
+  image,
+  onClose,
+}: {
+  image: ImagePayload | null
+  onClose: () => void
+}) {
+  useEffect(() => {
+    if (!image) return
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [image, onClose])
+
+  if (!image) return null
+
+  return (
+    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+      <button
+        type="button"
+        className="absolute inset-0 cursor-zoom-out"
+        aria-label="Lukk bilde"
+        onClick={onClose}
+      />
+      <div className="relative max-h-[92vh] max-w-[92vw]">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute -right-3 -top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-gray-950/90 text-white shadow-lg transition hover:bg-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+          aria-label="Lukk bilde"
+        >
+          <XIcon size={18} />
+        </button>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={image.data_url}
+          alt={image.name ?? 'Pasted image'}
+          className="max-h-[92vh] max-w-[92vw] rounded-lg object-contain shadow-2xl"
+        />
+      </div>
+    </div>
   )
 }
 
