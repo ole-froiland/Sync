@@ -178,7 +178,7 @@ function projectFolderMembers(
   if (folder.sharedFrom) map.set(folder.sharedFrom.id, folder.sharedFrom)
   for (const member of acceptedMembers) map.set(member.id, member)
   const current = folderMemberFromProfile(currentProfile)
-  if (current && map.size === 0) map.set(current.id, current)
+  if (current) map.set(current.id, map.get(current.id) ?? current)
   return [...map.values()]
 }
 
