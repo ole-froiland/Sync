@@ -99,6 +99,21 @@ type ProjectClipboard = { mode: 'copy' | 'cut'; itemIds: string[] } | null
 type ProjectItemOpenTarget = { href: string; external: boolean; label: string }
 type SendStatus = 'idle' | 'sending' | 'sent' | 'error'
 
+type AcceptedSharePayload = {
+  full_name?: string
+  name?: string
+  url?: string
+  members?: ProjectFolderMember[]
+  shared_from?: ProjectFolderMember | null
+}
+
+type AcceptedProjectShare = {
+  id: string
+  direction: 'from' | 'with'
+  member: ProjectFolderMember
+  names: string[]
+}
+
 const STORAGE_KEY = 'sync-project-folders-v1'
 
 const folderColors = [
@@ -153,18 +168,57 @@ function folderMemberFromProfile(profile: Profile | null, role: ProjectFolderMem
   }
 }
 
-function projectFolderMembers(folder: ProjectFolder, currentProfile: Profile | null): ProjectFolderMember[] {
+function projectFolderMembers(
+  folder: ProjectFolder,
+  currentProfile: Profile | null,
+  acceptedMembers: ProjectFolderMember[] = []
+): ProjectFolderMember[] {
   const map = new Map<string, ProjectFolderMember>()
   for (const member of folder.members ?? []) map.set(member.id, member)
   if (folder.sharedFrom) map.set(folder.sharedFrom.id, folder.sharedFrom)
+  for (const member of acceptedMembers) map.set(member.id, member)
   const current = folderMemberFromProfile(currentProfile)
   if (current && map.size === 0) map.set(current.id, current)
   return [...map.values()]
 }
 
+function normalizeProjectName(value?: string | null) {
+  return (value ?? '').trim().toLowerCase()
+}
+
+function acceptedShareMatchesFolder(folder: ProjectFolder, share: AcceptedProjectShare) {
+  const folderNames = new Set([
+    normalizeProjectName(folder.name),
+    ...folder.items
+      .filter((item) => item.type === 'github')
+      .flatMap((item) => [
+        normalizeProjectName(item.title),
+        normalizeProjectName(item.title.split('/').at(-1)),
+        normalizeProjectName(item.url?.split('/').filter(Boolean).at(-1)),
+      ]),
+  ])
+
+  return share.names.some((name) => folderNames.has(normalizeProjectName(name)))
+}
+
+function acceptedSharesForFolder(folder: ProjectFolder, shares: AcceptedProjectShare[]) {
+  return shares.filter((share) => acceptedShareMatchesFolder(folder, share))
+}
+
+function projectFolderShareLabel(folder: ProjectFolder, shares: AcceptedProjectShare[]) {
+  if (folder.sharedFrom) return `Delt av ${folder.sharedFrom.name}`
+  const match = shares[0]
+  if (!match) return 'Din mappe'
+  const suffix = shares.length > 1 ? ` +${shares.length - 1}` : ''
+  return match.direction === 'from'
+    ? `Delt av ${match.member.name}${suffix}`
+    : `Delt med ${match.member.name}${suffix}`
+}
+
 export default function ProjectsPage() {
   const currentProfile = useUser()
   const [folders, setFolders] = useState<ProjectFolder[]>([])
+  const [acceptedShares, setAcceptedShares] = useState<AcceptedProjectShare[]>([])
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
   const [folderOpen, setFolderOpen] = useState(false)
   const [itemOpen, setItemOpen] = useState(false)
@@ -197,6 +251,75 @@ export default function ProjectsPage() {
   useEffect(() => {
     if (loadedRef.current) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(folders))
   }, [folders])
+
+  useEffect(() => {
+    if (!currentProfile) return
+    const currentProfileId = currentProfile.id
+    let cancelled = false
+
+    async function loadAcceptedShares() {
+      try {
+        const [inboxRes, peopleRes] = await Promise.all([
+          fetch('/api/direct-messages/inbox'),
+          fetch('/api/people'),
+        ])
+        if (!inboxRes.ok || !peopleRes.ok) return
+
+        const inbox = (await inboxRes.json()) as {
+          items?: Array<{
+            id: string
+            sender_id: string
+            receiver_id: string
+            type: 'text' | 'repo_share' | 'project_folder_share'
+            state: 'sent' | 'accepted' | 'rejected'
+            payload?: AcceptedSharePayload | null
+          }>
+        }
+        const people = (await peopleRes.json()) as Profile[]
+        const peopleById = new Map(people.map((person) => [person.id, person]))
+
+        const shares = (inbox.items ?? [])
+          .filter((item) => item.state === 'accepted' && (item.type === 'repo_share' || item.type === 'project_folder_share'))
+          .map((item): AcceptedProjectShare | null => {
+            const otherId = item.sender_id === currentProfileId ? item.receiver_id : item.sender_id
+            const other = peopleById.get(otherId)
+            const payload = item.payload ?? {}
+            if (!other) return null
+
+            const names = [
+              payload.name,
+              payload.full_name,
+              payload.full_name?.split('/').at(-1),
+              payload.url?.split('/').filter(Boolean).at(-1),
+            ].filter(Boolean) as string[]
+
+            if (names.length === 0) return null
+
+            return {
+              id: item.id,
+              direction: item.sender_id === currentProfileId ? 'with' : 'from',
+              member: {
+                id: other.id,
+                name: other.name,
+                avatar_url: other.avatar_url,
+                role: item.sender_id === other.id ? 'creator' : 'member',
+              },
+              names,
+            }
+          })
+          .filter((share): share is AcceptedProjectShare => Boolean(share))
+
+        if (!cancelled) setAcceptedShares(shares)
+      } catch {
+        if (!cancelled) setAcceptedShares([])
+      }
+    }
+
+    void loadAcceptedShares()
+    return () => {
+      cancelled = true
+    }
+  }, [currentProfile])
 
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) ?? null
   const activeItemFolder =
@@ -414,6 +537,7 @@ export default function ProjectsPage() {
           <main className="min-h-[64vh] rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
             <ProjectDetailContent
               folder={selectedFolder}
+              acceptedShares={acceptedSharesForFolder(selectedFolder, acceptedShares)}
               activeItemFolder={activeItemFolder}
               selectedItemIds={selectedItemIds}
               cutItemIds={clipboard?.mode === 'cut' ? clipboard.itemIds : []}
@@ -513,7 +637,12 @@ export default function ProjectsPage() {
                 <aside className="space-y-3">
                   {visibleFolders.map((folder) => {
                     const active = folder.id === previewFolder?.id
-                    const members = projectFolderMembers(folder, currentProfile)
+                    const shares = acceptedSharesForFolder(folder, acceptedShares)
+                    const members = projectFolderMembers(
+                      folder,
+                      currentProfile,
+                      shares.map((share) => share.member)
+                    )
 
                     return (
                       <button
@@ -533,7 +662,7 @@ export default function ProjectsPage() {
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
                           <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
-                            {folder.sharedFrom ? `Delt av ${folder.sharedFrom.name}` : 'Din mappe'}
+                            {projectFolderShareLabel(folder, shares)}
                           </span>
                         </span>
                         <ProjectMemberBubbles members={members} max={3} />
@@ -552,9 +681,16 @@ export default function ProjectsPage() {
                             <h2 className="truncate text-xl font-semibold text-gray-950 dark:text-gray-100">{previewFolder.name}</h2>
                             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{previewFolder.description || 'Ingen beskrivelse'}</p>
                             <div className="mt-2 flex items-center gap-2">
-                              <ProjectMemberBubbles members={projectFolderMembers(previewFolder, currentProfile)} max={5} />
+                              <ProjectMemberBubbles
+                                members={projectFolderMembers(
+                                  previewFolder,
+                                  currentProfile,
+                                  acceptedSharesForFolder(previewFolder, acceptedShares).map((share) => share.member)
+                                )}
+                                max={5}
+                              />
                               <span className="text-xs text-gray-500 dark:text-gray-400">
-                                {previewFolder.sharedFrom ? `Delt av ${previewFolder.sharedFrom.name}` : 'Din prosjektmappe'}
+                                {projectFolderShareLabel(previewFolder, acceptedSharesForFolder(previewFolder, acceptedShares))}
                               </span>
                             </div>
                           </div>
@@ -591,7 +727,12 @@ export default function ProjectsPage() {
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {visibleFolders.map((folder) => {
-                  const members = projectFolderMembers(folder, currentProfile)
+                  const shares = acceptedSharesForFolder(folder, acceptedShares)
+                  const members = projectFolderMembers(
+                    folder,
+                    currentProfile,
+                    shares.map((share) => share.member)
+                  )
 
                   return (
                     <button
@@ -607,7 +748,7 @@ export default function ProjectsPage() {
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
                         <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
-                          {folder.sharedFrom ? `Delt av ${folder.sharedFrom.name}` : 'Din mappe'}
+                          {projectFolderShareLabel(folder, shares)}
                         </span>
                       </span>
                       <ProjectMemberBubbles members={members} max={3} />
@@ -924,6 +1065,7 @@ function ProjectMemberBubbles({
 
 function ProjectDetailContent({
   folder,
+  acceptedShares,
   activeItemFolder,
   selectedItemIds,
   cutItemIds,
@@ -941,6 +1083,7 @@ function ProjectDetailContent({
   onPasteItems,
 }: {
   folder: ProjectFolder
+  acceptedShares: AcceptedProjectShare[]
   activeItemFolder: ProjectItem | null
   selectedItemIds: string[]
   cutItemIds: string[]
@@ -959,7 +1102,11 @@ function ProjectDetailContent({
 }) {
   const [logoOpen, setLogoOpen] = useState(false)
   const currentProfile = useUser()
-  const members = projectFolderMembers(folder, currentProfile)
+  const members = projectFolderMembers(
+    folder,
+    currentProfile,
+    acceptedShares.map((share) => share.member)
+  )
   const visibleItems = folder.items.filter((item) => (item.parentId ?? null) === (activeItemFolder?.id ?? null))
   const selectedVisibleIndex = visibleItems.findIndex((item) => selectedItemIds.includes(item.id))
   const selectedVisibleIds = selectedItemIds.filter((id) => visibleItems.some((item) => item.id === id))
@@ -1093,7 +1240,7 @@ function ProjectDetailContent({
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <ProjectMemberBubbles members={members} max={5} />
               <span className="text-xs text-gray-500 dark:text-gray-400">
-                {folder.sharedFrom ? `Delt av ${folder.sharedFrom.name}` : 'Din prosjektmappe'}
+                {projectFolderShareLabel(folder, acceptedShares)}
               </span>
             </div>
           </div>
