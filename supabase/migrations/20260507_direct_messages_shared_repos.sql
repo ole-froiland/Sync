@@ -5,7 +5,7 @@
 --   • sync_requests   → public.connections (status = 'pending' | 'accepted')
 --   • synced_users    → public.connections (status = 'accepted'; mutual)
 --   • follows         → public.follows (one-way)
---   • direct_messages → public.direct_messages (text + repo_share + project_folder_share)
+--   • direct_messages → public.direct_messages (text + repo_share + project_folder_share + image)
 --   • shared_repos    → public.shared_repos (accepted repo shares)
 --
 -- Safe to run more than once: every CREATE uses IF NOT EXISTS, every
@@ -99,13 +99,13 @@ create trigger set_connections_updated_at
   for each row execute function public.set_updated_at();
 
 -- ──────────────────────────────────────────────────────────────────────────────
--- DIRECT MESSAGES (1:1, supports text + repo_share + project_folder_share)
+-- DIRECT MESSAGES (1:1, supports text + repo_share + project_folder_share + image)
 -- ──────────────────────────────────────────────────────────────────────────────
 create table if not exists public.direct_messages (
   id          uuid primary key default uuid_generate_v4(),
   sender_id   uuid not null references public.profiles(id) on delete cascade,
   receiver_id uuid not null references public.profiles(id) on delete cascade,
-  type        text not null default 'text' check (type in ('text', 'repo_share', 'project_folder_share')),
+  type        text not null default 'text' check (type in ('text', 'repo_share', 'project_folder_share', 'image')),
   body        text,
   payload     jsonb,
   state       text not null default 'sent' check (state in ('sent', 'accepted', 'rejected')),

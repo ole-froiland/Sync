@@ -23,11 +23,18 @@ type ProjectFolderSharePayload = {
   item_count?: number
 }
 
+type ImagePayload = {
+  data_url?: string
+  name?: string
+  mime_type?: string
+  size?: number
+}
+
 type SendBody = {
   receiver_id?: string
-  type?: 'text' | 'repo_share' | 'project_folder_share'
+  type?: 'text' | 'repo_share' | 'project_folder_share' | 'image'
   body?: string
-  payload?: RepoSharePayload | ProjectFolderSharePayload
+  payload?: RepoSharePayload | ProjectFolderSharePayload | ImagePayload
 }
 
 async function ensureSynced(
@@ -98,7 +105,7 @@ export async function POST(request: Request) {
   }
 
   const type =
-    body.type === 'repo_share' || body.type === 'project_folder_share'
+    body.type === 'repo_share' || body.type === 'project_folder_share' || body.type === 'image'
       ? body.type
       : 'text'
 
@@ -115,11 +122,19 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
-  } else {
+  } else if (type === 'project_folder_share') {
     const payload = body.payload as ProjectFolderSharePayload | undefined
     if (!payload?.name || !Array.isArray(payload.items)) {
       return NextResponse.json(
         { error: 'Project folder share requires name and items.' },
+        { status: 400 }
+      )
+    }
+  } else {
+    const payload = body.payload as ImagePayload | undefined
+    if (!payload?.data_url?.startsWith('data:image/')) {
+      return NextResponse.json(
+        { error: 'Image message requires an image data URL.' },
         { status: 400 }
       )
     }

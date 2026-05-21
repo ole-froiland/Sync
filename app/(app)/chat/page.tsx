@@ -31,6 +31,8 @@ import {
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
 const PROJECT_FOLDERS_STORAGE_KEY = 'sync-project-folders-v1'
+const IMAGE_MESSAGE_PREFIX = '__sync_image__:'
+const MAX_PASTED_IMAGE_BYTES = 5 * 1024 * 1024
 
 type RepoSharePayload = {
   full_name?: string
@@ -81,13 +83,20 @@ type ProjectFolderSharePayload = {
   item_count?: number
 }
 
+type ImagePayload = {
+  data_url: string
+  name?: string
+  mime_type?: string
+  size?: number
+}
+
 type DirectMessage = {
   id: string
   sender_id: string
   receiver_id: string
-  type: 'text' | 'repo_share' | 'project_folder_share'
+  type: 'text' | 'repo_share' | 'project_folder_share' | 'image'
   body: string | null
-  payload: RepoSharePayload | ProjectFolderSharePayload | null
+  payload: RepoSharePayload | ProjectFolderSharePayload | ImagePayload | null
   state: 'sent' | 'accepted' | 'rejected'
   created_at: string
   updated_at: string
@@ -99,6 +108,41 @@ type ActiveTarget =
   | { kind: 'dm'; user: Profile }
 
 type Toast = { id: number; tone: 'success' | 'error'; message: string }
+
+function encodeProjectImageMessage(payload: ImagePayload) {
+  return `${IMAGE_MESSAGE_PREFIX}${JSON.stringify(payload)}`
+}
+
+function parseProjectImageMessage(body: string | null): ImagePayload | null {
+  if (!body?.startsWith(IMAGE_MESSAGE_PREFIX)) return null
+  try {
+    const payload = JSON.parse(body.slice(IMAGE_MESSAGE_PREFIX.length)) as ImagePayload
+    if (!payload.data_url?.startsWith('data:image/')) return null
+    return payload
+  } catch {
+    return null
+  }
+}
+
+function imageFileToPayload(file: File): Promise<ImagePayload> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('Could not read image.'))
+        return
+      }
+      resolve({
+        data_url: reader.result,
+        name: file.name || 'pasted-image',
+        mime_type: file.type,
+        size: file.size,
+      })
+    }
+    reader.onerror = () => reject(new Error('Could not read image.'))
+    reader.readAsDataURL(file)
+  })
+}
 
 function makeProjectFolderId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -490,6 +534,107 @@ export default function ChatPage() {
     }
   }
 
+  async function sendImageMessage(payload: ImagePayload) {
+    if (!active || !profile) return
+
+    if (active.kind === 'project') {
+      const optimistic: Message = {
+        id: `opt-img-${Date.now()}`,
+        project_id: active.project.id,
+        sender_id: profile.id,
+        body: encodeProjectImageMessage(payload),
+        created_at: new Date().toISOString(),
+        sender: profile,
+      }
+      setProjectMessages((prev) => [...prev, optimistic])
+
+      try {
+        if (SUPABASE_CONFIGURED) {
+          const res = await fetch('/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: active.project.id, body: optimistic.body }),
+          })
+          if (!res.ok) {
+            const body = (await res.json().catch(() => ({}))) as { error?: string }
+            throw new Error(body.error ?? 'Failed to send image')
+          }
+          const saved = await res.json()
+          setProjectMessages((prev) =>
+            prev.map((m) => (m.id === optimistic.id ? { ...saved, sender: profile } : m))
+          )
+        }
+      } catch (e) {
+        setProjectMessages((prev) => prev.filter((m) => m.id !== optimistic.id))
+        showToast(e instanceof Error ? e.message : 'Failed to send image', 'error')
+      }
+      return
+    }
+
+    if (directStates[active.user.id] !== 'synced') return
+
+    const optimistic: DirectMessage = {
+      id: `opt-img-${Date.now()}`,
+      sender_id: profile.id,
+      receiver_id: active.user.id,
+      type: 'image',
+      body: null,
+      payload,
+      state: 'sent',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      sender: { id: profile.id, name: profile.name, avatar_url: profile.avatar_url },
+    }
+    setDirectMessages((prev) => [...prev, optimistic])
+
+    try {
+      const res = await fetch('/api/direct-messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          receiver_id: active.user.id,
+          type: 'image',
+          payload,
+        }),
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(body.error ?? 'Failed to send image')
+      }
+      const saved = (await res.json()) as DirectMessage
+      setDirectMessages((prev) => prev.map((m) => (m.id === optimistic.id ? saved : m)))
+    } catch (e) {
+      setDirectMessages((prev) => prev.filter((m) => m.id !== optimistic.id))
+      showToast(e instanceof Error ? e.message : 'Failed to send image', 'error')
+    }
+  }
+
+  async function handlePaste(event: React.ClipboardEvent<HTMLInputElement>) {
+    const file = Array.from(event.clipboardData.files).find((item) => item.type.startsWith('image/'))
+    if (!file) return
+    event.preventDefault()
+
+    if (!active || !profile) {
+      showToast('Select a chat before pasting an image', 'error')
+      return
+    }
+    if (active.kind === 'dm' && directStates[active.user.id] !== 'synced') {
+      showToast('Accept sync before sending images', 'error')
+      return
+    }
+    if (file.size > MAX_PASTED_IMAGE_BYTES) {
+      showToast('Image is too large. Max 5 MB.', 'error')
+      return
+    }
+
+    try {
+      const payload = await imageFileToPayload(file)
+      await sendImageMessage(payload)
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Could not paste image', 'error')
+    }
+  }
+
   const respondToShare = useCallback(
     async (msg: DirectMessage, action: 'accept' | 'reject') => {
       setRespondingId(msg.id)
@@ -757,6 +902,7 @@ export default function ChatPage() {
             ) : (
               projectMessages.map((msg, i) => {
                 const prev = projectMessages[i - 1]
+                const image = parseProjectImageMessage(msg.body)
                 const sameAuthor =
                   prev?.sender_id === msg.sender_id &&
                   new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() < 300000
@@ -778,7 +924,11 @@ export default function ChatPage() {
                           </span>
                         </div>
                       )}
-                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{msg.body}</p>
+                      {image ? (
+                        <ImageMessage payload={image} />
+                      ) : (
+                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{msg.body}</p>
+                      )}
                     </div>
                   </div>
                 )
@@ -837,6 +987,8 @@ export default function ChatPage() {
                       <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                         {msg.body}
                       </p>
+                    ) : msg.type === 'image' ? (
+                      <ImageMessage payload={(msg.payload ?? {}) as ImagePayload} />
                     ) : msg.type === 'project_folder_share' ? (
                       <ProjectFolderShareCard
                         message={msg}
@@ -870,6 +1022,7 @@ export default function ChatPage() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onPaste={handlePaste}
             placeholder={
               !active
                 ? 'Select a conversation'
@@ -962,6 +1115,33 @@ function EmptyDM({
         </p>
       )}
     </div>
+  )
+}
+
+function ImageMessage({ payload }: { payload: ImagePayload }) {
+  if (!payload.data_url?.startsWith('data:image/')) {
+    return (
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        Image could not be displayed.
+      </p>
+    )
+  }
+
+  return (
+    <a
+      href={payload.data_url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-1 inline-block max-w-sm overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 shadow-sm transition hover:border-purple-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-800"
+      title={payload.name ?? 'Open image'}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={payload.data_url}
+        alt={payload.name ?? 'Pasted image'}
+        className="max-h-80 w-full object-contain"
+      />
+    </a>
   )
 }
 

@@ -1,4 +1,4 @@
--- Allow direct messages to carry project folder shares.
+-- Allow direct messages to carry pasted image payloads.
 
 alter table public.direct_messages
   drop constraint if exists direct_messages_type_check;
