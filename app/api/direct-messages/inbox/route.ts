@@ -5,7 +5,7 @@ type InboxItem = {
   id: string
   sender_id: string
   receiver_id: string
-  type: 'text' | 'repo_share' | 'project_folder_share' | 'image'
+  type: 'text' | 'repo_share' | 'project_folder_share'
   state: 'sent' | 'accepted' | 'rejected'
   created_at: string
   payload: { kind?: 'sync_request' } | null

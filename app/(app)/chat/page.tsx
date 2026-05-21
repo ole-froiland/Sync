@@ -94,7 +94,7 @@ type DirectMessage = {
   id: string
   sender_id: string
   receiver_id: string
-  type: 'text' | 'repo_share' | 'project_folder_share' | 'image'
+  type: 'text' | 'repo_share' | 'project_folder_share'
   body: string | null
   payload: RepoSharePayload | ProjectFolderSharePayload | ImagePayload | null
   state: 'sent' | 'accepted' | 'rejected'
@@ -577,9 +577,9 @@ export default function ChatPage() {
       id: `opt-img-${Date.now()}`,
       sender_id: profile.id,
       receiver_id: active.user.id,
-      type: 'image',
-      body: null,
-      payload,
+      type: 'text',
+      body: encodeProjectImageMessage(payload),
+      payload: null,
       state: 'sent',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -593,8 +593,8 @@ export default function ChatPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           receiver_id: active.user.id,
-          type: 'image',
-          payload,
+          type: 'text',
+          body: encodeProjectImageMessage(payload),
         }),
       })
       if (!res.ok) {
@@ -984,11 +984,13 @@ export default function ChatPage() {
                     )}
 
                     {msg.type === 'text' ? (
-                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                        {msg.body}
-                      </p>
-                    ) : msg.type === 'image' ? (
-                      <ImageMessage payload={(msg.payload ?? {}) as ImagePayload} />
+                      parseProjectImageMessage(msg.body) ? (
+                        <ImageMessage payload={parseProjectImageMessage(msg.body)!} />
+                      ) : (
+                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                          {msg.body}
+                        </p>
+                      )
                     ) : msg.type === 'project_folder_share' ? (
                       <ProjectFolderShareCard
                         message={msg}
