@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeft,
+  Check,
   CheckSquare,
   ExternalLink,
   Eye,
@@ -21,16 +22,20 @@ import {
   PanelsTopLeft,
   Plus,
   Search,
+  Send,
+  Share2,
   StickyNote,
   Upload,
+  Users,
   X,
 } from 'lucide-react'
+import Avatar from '@/components/ui/Avatar'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Modal from '@/components/ui/Modal'
 import Textarea from '@/components/ui/Textarea'
-import type { GitHubUserRepo } from '@/types'
+import type { GitHubUserRepo, Profile } from '@/types'
 
 type ProjectFolder = {
   id: string
@@ -82,6 +87,7 @@ type ResourceMode = 'github' | 'url' | 'document' | 'app'
 type AppResourceType = 'notion' | 'docs' | 'sheets' | 'word' | 'excel'
 type ProjectClipboard = { mode: 'copy' | 'cut'; itemIds: string[] } | null
 type ProjectItemOpenTarget = { href: string; external: boolean; label: string }
+type SendStatus = 'idle' | 'sending' | 'sent' | 'error'
 
 const STORAGE_KEY = 'sync-project-folders-v1'
 
@@ -133,6 +139,7 @@ export default function ProjectsPage() {
   const [folderOpen, setFolderOpen] = useState(false)
   const [itemOpen, setItemOpen] = useState(false)
   const [localFolderOpen, setLocalFolderOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const [activeItemFolderId, setActiveItemFolderId] = useState<string | null>(null)
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
   const [clipboard, setClipboard] = useState<ProjectClipboard>(null)
@@ -344,6 +351,10 @@ export default function ProjectsPage() {
                 <FolderOpen size={16} />
                 Add mappe
               </Button>
+              <Button size="sm" variant="secondary" onClick={() => setShareOpen(true)}>
+                <Share2 size={16} />
+                Del
+              </Button>
               <Button size="sm" onClick={() => setItemOpen(true)}>
                 <Plus size={16} />
                 Add Resource
@@ -376,6 +387,7 @@ export default function ProjectsPage() {
               cutItemIds={clipboard?.mode === 'cut' ? clipboard.itemIds : []}
               onAddResource={() => setItemOpen(true)}
               onAddLocalFolder={() => setLocalFolderOpen(true)}
+              onShare={() => setShareOpen(true)}
               onUpdate={updateFolder}
               onToggleTask={toggleTask}
               onRemoveItem={removeItem}
@@ -393,6 +405,11 @@ export default function ProjectsPage() {
         </div>
 
         <CreateItemModal open={itemOpen} onClose={() => setItemOpen(false)} onCreate={createItem} />
+        <ShareProjectFolderModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          folder={selectedFolder}
+        />
         <CreateLocalFolderModal
           open={localFolderOpen}
           onClose={() => setLocalFolderOpen(false)}
@@ -828,6 +845,7 @@ function ProjectDetailContent({
   cutItemIds,
   onAddResource,
   onAddLocalFolder,
+  onShare,
   onUpdate,
   onToggleTask,
   onRemoveItem,
@@ -844,6 +862,7 @@ function ProjectDetailContent({
   cutItemIds: string[]
   onAddResource: () => void
   onAddLocalFolder: () => void
+  onShare: () => void
   onUpdate: (folderId: string, updates: Partial<Pick<ProjectFolder, 'name' | 'description' | 'logo' | 'color'>>) => void
   onToggleTask: (itemId: string) => void
   onRemoveItem: (itemId: string) => void
@@ -991,6 +1010,10 @@ function ProjectDetailContent({
           <Button size="sm" variant="secondary" onClick={onAddLocalFolder}>
             <FolderOpen size={16} />
             Add mappe
+          </Button>
+          <Button size="sm" variant="secondary" onClick={onShare}>
+            <Share2 size={16} />
+            Del
           </Button>
           <Button size="sm" onClick={onAddResource}>
             <Plus size={16} />
@@ -1324,6 +1347,218 @@ function CreateFolderModal({
           </Button>
         </div>
       </form>
+    </Modal>
+  )
+}
+
+function ShareProjectFolderModal({
+  open,
+  onClose,
+  folder,
+}: {
+  open: boolean
+  onClose: () => void
+  folder: ProjectFolder
+}) {
+  const [synced, setSynced] = useState<Profile[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [statusByUser, setStatusByUser] = useState<Record<string, SendStatus>>({})
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+
+    async function loadSyncedPeople() {
+      setLoading(true)
+      setError(null)
+      setSearch('')
+      setStatusByUser({})
+
+      try {
+        const [profilesRes, connectionsRes] = await Promise.all([
+          fetch('/api/people'),
+          fetch('/api/connections'),
+        ])
+        if (!profilesRes.ok) throw new Error('Kunne ikke hente folk.')
+        const peopleData = (await profilesRes.json()) as Profile[]
+        const connData = connectionsRes.ok
+          ? ((await connectionsRes.json()) as {
+              connections?: Record<string, string>
+              sync?: Record<string, string>
+            })
+          : { connections: {}, sync: {} }
+
+        if (cancelled) return
+        const syncMap = connData.sync ?? connData.connections ?? {}
+        const syncedIds = new Set(
+          Object.entries(syncMap)
+            .filter(([, state]) => state === 'synced')
+            .map(([id]) => id)
+        )
+        setSynced(peopleData.filter((profile) => syncedIds.has(profile.id)))
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Kunne ikke hente venner.')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void loadSyncedPeople()
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return synced
+    return synced.filter(
+      (profile) =>
+        profile.name.toLowerCase().includes(query) ||
+        (profile.email ?? '').toLowerCase().includes(query)
+    )
+  }, [synced, search])
+
+  async function sendFolder(profile: Profile) {
+    setStatusByUser((current) => ({ ...current, [profile.id]: 'sending' }))
+
+    try {
+      const response = await fetch('/api/direct-messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          receiver_id: profile.id,
+          type: 'project_folder_share',
+          payload: {
+            name: folder.name,
+            description: folder.description,
+            color: folder.color,
+            logo: folder.logo ?? null,
+            items: folder.items,
+            item_count: folder.items.length,
+          },
+        }),
+      })
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string }
+        throw new Error(body.error ?? 'Kunne ikke dele prosjektmappen.')
+      }
+
+      setStatusByUser((current) => ({ ...current, [profile.id]: 'sent' }))
+    } catch {
+      setStatusByUser((current) => ({ ...current, [profile.id]: 'error' }))
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Del prosjektmappe">
+      <div className="space-y-4">
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950/50">
+          <div className="flex items-center gap-3">
+            <ProjectLogoThumbnail folder={folder} className="h-10 w-10" iconSize={20} open />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-gray-950 dark:text-gray-100">{folder.name}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {folder.items.length} ressurser deles som en kopi
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              Velg venner
+            </p>
+            <span className="text-xs text-gray-400 dark:text-gray-500">{synced.length}</span>
+          </div>
+          <div className="relative">
+            <Search
+              size={14}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Søk etter venn..."
+              className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-8 pr-3 text-sm text-gray-900 outline-none focus:border-transparent focus:ring-2 focus:ring-purple-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+            />
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div
+                key={index}
+                className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-800 dark:bg-gray-800/40"
+              >
+                <div className="h-8 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700" />
+                <div className="h-3 flex-1 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+                <div className="h-7 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+              </div>
+            ))}
+          </div>
+        ) : error ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-600 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+            {error}
+          </div>
+        ) : synced.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-gray-200 px-4 py-8 text-center dark:border-gray-800">
+            <Users size={20} className="text-gray-300 dark:text-gray-600" />
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Ingen synkede venner ennå</p>
+            <p className="max-w-xs text-xs text-gray-400 dark:text-gray-500">
+              Gå til People og sync med noen før du deler prosjektmapper.
+            </p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-gray-200 px-3 py-6 text-center text-xs text-gray-400 dark:border-gray-800 dark:text-gray-500">
+            Ingen treff.
+          </p>
+        ) : (
+          <ul className="max-h-72 space-y-1 overflow-y-auto pr-1">
+            {filtered.map((profile) => {
+              const status = statusByUser[profile.id] ?? 'idle'
+              const sent = status === 'sent'
+              const sending = status === 'sending'
+              const failed = status === 'error'
+
+              return (
+                <li
+                  key={profile.id}
+                  className="flex items-center gap-3 rounded-lg px-2 py-1.5 transition hover:bg-gray-50 dark:hover:bg-gray-800/60"
+                >
+                  <Avatar name={profile.name} src={profile.avatar_url} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{profile.name}</p>
+                    {failed && <p className="text-[11px] text-red-500">Prøv igjen</p>}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={sending || sent}
+                    onClick={() => sendFolder(profile)}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-medium transition ${
+                      sent
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
+                        : sending
+                          ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                          : 'bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white hover:from-purple-600 hover:to-fuchsia-600'
+                    }`}
+                  >
+                    {sent ? <Check size={12} /> : <Send size={12} />}
+                    {sent ? 'Sendt' : sending ? 'Sender...' : 'Send'}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
     </Modal>
   )
 }

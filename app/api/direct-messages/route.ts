@@ -12,11 +12,20 @@ type RepoSharePayload = {
   language?: string | null
 }
 
+type ProjectFolderSharePayload = {
+  name?: string
+  description?: string
+  color?: string
+  logo?: unknown
+  items?: unknown[]
+  item_count?: number
+}
+
 type SendBody = {
   receiver_id?: string
-  type?: 'text' | 'repo_share'
+  type?: 'text' | 'repo_share' | 'project_folder_share'
   body?: string
-  payload?: RepoSharePayload
+  payload?: RepoSharePayload | ProjectFolderSharePayload
 }
 
 async function ensureSynced(
@@ -86,18 +95,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Cannot message yourself' }, { status: 400 })
   }
 
-  const type = body.type === 'repo_share' ? 'repo_share' : 'text'
+  const type =
+    body.type === 'repo_share' || body.type === 'project_folder_share'
+      ? body.type
+      : 'text'
 
   if (type === 'text') {
     const text = (body.body ?? '').trim()
     if (!text) {
       return NextResponse.json({ error: 'Message cannot be empty.' }, { status: 400 })
     }
-  } else {
-    const payload = body.payload
+  } else if (type === 'repo_share') {
+    const payload = body.payload as RepoSharePayload | undefined
     if (!payload?.url || !(payload.full_name || payload.name)) {
       return NextResponse.json(
         { error: 'Repo share requires url and name.' },
+        { status: 400 }
+      )
+    }
+  } else {
+    const payload = body.payload as ProjectFolderSharePayload | undefined
+    if (!payload?.name || !Array.isArray(payload.items)) {
+      return NextResponse.json(
+        { error: 'Project folder share requires name and items.' },
         { status: 400 }
       )
     }
@@ -111,7 +131,7 @@ export async function POST(request: Request) {
     receiver_id: receiverId,
     type,
     body: type === 'text' ? body.body!.trim() : null,
-    payload: type === 'repo_share' ? body.payload ?? null : null,
+    payload: type !== 'text' ? body.payload ?? null : null,
     state: 'sent',
   }
 

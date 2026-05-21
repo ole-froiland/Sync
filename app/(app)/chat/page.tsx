@@ -18,6 +18,7 @@ import {
   Inbox,
   BellOff,
   Bell,
+  FolderOpen,
 } from 'lucide-react'
 import type { Message, Profile, Project } from '@/types'
 import {
@@ -29,6 +30,7 @@ import {
 } from '@/lib/chat-meta'
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
+const PROJECT_FOLDERS_STORAGE_KEY = 'sync-project-folders-v1'
 
 type RepoSharePayload = {
   full_name?: string
@@ -40,13 +42,43 @@ type RepoSharePayload = {
   kind?: 'sync_request'
 }
 
+type ProjectLogoPayload = {
+  type: 'icon' | 'emoji' | 'image'
+  value: string
+}
+
+type ProjectItemPayload = {
+  id?: string
+  type?: string
+  title?: string
+  body?: string
+  url?: string
+  path?: string
+  fileName?: string
+  fileSize?: number
+  parentId?: string
+  done?: boolean
+  status?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+type ProjectFolderSharePayload = {
+  name?: string
+  description?: string
+  color?: string
+  logo?: ProjectLogoPayload | null
+  items?: ProjectItemPayload[]
+  item_count?: number
+}
+
 type DirectMessage = {
   id: string
   sender_id: string
   receiver_id: string
-  type: 'text' | 'repo_share'
+  type: 'text' | 'repo_share' | 'project_folder_share'
   body: string | null
-  payload: RepoSharePayload | null
+  payload: RepoSharePayload | ProjectFolderSharePayload | null
   state: 'sent' | 'accepted' | 'rejected'
   created_at: string
   updated_at: string
@@ -58,6 +90,59 @@ type ActiveTarget =
   | { kind: 'dm'; user: Profile }
 
 type Toast = { id: number; tone: 'success' | 'error'; message: string }
+
+function makeProjectFolderId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function importSharedProjectFolder(payload: ProjectFolderSharePayload) {
+  const now = new Date().toISOString()
+  const sourceItems = Array.isArray(payload.items) ? payload.items : []
+  const idMap = new Map<string, string>()
+
+  for (const item of sourceItems) {
+    if (item.id) idMap.set(item.id, makeProjectFolderId('item'))
+  }
+
+  const items = sourceItems.map((item) => {
+    const previousId = item.id
+    const nextId = previousId ? (idMap.get(previousId) ?? makeProjectFolderId('item')) : makeProjectFolderId('item')
+    const nextParentId = item.parentId ? idMap.get(item.parentId) : undefined
+
+    return {
+      ...item,
+      id: nextId,
+      type: item.type ?? 'note',
+      title: item.title ?? 'Untitled',
+      body: item.body ?? '',
+      parentId: nextParentId,
+      createdAt: now,
+      updatedAt: now,
+    }
+  })
+
+  const folder = {
+    id: makeProjectFolderId('folder'),
+    name: payload.name ? `${payload.name} copy` : 'Shared project folder',
+    description: payload.description ?? '',
+    color: payload.color ?? 'from-purple-500 to-fuchsia-500',
+    logo: payload.logo ?? { type: 'icon', value: 'folder' },
+    createdAt: now,
+    items,
+  }
+
+  const existing = window.localStorage.getItem(PROJECT_FOLDERS_STORAGE_KEY)
+  let folders: unknown = []
+  try {
+    folders = existing ? JSON.parse(existing) : []
+  } catch {
+    folders = []
+  }
+  const nextFolders = Array.isArray(folders) ? [folder, ...folders] : [folder]
+  window.localStorage.setItem(PROJECT_FOLDERS_STORAGE_KEY, JSON.stringify(nextFolders))
+
+  return folder
+}
 
 export default function ChatPage() {
   const profile = useUser()
@@ -397,11 +482,17 @@ export default function ChatPage() {
           const body = (await res.json().catch(() => ({}))) as { error?: string }
           throw new Error(body.error ?? 'Failed to respond')
         }
-        showToast(
-          action === 'accept'
-            ? `${msg.payload?.name ?? msg.payload?.full_name ?? 'Repository'} added to your workspace`
-            : 'Share rejected'
-        )
+        if (action === 'accept' && msg.type === 'project_folder_share') {
+          const imported = importSharedProjectFolder((msg.payload ?? {}) as ProjectFolderSharePayload)
+          showToast(`${imported.name} added to Projects`)
+        } else {
+          const payload = msg.payload as RepoSharePayload | ProjectFolderSharePayload | null
+          showToast(
+            action === 'accept'
+              ? `${payload?.name ?? (payload as RepoSharePayload | null)?.full_name ?? 'Repository'} added to your workspace`
+              : 'Share rejected'
+          )
+        }
       } catch (e) {
         setDirectMessages((prev) =>
           prev.map((m) => (m.id === msg.id ? { ...m, state: 'sent' } : m))
@@ -721,6 +812,14 @@ export default function ChatPage() {
                       <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                         {msg.body}
                       </p>
+                    ) : msg.type === 'project_folder_share' ? (
+                      <ProjectFolderShareCard
+                        message={msg}
+                        viewerIsReceiver={isReceiver}
+                        responding={isResponding}
+                        onAccept={() => respondToShare(msg, 'accept')}
+                        onReject={() => respondToShare(msg, 'reject')}
+                      />
                     ) : (
                       <RepoShareCard
                         message={msg}
@@ -968,6 +1067,104 @@ function RepoShareCard({
             Open on GitHub
           </a>
         )}
+
+        {viewerIsReceiver && message.state === 'sent' ? (
+          <div className="flex gap-1.5">
+            <button
+              disabled={responding}
+              onClick={onReject}
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition-all hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              <XIcon size={11} />
+              Reject
+            </button>
+            <button
+              disabled={responding}
+              onClick={onAccept}
+              className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-purple-500 to-fuchsia-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition-all hover:from-purple-600 hover:to-fuchsia-600 disabled:opacity-60"
+            >
+              <Check size={11} />
+              Accept
+            </button>
+          </div>
+        ) : stateLabel ? (
+          <span
+            className={cn(
+              'rounded-full px-2 py-0.5 text-[10px] font-medium',
+              message.state === 'accepted'
+                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
+                : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+            )}
+          >
+            {stateLabel}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function ProjectFolderShareCard({
+  message,
+  viewerIsReceiver,
+  responding,
+  onAccept,
+  onReject,
+}: {
+  message: DirectMessage
+  viewerIsReceiver: boolean
+  responding: boolean
+  onAccept: () => void
+  onReject: () => void
+}) {
+  const payload = (message.payload ?? {}) as ProjectFolderSharePayload
+  const stateLabel =
+    message.state === 'accepted'
+      ? 'Accepted'
+      : message.state === 'rejected'
+        ? 'Rejected'
+        : null
+  const itemCount = payload.item_count ?? payload.items?.length ?? 0
+
+  return (
+    <div
+      className={cn(
+        'mt-1 inline-flex max-w-md flex-col gap-3 rounded-2xl border bg-white p-4 transition-all',
+        'border-gray-200 dark:border-gray-800 dark:bg-gray-900',
+        message.state === 'rejected' && 'opacity-60'
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-500 ring-1 ring-inset ring-purple-100 dark:bg-purple-950/40 dark:text-purple-300 dark:ring-purple-900/60">
+          <FolderOpen size={14} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[11px] text-gray-400 dark:text-gray-500">Project folder</p>
+          <Link
+            href="/projects"
+            className="block truncate text-sm font-semibold text-gray-900 hover:text-purple-600 dark:text-gray-100 dark:hover:text-purple-400"
+          >
+            {payload.name ?? 'Shared project folder'}
+          </Link>
+          {payload.description && (
+            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+              {payload.description}
+            </p>
+          )}
+          <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+            {itemCount} resources
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <Link
+          href="/projects"
+          className="inline-flex items-center gap-1.5 text-[11px] text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400"
+        >
+          <ExternalLink size={11} />
+          Open Projects
+        </Link>
 
         {viewerIsReceiver && message.state === 'sent' ? (
           <div className="flex gap-1.5">

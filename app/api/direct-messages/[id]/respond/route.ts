@@ -60,7 +60,7 @@ export async function POST(
   const isSyncRequest =
     message.type === 'text' && ((message.payload ?? {}) as SyncRequestPayload).kind === 'sync_request'
 
-  if (message.type !== 'repo_share' && !isSyncRequest) {
+  if (message.type !== 'repo_share' && message.type !== 'project_folder_share' && !isSyncRequest) {
     return NextResponse.json({ error: 'This message cannot be answered.' }, { status: 400 })
   }
 
@@ -124,7 +124,7 @@ export async function POST(
     return NextResponse.json({ ok: true, state: 'rejected' })
   }
 
-  if (nextState === 'accepted') {
+  if (nextState === 'accepted' && message.type === 'repo_share') {
     const payload = (message.payload ?? {}) as RepoSharePayload
     const fullName = payload.full_name ?? payload.name
     const url = payload.url
