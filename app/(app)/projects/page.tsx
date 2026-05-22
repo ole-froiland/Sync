@@ -45,10 +45,18 @@ type ProjectFolder = {
   description: string
   color: string
   logo?: ProjectLogo
+  collectionId?: string
   createdAt: string
   members?: ProjectFolderMember[]
   sharedFrom?: ProjectFolderMember
   items: ProjectItem[]
+}
+
+type ProjectCollection = {
+  id: string
+  name: string
+  color: string
+  createdAt: string
 }
 
 type ProjectFolderMember = {
@@ -115,6 +123,7 @@ type AcceptedSharePayload = {
 }
 
 const STORAGE_KEY = 'sync-project-folders-v1'
+const COLLECTIONS_KEY = 'sync-project-folder-collections-v1'
 const PROJECT_CHAT_TARGET_KEY = 'sync-open-project-chat'
 const LOCAL_PROJECT_PREFIX = 'project-folder:'
 
@@ -263,8 +272,11 @@ function sharedFolderFromAcceptedMessage({
 export default function ProjectsPage() {
   const currentProfile = useUser()
   const [folders, setFolders] = useState<ProjectFolder[]>([])
+  const [collections, setCollections] = useState<ProjectCollection[]>([])
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
   const [folderOpen, setFolderOpen] = useState(false)
+  const [collectionOpen, setCollectionOpen] = useState(false)
   const [itemOpen, setItemOpen] = useState(false)
   const [localFolderOpen, setLocalFolderOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
@@ -280,6 +292,7 @@ export default function ProjectsPage() {
   useEffect(() => {
     window.setTimeout(() => {
       const saved = window.localStorage.getItem(STORAGE_KEY)
+      const savedCollections = window.localStorage.getItem(COLLECTIONS_KEY)
       if (saved) {
         try {
           const parsed = JSON.parse(saved) as ProjectFolder[]
@@ -287,6 +300,14 @@ export default function ProjectsPage() {
           setSelectedFolderId(null)
         } catch {
           window.localStorage.removeItem(STORAGE_KEY)
+        }
+      }
+      if (savedCollections) {
+        try {
+          const parsed = JSON.parse(savedCollections) as ProjectCollection[]
+          if (Array.isArray(parsed)) setCollections(parsed)
+        } catch {
+          window.localStorage.removeItem(COLLECTIONS_KEY)
         }
       }
       loadedRef.current = true
@@ -297,6 +318,10 @@ export default function ProjectsPage() {
   useEffect(() => {
     if (loadedRef.current && storageReady) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(folders))
   }, [folders, storageReady])
+
+  useEffect(() => {
+    if (loadedRef.current && storageReady) window.localStorage.setItem(COLLECTIONS_KEY, JSON.stringify(collections))
+  }, [collections, storageReady])
 
   useEffect(() => {
     if (!currentProfile || !storageReady) return
@@ -363,13 +388,15 @@ export default function ProjectsPage() {
   }, [currentProfile, storageReady])
 
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) ?? null
+  const selectedCollection = collections.find((collection) => collection.id === selectedCollectionId) ?? null
   const activeItemFolder =
     selectedFolder?.items.find((item) => item.id === activeItemFolderId && item.type === 'local_folder') ?? null
 
   const visibleFolders = useMemo(() => {
     const query = search.trim().toLowerCase()
-    if (!query) return folders
     return folders.filter((folder) => {
+      if ((folder.collectionId ?? null) !== selectedCollectionId) return false
+      if (!query) return true
       const folderText = `${folder.name} ${folder.description}`.toLowerCase()
       const itemText = folder.items
         .map((item) => `${item.title} ${item.body} ${item.url ?? ''} ${item.path ?? ''}`)
@@ -377,7 +404,14 @@ export default function ProjectsPage() {
         .toLowerCase()
       return folderText.includes(query) || itemText.includes(query)
     })
-  }, [folders, search])
+  }, [folders, search, selectedCollectionId])
+
+  const visibleCollections = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (selectedCollectionId) return []
+    if (!query) return collections
+    return collections.filter((collection) => collection.name.toLowerCase().includes(query))
+  }, [collections, search, selectedCollectionId])
 
   const previewFolder =
     visibleFolders.find((folder) => folder.id === previewFolderId) ?? visibleFolders[0] ?? null
@@ -387,6 +421,7 @@ export default function ProjectsPage() {
     const nextFolder: ProjectFolder = {
       ...folder,
       id: makeId('folder'),
+      collectionId: selectedCollectionId ?? undefined,
       createdAt: new Date().toISOString(),
       members: creator ? [creator] : [],
       items: [],
@@ -395,7 +430,17 @@ export default function ProjectsPage() {
     setSelectedFolderId(nextFolder.id)
   }
 
-  function updateFolder(folderId: string, updates: Partial<Pick<ProjectFolder, 'name' | 'description' | 'logo' | 'color'>>) {
+  function createCollection(collection: Pick<ProjectCollection, 'name' | 'color'>) {
+    const nextCollection: ProjectCollection = {
+      ...collection,
+      id: makeId('collection'),
+      createdAt: new Date().toISOString(),
+    }
+    setCollections((current) => [nextCollection, ...current])
+    setSelectedCollectionId(nextCollection.id)
+  }
+
+  function updateFolder(folderId: string, updates: Partial<Pick<ProjectFolder, 'name' | 'description' | 'logo' | 'color' | 'collectionId'>>) {
     setFolders((current) =>
       current.map((folder) => (folder.id === folderId ? { ...folder, ...updates } : folder))
     )
@@ -661,14 +706,39 @@ export default function ProjectsPage() {
                   <Eye size={16} />
                   Preview
                 </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setCollectionOpen(true)}
+                  className="h-10 whitespace-nowrap"
+                >
+                  <FolderPlus size={16} />
+                  Ny gruppe
+                </Button>
                 <Button onClick={() => setFolderOpen(true)} className="h-10 whitespace-nowrap">
                   <Plus size={16} />
                   Ny mappe
                 </Button>
               </div>
+              {selectedCollection && (
+                <div className="flex items-center gap-2 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCollectionId(null)
+                      setPreviewFolderId(null)
+                    }}
+                    className="font-medium text-gray-500 transition hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300"
+                  >
+                    Prosjekter
+                  </button>
+                  <span className="text-gray-400 dark:text-gray-600">/</span>
+                  <span className="font-semibold text-gray-950 dark:text-gray-100">{selectedCollection.name}</span>
+                </div>
+              )}
             </div>
 
-            {folders.length === 0 ? (
+            {folders.length === 0 && collections.length === 0 ? (
               <div className="flex min-h-[52vh] flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 text-center dark:border-gray-800 dark:bg-gray-900/30">
                 <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-950/60 dark:text-purple-300">
                   <Plus size={34} />
@@ -764,28 +834,72 @@ export default function ProjectsPage() {
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {visibleCollections.map((collection) => (
+                  <button
+                    key={collection.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCollectionId(collection.id)
+                      setPreviewFolderId(null)
+                    }}
+                    className="group flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left transition hover:border-purple-400 hover:bg-purple-50/60 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
+                  >
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${collection.color} text-white shadow-sm`}>
+                      <FolderOpen size={18} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">{collection.name}</span>
+                      <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+                        {folders.filter((folder) => folder.collectionId === collection.id).length} mapper
+                      </span>
+                    </span>
+                  </button>
+                ))}
                 {visibleFolders.map((folder) => {
                   const members = projectFolderMembers(folder, currentProfile)
 
                   return (
-                    <button
+                    <div
                       key={folder.id}
-                      onClick={() => setSelectedFolderId(folder.id)}
-                      onDoubleClick={() => setSelectedFolderId(folder.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') setSelectedFolderId(folder.id)
-                      }}
                       className="group flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left transition hover:border-purple-400 hover:bg-purple-50/60 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
                     >
-                      <ProjectLogoThumbnail folder={folder} className="h-9 w-9" iconSize={18} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
-                        <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
-                          {projectFolderShareLabel(folder)}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFolderId(folder.id)}
+                        onDoubleClick={() => setSelectedFolderId(folder.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') setSelectedFolderId(folder.id)
+                        }}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      >
+                        <ProjectLogoThumbnail folder={folder} className="h-9 w-9" iconSize={18} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
+                          <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+                            {projectFolderShareLabel(folder)}
+                          </span>
                         </span>
-                      </span>
+                      </button>
                       <ProjectMemberBubbles members={members} max={3} />
-                    </button>
+                      {collections.length > 0 && (
+                        <select
+                          value={folder.collectionId ?? ''}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) =>
+                            updateFolder(folder.id, { collectionId: event.target.value || undefined })
+                          }
+                          className="h-8 max-w-28 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-600 outline-none transition focus:border-transparent focus:ring-2 focus:ring-purple-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300"
+                          aria-label={`Flytt ${folder.name} til gruppe`}
+                        >
+                          <option value="">Ingen</option>
+                          {collections.map((collection) => (
+                            <option key={collection.id} value={collection.id}>
+                              {collection.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
                   )
                 })}
               </div>
@@ -793,6 +907,7 @@ export default function ProjectsPage() {
       </div>
 
       <CreateFolderModal open={folderOpen} onClose={() => setFolderOpen(false)} onCreate={createFolder} />
+      <CreateCollectionModal open={collectionOpen} onClose={() => setCollectionOpen(false)} onCreate={createCollection} />
       <CreateItemModal open={itemOpen} onClose={() => setItemOpen(false)} onCreate={createItem} />
     </>
   )
@@ -1836,6 +1951,67 @@ function ShareProjectFolderModal({
           </ul>
         )}
       </div>
+    </Modal>
+  )
+}
+
+function CreateCollectionModal({
+  open,
+  onClose,
+  onCreate,
+}: {
+  open: boolean
+  onClose: () => void
+  onCreate: (collection: Pick<ProjectCollection, 'name' | 'color'>) => void
+}) {
+  const [name, setName] = useState('')
+  const [color, setColor] = useState(folderColors[3].value)
+
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!name.trim()) return
+    onCreate({ name: name.trim(), color })
+    setName('')
+    setColor(folderColors[3].value)
+    onClose()
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Ny gruppe">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Input
+          label="Navn"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="F.eks. Privat, Business, Non-profit"
+          required
+        />
+        <div>
+          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Farge</label>
+          <div className="flex flex-wrap gap-2">
+            {folderColors.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setColor(option.value)}
+                className={`h-9 w-9 rounded-lg bg-gradient-to-br ${option.value} ring-offset-2 transition ${
+                  color === option.value ? 'ring-2 ring-purple-500 dark:ring-offset-gray-900' : ''
+                }`}
+                aria-label={option.label}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Avbryt
+          </Button>
+          <Button type="submit">
+            <FolderPlus size={16} />
+            Lag gruppe
+          </Button>
+        </div>
+      </form>
     </Modal>
   )
 }
