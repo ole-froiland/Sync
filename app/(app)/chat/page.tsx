@@ -31,6 +31,8 @@ import {
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
 const PROJECT_FOLDERS_STORAGE_KEY = 'sync-project-folders-v1'
+const PROJECT_CHAT_TARGET_KEY = 'sync-open-project-chat'
+const LOCAL_PROJECT_PREFIX = 'project-folder:'
 const IMAGE_MESSAGE_PREFIX = '__sync_image__:'
 const MAX_PASTED_IMAGE_BYTES = 5 * 1024 * 1024
 
@@ -83,6 +85,13 @@ type ProjectFolderSharePayload = {
   item_count?: number
 }
 
+type ProjectFolderSummary = {
+  id: string
+  name: string
+  description?: string
+  createdAt?: string
+}
+
 type ImagePayload = {
   data_url: string
   name?: string
@@ -108,6 +117,58 @@ type ActiveTarget =
   | { kind: 'dm'; user: Profile }
 
 type Toast = { id: number; tone: 'success' | 'error'; message: string }
+
+function localProjectId(folderId: string) {
+  return `${LOCAL_PROJECT_PREFIX}${folderId}`
+}
+
+function isLocalProjectId(projectId: string) {
+  return projectId.startsWith(LOCAL_PROJECT_PREFIX)
+}
+
+function localProjectChatStorageKey(projectId: string) {
+  return `sync-project-folder-chat:${projectId}`
+}
+
+function readProjectFolderChannels(): Project[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(PROJECT_FOLDERS_STORAGE_KEY)
+    const folders = raw ? (JSON.parse(raw) as ProjectFolderSummary[]) : []
+    if (!Array.isArray(folders)) return []
+    return folders.map((folder) => ({
+      id: localProjectId(folder.id),
+      name: folder.name,
+      description: folder.description ?? null,
+      status: 'idea' as const,
+      tech_stack: null,
+      github_url: null,
+      demo_url: null,
+      created_by: 'local',
+      created_at: folder.createdAt ?? new Date().toISOString(),
+      member_count: 0,
+      task_count: 0,
+      members: [],
+    }))
+  } catch {
+    return []
+  }
+}
+
+function readLocalProjectMessages(projectId: string): Message[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(localProjectChatStorageKey(projectId))
+    const messages = raw ? (JSON.parse(raw) as Message[]) : []
+    return Array.isArray(messages) ? messages : []
+  } catch {
+    return []
+  }
+}
+
+function writeLocalProjectMessages(projectId: string, messages: Message[]) {
+  window.localStorage.setItem(localProjectChatStorageKey(projectId), JSON.stringify(messages))
+}
 
 function encodeProjectImageMessage(payload: ImagePayload) {
   return `${IMAGE_MESSAGE_PREFIX}${JSON.stringify(payload)}`
@@ -265,6 +326,12 @@ export default function ChatPage() {
   }
 
   const fetchProjectMessages = useCallback((projectId: string) => {
+    if (isLocalProjectId(projectId)) {
+      queueMicrotask(() => {
+        setProjectMessages(readLocalProjectMessages(projectId))
+      })
+      return
+    }
     if (!SUPABASE_CONFIGURED) {
       queueMicrotask(() => {
         setProjectMessages(mockMessages.filter((m) => m.project_id === projectId))
@@ -321,12 +388,21 @@ export default function ChatPage() {
       try {
         if (!SUPABASE_CONFIGURED) {
           if (cancelled) return
-          const firstProject = mockProjects[0] ?? null
-          setProjects(mockProjects)
+          const localProjects = readProjectFolderChannels()
+          const projectList = [...mockProjects, ...localProjects]
+          const target = window.localStorage.getItem(PROJECT_CHAT_TARGET_KEY)
+          if (target) window.localStorage.removeItem(PROJECT_CHAT_TARGET_KEY)
+          const firstProject =
+            projectList.find((project) => project.id === target) ?? projectList[0] ?? null
+          setProjects(projectList)
           setDirectPeople([])
           if (firstProject) {
             setActive({ kind: 'project', project: firstProject })
-            setProjectMessages(mockMessages.filter((m) => m.project_id === firstProject.id))
+            if (isLocalProjectId(firstProject.id)) {
+              setProjectMessages(readLocalProjectMessages(firstProject.id))
+            } else {
+              setProjectMessages(mockMessages.filter((m) => m.project_id === firstProject.id))
+            }
           }
           setProjectsLoading(false)
           setDirectPeopleLoading(false)
@@ -351,7 +427,10 @@ export default function ChatPage() {
 
         if (cancelled) return
 
-        const list = Array.isArray(projectList) ? projectList : []
+        const target = window.localStorage.getItem(PROJECT_CHAT_TARGET_KEY)
+        if (target) window.localStorage.removeItem(PROJECT_CHAT_TARGET_KEY)
+        const localProjects = readProjectFolderChannels()
+        const list = [...(Array.isArray(projectList) ? projectList : []), ...localProjects]
         setProjects(list)
 
         const syncMap = connData.sync ?? {}
@@ -368,9 +447,10 @@ export default function ChatPage() {
           ) as Record<string, 'synced' | 'pending' | 'request_received'>
         )
 
-        if (list[0]) {
-          setActive({ kind: 'project', project: list[0] })
-          fetchProjectMessages(list[0].id)
+        const targetProject = list.find((project) => project.id === target) ?? list[0]
+        if (targetProject) {
+          setActive({ kind: 'project', project: targetProject })
+          fetchProjectMessages(targetProject.id)
         } else if (directList[0]) {
           setActive({ kind: 'dm', user: directList[0] })
           fetchDirectMessages(directList[0].id)
@@ -400,6 +480,7 @@ export default function ChatPage() {
 
       if (active && active.kind === 'project') {
         const projectId = active.project.id
+        if (isLocalProjectId(projectId)) return
         const channel = supabase
           .channel(`messages:${projectId}`)
           .on(
@@ -494,6 +575,12 @@ export default function ChatPage() {
         created_at: new Date().toISOString(),
         sender: profile,
       }
+      if (isLocalProjectId(active.project.id)) {
+        const next = [...projectMessages, optimistic]
+        setProjectMessages(next)
+        writeLocalProjectMessages(active.project.id, next)
+        return
+      }
       setProjectMessages((prev) => [...prev, optimistic])
 
       try {
@@ -563,6 +650,12 @@ export default function ChatPage() {
         body: encodeProjectImageMessage(payload),
         created_at: new Date().toISOString(),
         sender: profile,
+      }
+      if (isLocalProjectId(active.project.id)) {
+        const next = [...projectMessages, optimistic]
+        setProjectMessages(next)
+        writeLocalProjectMessages(active.project.id, next)
+        return
       }
       setProjectMessages((prev) => [...prev, optimistic])
 

@@ -19,6 +19,7 @@ import {
   Globe2,
   Image as ImageIcon,
   Link2,
+  MessageSquare,
   PanelsTopLeft,
   Plus,
   Search,
@@ -110,6 +111,8 @@ type AcceptedSharePayload = {
 }
 
 const STORAGE_KEY = 'sync-project-folders-v1'
+const PROJECT_CHAT_TARGET_KEY = 'sync-open-project-chat'
+const LOCAL_PROJECT_PREFIX = 'project-folder:'
 
 const folderColors = [
   { label: 'Purple', value: 'from-purple-500 to-fuchsia-500' },
@@ -147,6 +150,10 @@ const itemTypeMeta: Record<ItemType, { label: string; icon: React.ElementType }>
 
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function localProjectChatId(folderId: string) {
+  return `${LOCAL_PROJECT_PREFIX}${folderId}`
 }
 
 function projectLogo(folder: ProjectFolder): ProjectLogo {
@@ -372,6 +379,11 @@ export default function ProjectsPage() {
     )
   }
 
+  function openProjectChat(folder: ProjectFolder) {
+    window.localStorage.setItem(PROJECT_CHAT_TARGET_KEY, localProjectChatId(folder.id))
+    window.location.href = '/chat'
+  }
+
   function createItem(item: Omit<ProjectItem, 'id' | 'createdAt' | 'updatedAt'>) {
     if (!selectedFolder) return
     const nextItem: ProjectItem = {
@@ -514,6 +526,10 @@ export default function ProjectsPage() {
           title={selectedFolder.name}
           actions={
             <div className="flex items-center gap-2">
+              <Button size="sm" variant="secondary" onClick={() => openProjectChat(selectedFolder)}>
+                <MessageSquare size={16} />
+                Chat
+              </Button>
               <Button size="sm" variant="secondary" onClick={() => setLocalFolderOpen(true)}>
                 <FolderOpen size={16} />
                 Add mappe
@@ -554,6 +570,7 @@ export default function ProjectsPage() {
               cutItemIds={clipboard?.mode === 'cut' ? clipboard.itemIds : []}
               onAddResource={() => setItemOpen(true)}
               onAddLocalFolder={() => setLocalFolderOpen(true)}
+              onOpenChat={() => openProjectChat(selectedFolder)}
               onShare={() => setShareOpen(true)}
               onUpdate={updateFolder}
               onToggleTask={toggleTask}
@@ -1064,6 +1081,7 @@ function ProjectDetailContent({
   cutItemIds,
   onAddResource,
   onAddLocalFolder,
+  onOpenChat,
   onShare,
   onUpdate,
   onToggleTask,
@@ -1081,6 +1099,7 @@ function ProjectDetailContent({
   cutItemIds: string[]
   onAddResource: () => void
   onAddLocalFolder: () => void
+  onOpenChat: () => void
   onShare: () => void
   onUpdate: (folderId: string, updates: Partial<Pick<ProjectFolder, 'name' | 'description' | 'logo' | 'color'>>) => void
   onToggleTask: (itemId: string) => void
@@ -1234,6 +1253,10 @@ function ProjectDetailContent({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={onOpenChat}>
+            <MessageSquare size={16} />
+            Chat
+          </Button>
           <Button size="sm" variant="secondary" onClick={onAddLocalFolder}>
             <FolderOpen size={16} />
             Add mappe
