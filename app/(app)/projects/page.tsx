@@ -179,12 +179,15 @@ function projectFolderMembers(
   currentProfile: Profile | null,
   acceptedMembers: ProjectFolderMember[] = []
 ): ProjectFolderMember[] {
+  const sharedFolder = Boolean(folder.sharedFrom) || acceptedMembers.length > 0
+  if (!sharedFolder) return []
+
   const map = new Map<string, ProjectFolderMember>()
   for (const member of folder.members ?? []) map.set(member.id, member)
   if (folder.sharedFrom) map.set(folder.sharedFrom.id, folder.sharedFrom)
   for (const member of acceptedMembers) map.set(member.id, member)
   const current = folderMemberFromProfile(currentProfile)
-  if (current && (folder.sharedFrom || map.size > 1)) map.set(current.id, map.get(current.id) ?? current)
+  if (current) map.set(current.id, map.get(current.id) ?? current)
   return [...map.values()]
 }
 
