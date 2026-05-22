@@ -13,6 +13,7 @@ type RepoSharePayload = {
 }
 
 type ProjectFolderSharePayload = {
+  kind?: 'project_folder_share'
   name?: string
   description?: string
   color?: string
@@ -28,6 +29,13 @@ type SendBody = {
   type?: 'text' | 'repo_share' | 'project_folder_share'
   body?: string
   payload?: RepoSharePayload | ProjectFolderSharePayload
+}
+
+function isTypeConstraintError(error: { code?: string; message?: string } | null) {
+  return (
+    error?.code === '23514' &&
+    (error.message ?? '').includes('direct_messages_type_check')
+  )
 }
 
 async function ensureSynced(
@@ -133,15 +141,30 @@ export async function POST(request: Request) {
     receiver_id: receiverId,
     type,
     body: type === 'text' ? body.body!.trim() : null,
-    payload: type !== 'text' ? body.payload ?? null : null,
+    payload:
+      type === 'project_folder_share'
+        ? { ...(body.payload ?? {}), kind: 'project_folder_share' }
+        : type !== 'text'
+          ? body.payload ?? null
+          : null,
     state: 'sent',
   }
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('direct_messages')
     .insert(insertPayload)
     .select('*, sender:profiles!direct_messages_sender_id_fkey(id, name, avatar_url)')
     .single()
+
+  if (type === 'project_folder_share' && isTypeConstraintError(error)) {
+    const retry = await supabase
+      .from('direct_messages')
+      .insert({ ...insertPayload, type: 'repo_share' })
+      .select('*, sender:profiles!direct_messages_sender_id_fkey(id, name, avatar_url)')
+      .single()
+    data = retry.data
+    error = retry.error
+  }
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)

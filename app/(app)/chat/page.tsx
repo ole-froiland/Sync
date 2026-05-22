@@ -43,7 +43,7 @@ type RepoSharePayload = {
   owner?: string
   description?: string | null
   language?: string | null
-  kind?: 'sync_request'
+  kind?: 'sync_request' | 'project_folder_share'
 }
 
 type ProjectLogoPayload = {
@@ -75,6 +75,7 @@ type ProjectFolderMemberPayload = {
 }
 
 type ProjectFolderSharePayload = {
+  kind?: 'project_folder_share'
   name?: string
   description?: string
   color?: string
@@ -168,6 +169,15 @@ function readLocalProjectMessages(projectId: string): Message[] {
 
 function writeLocalProjectMessages(projectId: string, messages: Message[]) {
   window.localStorage.setItem(localProjectChatStorageKey(projectId), JSON.stringify(messages))
+}
+
+function isProjectFolderShareMessage(message: DirectMessage) {
+  const payload = (message.payload ?? {}) as ProjectFolderSharePayload
+  return (
+    message.type === 'project_folder_share' ||
+    payload.kind === 'project_folder_share' ||
+    Array.isArray(payload.items)
+  )
 }
 
 function encodeProjectImageMessage(payload: ImagePayload) {
@@ -763,7 +773,7 @@ export default function ChatPage() {
           const body = (await res.json().catch(() => ({}))) as { error?: string }
           throw new Error(body.error ?? 'Failed to respond')
         }
-        if (action === 'accept' && msg.type === 'project_folder_share') {
+        if (action === 'accept' && isProjectFolderShareMessage(msg)) {
           const imported = importSharedProjectFolder((msg.payload ?? {}) as ProjectFolderSharePayload, msg.sender)
           showToast(`${imported.name} added to Projects`)
         } else {
@@ -1135,7 +1145,7 @@ export default function ChatPage() {
                           {msg.body}
                         </p>
                       )
-                    ) : msg.type === 'project_folder_share' ? (
+                    ) : isProjectFolderShareMessage(msg) ? (
                       <ProjectFolderShareCard
                         message={msg}
                         viewerIsReceiver={isReceiver}

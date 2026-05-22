@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 type RespondBody = { action?: 'accept' | 'reject' }
 
 type RepoSharePayload = {
+  kind?: string
   full_name?: string
   name?: string
   url?: string
@@ -12,8 +13,19 @@ type RepoSharePayload = {
   language?: string | null
 }
 
+type ProjectFolderSharePayload = {
+  kind?: string
+  name?: string
+  items?: unknown[]
+}
+
 type SyncRequestPayload = {
   kind?: 'sync_request'
+}
+
+function isProjectFolderShare(type: string, payload: unknown) {
+  const share = (payload ?? {}) as ProjectFolderSharePayload
+  return type === 'project_folder_share' || share.kind === 'project_folder_share' || Array.isArray(share.items)
 }
 
 export async function POST(
@@ -57,6 +69,7 @@ export async function POST(
   }
 
   const nextState = body.action === 'accept' ? 'accepted' : 'rejected'
+  const projectFolderShare = isProjectFolderShare(message.type, message.payload)
   const isSyncRequest =
     message.type === 'text' && ((message.payload ?? {}) as SyncRequestPayload).kind === 'sync_request'
 
@@ -124,7 +137,7 @@ export async function POST(
     return NextResponse.json({ ok: true, state: 'rejected' })
   }
 
-  if (nextState === 'accepted' && message.type === 'repo_share') {
+  if (nextState === 'accepted' && message.type === 'repo_share' && !projectFolderShare) {
     const payload = (message.payload ?? {}) as RepoSharePayload
     const fullName = payload.full_name ?? payload.name
     const url = payload.url

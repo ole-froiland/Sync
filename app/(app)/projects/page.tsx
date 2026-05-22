@@ -101,13 +101,17 @@ type ProjectItemOpenTarget = { href: string; external: boolean; label: string }
 type SendStatus = 'idle' | 'sending' | 'sent' | 'error'
 
 type AcceptedSharePayload = {
+  kind?: string
   full_name?: string
   name?: string
   url?: string
   description?: string | null
   language?: string | null
+  color?: string
+  logo?: ProjectLogo | null
   members?: ProjectFolderMember[]
   shared_from?: ProjectFolderMember | null
+  items?: ProjectItem[]
 }
 
 const STORAGE_KEY = 'sync-project-folders-v1'
@@ -193,6 +197,10 @@ function sharedFolderId(messageId: string) {
   return `shared-${messageId}`
 }
 
+function isProjectFolderSharePayload(payload: AcceptedSharePayload | null | undefined) {
+  return payload?.kind === 'project_folder_share' || Array.isArray(payload?.items)
+}
+
 function sharedFolderFromAcceptedMessage({
   id,
   other,
@@ -214,7 +222,14 @@ function sharedFolderFromAcceptedMessage({
     role: senderIsOther ? 'creator' : 'member',
   }
   const now = new Date().toISOString()
-  const items = payload.url
+  const items = Array.isArray(payload.items)
+    ? payload.items.map((item) => ({
+        ...item,
+        id: item.id ? `shared-${id}-${item.id}` : makeId('shared-item'),
+        createdAt: item.createdAt ?? now,
+        updatedAt: item.updatedAt ?? now,
+      }))
+    : payload.url
     ? [
         {
           id: `shared-item-${id}`,
@@ -307,7 +322,11 @@ export default function ProjectsPage() {
         const peopleById = new Map(people.map((person) => [person.id, person]))
 
         const sharedFolders = (inbox.items ?? [])
-          .filter((item) => item.state === 'accepted' && (item.type === 'repo_share' || item.type === 'project_folder_share'))
+          .filter(
+            (item) =>
+              item.state === 'accepted' &&
+              (item.type === 'project_folder_share' || isProjectFolderSharePayload(item.payload))
+          )
           .map((item): ProjectFolder | null => {
             const otherId = item.sender_id === currentProfileId ? item.receiver_id : item.sender_id
             const other = peopleById.get(otherId)
@@ -1690,6 +1709,7 @@ function ShareProjectFolderModal({
             description: folder.description,
             color: folder.color,
             logo: folder.logo ?? null,
+            kind: 'project_folder_share',
             members,
             shared_from: folder.sharedFrom ?? folderMemberFromProfile(currentProfile),
             items: folder.items,
