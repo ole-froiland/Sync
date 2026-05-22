@@ -231,7 +231,10 @@ export default function ChatPage() {
   const [respondingId, setRespondingId] = useState<string | null>(null)
 
   const [input, setInput] = useState('')
+  const [pendingImage, setPendingImage] = useState<ImagePayload | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const optimisticIdRef = useRef(0)
+  const toastIdRef = useRef(0)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [lightboxImage, setLightboxImage] = useState<ImagePayload | null>(null)
 
@@ -250,10 +253,16 @@ export default function ChatPage() {
   }, [profileId])
 
   const showToast = useCallback((message: string, tone: 'success' | 'error' = 'success') => {
-    const id = Date.now() + Math.random()
+    toastIdRef.current += 1
+    const id = toastIdRef.current
     setToasts((prev) => [...prev, { id, tone, message }])
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 2400)
   }, [])
+
+  function nextOptimisticId(prefix: string) {
+    optimisticIdRef.current += 1
+    return `${prefix}-${optimisticIdRef.current}`
+  }
 
   const fetchProjectMessages = useCallback((projectId: string) => {
     if (!SUPABASE_CONFIGURED) {
@@ -452,25 +461,33 @@ export default function ChatPage() {
 
   function selectProject(project: Project) {
     setActive({ kind: 'project', project })
+    setPendingImage(null)
     setProjectMessages([])
     fetchProjectMessages(project.id)
   }
 
   function selectUser(user: Profile) {
     setActive({ kind: 'dm', user })
+    setPendingImage(null)
     setDirectMessages([])
     fetchDirectMessages(user.id)
   }
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault()
-    if (!input.trim() || !active || !profile) return
+    if ((!input.trim() && !pendingImage) || !active || !profile) return
+    if (pendingImage) {
+      const image = pendingImage
+      setPendingImage(null)
+      await sendImageMessage(image)
+      return
+    }
     const text = input.trim()
     setInput('')
 
     if (active.kind === 'project') {
       const optimistic: Message = {
-        id: `opt-${Date.now()}`,
+        id: nextOptimisticId('opt'),
         project_id: active.project.id,
         sender_id: profile.id,
         body: text,
@@ -498,7 +515,7 @@ export default function ChatPage() {
       }
     } else {
       const optimistic: DirectMessage = {
-        id: `opt-${Date.now()}`,
+        id: nextOptimisticId('opt'),
         sender_id: profile.id,
         receiver_id: active.user.id,
         type: 'text',
@@ -540,7 +557,7 @@ export default function ChatPage() {
 
     if (active.kind === 'project') {
       const optimistic: Message = {
-        id: `opt-img-${Date.now()}`,
+        id: nextOptimisticId('opt-img'),
         project_id: active.project.id,
         sender_id: profile.id,
         body: encodeProjectImageMessage(payload),
@@ -575,7 +592,7 @@ export default function ChatPage() {
     if (directStates[active.user.id] !== 'synced') return
 
     const optimistic: DirectMessage = {
-      id: `opt-img-${Date.now()}`,
+      id: nextOptimisticId('opt-img'),
       sender_id: profile.id,
       receiver_id: active.user.id,
       type: 'text',
@@ -630,7 +647,7 @@ export default function ChatPage() {
 
     try {
       const payload = await imageFileToPayload(file)
-      await sendImageMessage(payload)
+      setPendingImage(payload)
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Could not paste image', 'error')
     }
@@ -904,21 +921,29 @@ export default function ChatPage() {
               projectMessages.map((msg, i) => {
                 const prev = projectMessages[i - 1]
                 const image = parseProjectImageMessage(msg.body)
+                const isMine = msg.sender_id === profile?.id
                 const sameAuthor =
                   prev?.sender_id === msg.sender_id &&
                   new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() < 300000
                 return (
-                  <div key={msg.id} className={cn('flex items-start gap-3', sameAuthor && 'mt-0.5')}>
-                    {sameAuthor ? (
-                      <div className="w-8 flex-shrink-0" />
-                    ) : (
-                      <Avatar name={msg.sender?.name ?? 'User'} src={msg.sender?.avatar_url} size="sm" />
+                  <div
+                    key={msg.id}
+                    className={cn(
+                      'flex items-end gap-3',
+                      isMine ? 'justify-end' : 'justify-start',
+                      sameAuthor && 'mt-0.5'
                     )}
-                    <div className="flex-1 min-w-0">
+                  >
+                    {!isMine && sameAuthor ? (
+                      <div className="w-8 flex-shrink-0" />
+                    ) : !isMine ? (
+                      <Avatar name={msg.sender?.name ?? 'User'} src={msg.sender?.avatar_url} size="sm" />
+                    ) : null}
+                    <div className={cn('flex max-w-[72%] flex-col', isMine ? 'items-end' : 'items-start')}>
                       {!sameAuthor && (
-                        <div className="flex items-baseline gap-2 mb-0.5">
+                        <div className={cn('mb-1 flex items-baseline gap-2', isMine && 'flex-row-reverse')}>
                           <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                            {msg.sender?.name ?? 'User'}
+                            {isMine ? 'You' : msg.sender?.name ?? 'User'}
                           </span>
                           <span className="text-xs text-gray-400 dark:text-gray-500">
                             {formatDate(msg.created_at)}
@@ -928,7 +953,16 @@ export default function ChatPage() {
                       {image ? (
                         <ImageMessage payload={image} onOpen={setLightboxImage} />
                       ) : (
-                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{msg.body}</p>
+                        <p
+                          className={cn(
+                            'rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm',
+                            isMine
+                              ? 'rounded-br-md bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white'
+                              : 'rounded-bl-md border border-gray-200 bg-white text-gray-800 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200'
+                          )}
+                        >
+                          {msg.body}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -963,20 +997,29 @@ export default function ChatPage() {
                 msg.sender?.avatar_url ??
                 (msg.sender_id === profile?.id ? profile?.avatar_url : active.user.avatar_url)
               const isReceiver = profile?.id === msg.receiver_id
+              const isMine = msg.sender_id === profile?.id
               const isResponding = respondingId === msg.id
+              const image = parseProjectImageMessage(msg.body)
 
               return (
-                <div key={msg.id} className={cn('flex items-start gap-3', sameAuthor && 'mt-0.5')}>
-                  {sameAuthor ? (
-                    <div className="w-8 flex-shrink-0" />
-                  ) : (
-                    <Avatar name={senderName} src={senderAvatar} size="sm" />
+                <div
+                  key={msg.id}
+                  className={cn(
+                    'flex items-end gap-3',
+                    isMine ? 'justify-end' : 'justify-start',
+                    sameAuthor && 'mt-0.5'
                   )}
-                  <div className="flex-1 min-w-0">
+                >
+                  {!isMine && sameAuthor ? (
+                    <div className="w-8 flex-shrink-0" />
+                  ) : !isMine ? (
+                    <Avatar name={senderName} src={senderAvatar} size="sm" />
+                  ) : null}
+                  <div className={cn('flex max-w-[72%] flex-col', isMine ? 'items-end' : 'items-start')}>
                     {!sameAuthor && (
-                      <div className="flex items-baseline gap-2 mb-0.5">
+                      <div className={cn('mb-1 flex items-baseline gap-2', isMine && 'flex-row-reverse')}>
                         <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                          {senderName}
+                          {isMine ? 'You' : senderName}
                         </span>
                         <span className="text-xs text-gray-400 dark:text-gray-500">
                           {formatDate(msg.created_at)}
@@ -985,10 +1028,17 @@ export default function ChatPage() {
                     )}
 
                     {msg.type === 'text' ? (
-                      parseProjectImageMessage(msg.body) ? (
-                        <ImageMessage payload={parseProjectImageMessage(msg.body)!} onOpen={setLightboxImage} />
+                      image ? (
+                        <ImageMessage payload={image} onOpen={setLightboxImage} />
                       ) : (
-                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                        <p
+                          className={cn(
+                            'rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm',
+                            isMine
+                              ? 'rounded-br-md bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white'
+                              : 'rounded-bl-md border border-gray-200 bg-white text-gray-800 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200'
+                          )}
+                        >
                           {msg.body}
                         </p>
                       )
@@ -1019,32 +1069,63 @@ export default function ChatPage() {
 
         <form
           onSubmit={sendMessage}
-          className="border-t border-gray-100 dark:border-gray-800 p-4 flex gap-3 bg-white dark:bg-gray-900"
+          className="border-t border-gray-100 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
         >
-          <Avatar name={profile?.name ?? 'You'} src={profile?.avatar_url} size="sm" />
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onPaste={handlePaste}
-            placeholder={
-              !active
-                ? 'Select a conversation'
-                : active.kind === 'project'
-                  ? `Message #${active.project.name}...`
-                  : directStates[active.user.id] === 'synced'
-                    ? `Message ${active.user.name}...`
-                    : `Accept sync with ${active.user.name} to start chatting...`
-            }
-            disabled={!active || (active.kind === 'dm' && directStates[active.user.id] !== 'synced')}
-            className="flex-1 rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50 dark:bg-gray-800 dark:text-gray-100 focus:bg-white dark:focus:bg-gray-900 transition-colors"
-          />
-          <Button
-            type="submit"
-            size="md"
-            disabled={!input.trim() || !active || (active.kind === 'dm' && directStates[active.user.id] !== 'synced')}
-          >
-            <Send size={15} />
-          </Button>
+          {pendingImage && (
+            <div className="mb-3 ml-11 flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-2 dark:border-gray-800 dark:bg-gray-950/60">
+              <button
+                type="button"
+                onClick={() => setLightboxImage(pendingImage)}
+                className="h-16 w-24 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"
+                title="Preview image"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={pendingImage.data_url} alt={pendingImage.name ?? 'Pasted image'} className="h-full w-full object-cover" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">
+                  {pendingImage.name ?? 'Pasted image'}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Trykk Send for å sende bildet.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPendingImage(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                aria-label="Fjern bilde"
+              >
+                <XIcon size={16} />
+              </button>
+            </div>
+          )}
+          <div className="flex gap-3">
+            <Avatar name={profile?.name ?? 'You'} src={profile?.avatar_url} size="sm" />
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onPaste={handlePaste}
+              placeholder={
+                !active
+                  ? 'Select a conversation'
+                  : pendingImage
+                    ? 'Image ready to send...'
+                    : active.kind === 'project'
+                      ? `Message #${active.project.name}...`
+                      : directStates[active.user.id] === 'synced'
+                        ? `Message ${active.user.name}...`
+                        : `Accept sync with ${active.user.name} to start chatting...`
+              }
+              disabled={!active || Boolean(pendingImage) || (active.kind === 'dm' && directStates[active.user.id] !== 'synced')}
+              className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm transition-colors focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-70 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:bg-gray-900"
+            />
+            <Button
+              type="submit"
+              size="md"
+              disabled={(!input.trim() && !pendingImage) || !active || (active.kind === 'dm' && directStates[active.user.id] !== 'synced')}
+            >
+              <Send size={15} />
+            </Button>
+          </div>
         </form>
       </div>
 
