@@ -27,48 +27,7 @@ type Idea = {
 
 const STORAGE_KEY = 'sync-ideas-board'
 const VOTE_KEY = 'sync-idea-votes'
-
-function daysAgo(days: number) {
-  const date = new Date()
-  date.setDate(date.getDate() - days)
-  return date.toISOString()
-}
-
-const seedIdeas: Idea[] = [
-  {
-    id: 'idea-2',
-    title: 'Calendar drag and resize',
-    summary: 'Move planning blocks directly inside the month view.',
-    detail: 'The current calendar is fast, but the next step is direct manipulation so planning feels closer to Outlook.',
-    status: 'planned',
-    tag: 'calendar',
-    votes: 11,
-    author: 'Elias',
-    createdAt: daysAgo(2),
-  },
-  {
-    id: 'idea-3',
-    title: 'Mobile-first chat composer',
-    summary: 'Reduce header height and make reply actions easier on small screens.',
-    detail: 'The composer and sync actions should feel thumb-friendly and stay visible without chewing up the whole viewport.',
-    status: 'under-review',
-    tag: 'mobile',
-    votes: 9,
-    author: 'Sebastian',
-    createdAt: daysAgo(9),
-  },
-  {
-    id: 'idea-4',
-    title: 'Connected account activity timeline',
-    summary: 'Show GitHub, projects and social events in one stream.',
-    detail: 'A compact timeline could turn the dashboard into a single place to see what actually changed across the workspace.',
-    status: 'shipped',
-    tag: 'integrations',
-    votes: 18,
-    author: 'Arvind',
-    createdAt: daysAgo(18),
-  },
-]
+const LEGACY_SEED_IDS = ['idea-2', 'idea-3', 'idea-4']
 
 const timeFilters: { id: TimeFilter; label: string }[] = [
   { id: 'today', label: 'Today' },
@@ -176,7 +135,7 @@ function isBetween(value: string, start: string, end: string) {
 
 export default function IdeasPage() {
   const profile = useUser()
-  const [ideas, setIdeas] = useState<Idea[]>(seedIdeas)
+  const [ideas, setIdeas] = useState<Idea[]>([])
   const [activeTime, setActiveTime] = useState<TimeFilter>('today')
   const [query, setQuery] = useState('')
   const [draftImage, setDraftImage] = useState<string | null>(null)
@@ -198,16 +157,20 @@ export default function IdeasPage() {
           const parsed = JSON.parse(rawIdeas) as Idea[]
           if (Array.isArray(parsed)) {
             setIdeas(
-              parsed.map((idea) => ({
-                ...idea,
-                createdAt: idea.createdAt ?? new Date().toISOString(),
-              }))
+              parsed
+                .filter((idea) => !LEGACY_SEED_IDS.includes(idea.id))
+                .map((idea) => ({
+                  ...idea,
+                  createdAt: idea.createdAt ?? new Date().toISOString(),
+                }))
             )
           }
         }
         if (rawVotes) {
           const parsed = JSON.parse(rawVotes) as string[]
-          if (Array.isArray(parsed)) setVotes(parsed)
+          if (Array.isArray(parsed)) {
+            setVotes(parsed.filter((id) => !LEGACY_SEED_IDS.includes(id)))
+          }
         }
       } catch {
         // ignore invalid local data

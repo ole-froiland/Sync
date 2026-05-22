@@ -7,11 +7,6 @@ import { ExternalLink } from 'lucide-react'
 import { formatDate, POST_TYPE_COLORS } from '@/lib/utils'
 import type { Post } from '@/types'
 
-const MOCK_COMMENTS = [
-  { id: 1, name: 'Mia Berg', body: 'Great share — this changes a few things for how we approach this sprint.', time: '30m ago' },
-  { id: 2, name: 'Jonas Lie', body: 'Worth integrating into our workflow. Let me try it out and report back.', time: '15m ago' },
-]
-
 interface PostDetailModalProps {
   post: Post | null
   onClose: () => void
@@ -54,20 +49,7 @@ export default function PostDetailModal({ post, onClose }: PostDetailModalProps)
         <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
           Comments
         </p>
-        <div className="flex flex-col gap-4">
-          {MOCK_COMMENTS.map((c) => (
-            <div key={c.id} className="flex items-start gap-3">
-              <Avatar name={c.name} size="sm" />
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-medium text-gray-800 dark:text-gray-200">{c.name}</span>
-                  <span className="text-xs text-gray-400 dark:text-gray-500">{c.time}</span>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{c.body}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400">No comments yet.</p>
 
         {/* Comment input placeholder */}
         <div className="mt-4 flex items-center gap-2">

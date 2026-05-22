@@ -6,7 +6,6 @@ import PostDetailModal from '@/components/dashboard/PostDetailModal'
 import FeedView from '@/components/dashboard/views/FeedView'
 import DiscoverView from '@/components/dashboard/views/DiscoverView'
 import TrendingView from '@/components/dashboard/views/TrendingView'
-import { mockPosts } from '@/lib/mock-data'
 import type { Post, FeedItem } from '@/types'
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
@@ -52,15 +51,15 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) {
       queueMicrotask(() => {
-        setPosts(mockPosts)
+        setPosts([])
         setPostsLoading(false)
       })
       return
     }
     fetch('/api/posts')
       .then((r) => r.json())
-      .then((data) => setPosts(Array.isArray(data) ? data : mockPosts))
-      .catch(() => setPosts(mockPosts))
+      .then((data) => setPosts(Array.isArray(data) ? data : []))
+      .catch(() => setPosts([]))
       .finally(() => setPostsLoading(false))
   }, [])
 
