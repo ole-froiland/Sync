@@ -6,26 +6,50 @@ export const revalidate = 900 // 15 minutes
 
 type SourceConfig = { name: string; url: string; max: number }
 
+function googleNewsUrl(query: string): string {
+  const params = new URLSearchParams({
+    q: query,
+    hl: 'en-US',
+    gl: 'US',
+    ceid: 'US:en',
+  })
+
+  return `https://news.google.com/rss/search?${params.toString()}`
+}
+
 const RSS_SOURCES: SourceConfig[] = [
   { name: 'OpenAI', url: 'https://openai.com/news/rss.xml', max: 4 },
-  { name: 'OpenAI Dev', url: 'https://developers.openai.com/rss.xml', max: 4 },
   { name: 'Anthropic', url: 'https://www.anthropic.com/news/rss.xml', max: 4 },
   { name: 'Google AI', url: 'https://blog.google/technology/ai/rss/', max: 3 },
   { name: 'DeepMind', url: 'https://deepmind.google/discover/blog/rss.xml', max: 3 },
-  { name: 'Meta AI', url: 'https://news.google.com/rss/search?q=site%3Aai.meta.com%2Fblog%20AI&hl=en-US&gl=US&ceid=US%3Aen', max: 3 },
-  { name: 'Microsoft AI', url: 'https://blogs.microsoft.com/ai/feed/', max: 3 },
-  { name: 'DeepSeek', url: 'https://news.google.com/rss/search?q=%22DeepSeek%22%20%28AI%20OR%20model%20OR%20LLM%29&hl=en-US&gl=US&ceid=US%3Aen', max: 2 },
-  { name: 'TechCrunch AI', url: 'https://techcrunch.com/category/artificial-intelligence/feed/', max: 3 },
-  { name: 'VentureBeat AI', url: 'https://venturebeat.com/category/ai/feed/', max: 3 },
+  { name: 'AI Markets', url: googleNewsUrl('(OpenAI OR Anthropic OR Google Gemini OR Meta AI OR Microsoft Copilot) (valuation OR funding OR revenue OR earnings OR profit)'), max: 5 },
+  { name: 'AI Chips', url: googleNewsUrl('(Nvidia OR AMD OR Broadcom) (AI OR datacenter OR data center OR GPU) (earnings OR revenue OR chips)'), max: 4 },
+  { name: 'AI Jobs', url: googleNewsUrl('(AI OR artificial intelligence) (layoffs OR job cuts OR restructuring OR replaces workers)'), max: 3 },
+  { name: 'AI Infrastructure', url: googleNewsUrl('(AI datacenter OR AI data center OR AI factory OR sovereign AI OR cloud AI infrastructure)'), max: 3 },
+  { name: 'Norway AI', url: googleNewsUrl('(Norway OR Norwegian OR Telenor OR Nordic) (AI OR artificial intelligence OR AI factory)'), max: 3 },
+  { name: 'Meta AI', url: googleNewsUrl('Meta AI (Llama OR model OR artificial intelligence OR AI strategy)'), max: 3 },
+  { name: 'Microsoft AI', url: googleNewsUrl('(Microsoft Copilot OR Microsoft AI) (launch OR revenue OR earnings OR investment OR strategy OR data center OR layoffs)'), max: 3 },
+  { name: 'DeepSeek', url: googleNewsUrl('DeepSeek (AI OR model OR LLM OR chatbot)'), max: 2 },
   { name: 'The Decoder', url: 'https://the-decoder.com/feed/', max: 3 },
 ]
 
-const AI_TOPIC_PATTERNS = [
-  /\b(?:ai|a\.i\.|artificial intelligence|generative ai|genai)\b/i,
-  /\b(?:openai|anthropic|claude|chatgpt|deepseek|deepmind|gemini|llama|meta ai|microsoft ai)\b/i,
-  /\b(?:gpt-?\d*|llm|large language model|foundation model|frontier model|reasoning model|multimodal model)\b/i,
-  /\b(?:ai agent|agentic ai|coding agent|computer use|model context protocol|mcp server)\b/i,
-  /\b(?:inference|fine-tuning|fine tuning|prompt engineering|ai benchmark|ai model)\b/i,
+const AI_COMPANY_OR_MODEL_PATTERNS = [
+  /\b(?:openai|anthropic|claude|chatgpt|deepseek|deepmind|gemini|llama|meta ai|microsoft copilot|copilot|gpt-?\d*)\b/i,
+  /\b(?:nvidia|amd|broadcom|tsmc|google|alphabet|meta|microsoft|telenor|cloudflare|softbank)\b/i,
+  /\b(?:llm|large language model|foundation model|frontier model|reasoning model|multimodal model|ai model)\b/i,
+]
+
+const AI_NEWS_SIGNAL_PATTERNS = [
+  /\b(?:ai|a\.i\.|artificial intelligence|generative ai|agentic ai)\b/i,
+  /\b(?:launch(?:es|ed)?|announce(?:s|d)?|unveil(?:s|ed)?|release(?:s|d)?|rolls out|introduced?|debuts?)\b/i,
+  /\b(?:valuation|funding|fundraising|raises?|revenue|earnings|profit|forecast|guidance|stock|shares?)\b/i,
+  /\b(?:datacenter|data center|gpu|chips?|ai factory|sovereign ai|infrastructure|investment|acquisition|partnership)\b/i,
+  /\b(?:layoffs|job cuts|restructuring|replaces workers|automation)\b/i,
+  /\b(?:benchmark|price cut|pricing|standard model|default model|strategy|roadmap)\b/i,
+]
+
+const LOW_VALUE_AI_PATTERNS = [
+  /\b(?:hot wheels|ferrari|superfans?|wearable|coding agents?|claude code|farm of the future)\b/i,
 ]
 
 // ─── XML helpers ──────────────────────────────────────────────────────────────
@@ -85,13 +109,13 @@ function extractAuthor(block: string): string | null {
 
 function stripHtml(html: string): string {
   return html
-    .replace(/<[^>]+>/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -104,8 +128,13 @@ function parseDate(str: string | null): number {
 
 function isAiTechItem(item: FeedItem): boolean {
   const titleAndPreview = [item.title, item.description ?? ''].join(' ')
+  const lowValue = LOW_VALUE_AI_PATTERNS.some((pattern) => pattern.test(titleAndPreview))
+  const mentionsRelevantCompanyOrModel = AI_COMPANY_OR_MODEL_PATTERNS.some((pattern) =>
+    pattern.test(titleAndPreview)
+  )
+  const hasNewsSignal = AI_NEWS_SIGNAL_PATTERNS.some((pattern) => pattern.test(titleAndPreview))
 
-  return AI_TOPIC_PATTERNS.some((pattern) => pattern.test(titleAndPreview))
+  return !lowValue && mentionsRelevantCompanyOrModel && hasNewsSignal
 }
 
 function normalizeUrl(url: string): string {

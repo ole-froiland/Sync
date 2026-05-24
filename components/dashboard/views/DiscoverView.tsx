@@ -48,15 +48,17 @@ type PodcastState = {
 const SOURCES = [
   'All',
   'OpenAI',
-  'OpenAI Dev',
   'Anthropic',
   'Google AI',
   'DeepMind',
+  'AI Markets',
+  'AI Chips',
+  'AI Jobs',
+  'AI Infrastructure',
+  'Norway AI',
   'Meta AI',
   'Microsoft AI',
   'DeepSeek',
-  'TechCrunch AI',
-  'VentureBeat AI',
   'The Decoder',
 ]
 
