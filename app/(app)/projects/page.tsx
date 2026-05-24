@@ -292,6 +292,7 @@ export default function ProjectsPage() {
   const [folderMenu, setFolderMenu] = useState<{ folderId: string; x: number; y: number } | null>(null)
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
   const [logoFolderId, setLogoFolderId] = useState<string | null>(null)
+  const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null)
   const [storageReady, setStorageReady] = useState(false)
   const loadedRef = useRef(false)
 
@@ -424,6 +425,9 @@ export default function ProjectsPage() {
   const menuFolder = folderMenu ? folders.find((folder) => folder.id === folderMenu.folderId) ?? null : null
   const renamingFolder = renamingFolderId ? folders.find((folder) => folder.id === renamingFolderId) ?? null : null
   const logoFolder = logoFolderId ? folders.find((folder) => folder.id === logoFolderId) ?? null : null
+  const deleteFolderTarget = deleteFolderId ? folders.find((folder) => folder.id === deleteFolderId) ?? null : null
+  const activeOverviewFolder =
+    previewFolderId ? visibleFolders.find((folder) => folder.id === previewFolderId) ?? null : null
 
   function createFolder(folder: Pick<ProjectFolder, 'name' | 'description' | 'color' | 'logo'>) {
     const creator = folderMemberFromProfile(currentProfile)
@@ -465,17 +469,18 @@ export default function ProjectsPage() {
     setFolderMenu({ folderId, x: Math.max(12, x), y: Math.max(12, y) })
   }
 
-  function deleteFolder(folderId: string) {
-    const folder = folders.find((candidate) => candidate.id === folderId)
-    if (!folder) return
-    const confirmed = window.confirm(`Slette "${folder.name}"? Dette fjerner mappen og alt innholdet i den.`)
-    if (!confirmed) return
+  function requestDeleteFolder(folderId: string) {
+    setDeleteFolderId(folderId)
+    setFolderMenu(null)
+  }
 
+  function confirmDeleteFolder(folderId: string) {
     setFolders((current) => current.filter((candidate) => candidate.id !== folderId))
     if (selectedFolderId === folderId) setSelectedFolderId(null)
     if (previewFolderId === folderId) setPreviewFolderId(null)
     if (renamingFolderId === folderId) setRenamingFolderId(null)
     if (logoFolderId === folderId) setLogoFolderId(null)
+    if (deleteFolderId === folderId) setDeleteFolderId(null)
     setFolderMenu(null)
   }
 
@@ -752,6 +757,17 @@ export default function ProjectsPage() {
                   <Plus size={16} />
                   Ny mappe
                 </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => activeOverviewFolder && requestDeleteFolder(activeOverviewFolder.id)}
+                  disabled={!activeOverviewFolder}
+                  className="h-10 whitespace-nowrap"
+                  title={activeOverviewFolder ? `Slett ${activeOverviewFolder.name}` : 'Velg en mappe først'}
+                >
+                  <Trash2 size={16} />
+                  Slett mappe
+                </Button>
               </div>
               {selectedCollection && (
                 <div className="flex items-center gap-2 text-sm">
@@ -891,21 +907,27 @@ export default function ProjectsPage() {
                 ))}
                 {visibleFolders.map((folder) => {
                   const members = projectFolderMembers(folder, currentProfile)
+                  const active = folder.id === previewFolderId
 
                   return (
                     <div
                       key={folder.id}
                       onContextMenu={(event) => openFolderContextMenu(event, folder.id)}
-                      className="group flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left transition hover:border-purple-400 hover:bg-purple-50/60 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
+                      className={`group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
+                        active
+                          ? 'border-purple-500 bg-purple-50/70 shadow-sm dark:border-purple-700 dark:bg-purple-950/30'
+                          : 'border-gray-200 bg-white hover:border-purple-400 hover:bg-purple-50/60 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-700 dark:hover:bg-purple-950/20'
+                      }`}
                     >
                       <button
                         type="button"
-                        onClick={() => setSelectedFolderId(folder.id)}
+                        onClick={() => setPreviewFolderId(folder.id)}
                         onDoubleClick={() => setSelectedFolderId(folder.id)}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') setSelectedFolderId(folder.id)
                         }}
                         className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        aria-pressed={active}
                       >
                         <ProjectLogoThumbnail folder={folder} className="h-9 w-9" iconSize={18} />
                         <span className="min-w-0 flex-1">
@@ -967,9 +989,15 @@ export default function ProjectsPage() {
             setLogoFolderId(menuFolder.id)
             setFolderMenu(null)
           }}
-          onDelete={() => deleteFolder(menuFolder.id)}
+          onDelete={() => requestDeleteFolder(menuFolder.id)}
         />
       )}
+      <DeleteFolderModal
+        open={Boolean(deleteFolderTarget)}
+        folder={deleteFolderTarget}
+        onClose={() => setDeleteFolderId(null)}
+        onConfirm={(folderId) => confirmDeleteFolder(folderId)}
+      />
       {renamingFolder && (
         <RenameFolderModal
           key={renamingFolder.id}
@@ -1868,6 +1896,83 @@ function FolderContextMenu({
         Slett mappe
       </button>
     </div>
+  )
+}
+
+function DeleteFolderModal({
+  open,
+  folder,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean
+  folder: ProjectFolder | null
+  onClose: () => void
+  onConfirm: (folderId: string) => void
+}) {
+  if (!folder) return null
+
+  return (
+    <Modal open={open} onClose={onClose} title="Slett mappe" className="max-w-xl">
+      <div className="space-y-5">
+        <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100">
+          <Trash2 size={20} className="mt-0.5 shrink-0" />
+          <div className="min-w-0">
+            <p className="font-semibold">Er du sikker på at du vil slette &quot;{folder.name}&quot;?</p>
+            <p className="mt-1 text-sm text-red-700 dark:text-red-200">
+              Dette sletter mappen og alt innholdet i den permanent fra prosjektoversikten.
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h3 className="text-sm font-medium text-gray-950 dark:text-gray-100">Innhold i mappen</h3>
+            <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+              {folder.items.length} {folder.items.length === 1 ? 'element' : 'elementer'}
+            </span>
+          </div>
+
+          {folder.items.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">
+              Mappen er tom.
+            </div>
+          ) : (
+            <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
+              {folder.items.map((item) => {
+                const meta = itemTypeMeta[item.type]
+                const Icon = meta.icon
+
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-3 border-b border-gray-100 px-3 py-2.5 last:border-b-0 dark:border-gray-800"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300">
+                      <Icon size={16} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-gray-950 dark:text-gray-100">{item.title}</p>
+                      <p className="truncate text-xs text-gray-500 dark:text-gray-400">{projectItemTypeLabel(item)}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Avbryt
+          </Button>
+          <Button type="button" variant="danger" onClick={() => onConfirm(folder.id)}>
+            <Trash2 size={16} />
+            Slett mappe
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
