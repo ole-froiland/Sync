@@ -20,12 +20,15 @@ import {
   Image as ImageIcon,
   Link2,
   MessageSquare,
+  MoreVertical,
   PanelsTopLeft,
+  Pencil,
   Plus,
   Search,
   Send,
   Share2,
   StickyNote,
+  Trash2,
   Upload,
   Users,
   X,
@@ -286,6 +289,9 @@ export default function ProjectsPage() {
   const [search, setSearch] = useState('')
   const [previewMode, setPreviewMode] = useState(false)
   const [previewFolderId, setPreviewFolderId] = useState<string | null>(null)
+  const [folderMenu, setFolderMenu] = useState<{ folderId: string; x: number; y: number } | null>(null)
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
+  const [logoFolderId, setLogoFolderId] = useState<string | null>(null)
   const [storageReady, setStorageReady] = useState(false)
   const loadedRef = useRef(false)
 
@@ -415,6 +421,9 @@ export default function ProjectsPage() {
 
   const previewFolder =
     visibleFolders.find((folder) => folder.id === previewFolderId) ?? visibleFolders[0] ?? null
+  const menuFolder = folderMenu ? folders.find((folder) => folder.id === folderMenu.folderId) ?? null : null
+  const renamingFolder = renamingFolderId ? folders.find((folder) => folder.id === renamingFolderId) ?? null : null
+  const logoFolder = logoFolderId ? folders.find((folder) => folder.id === logoFolderId) ?? null : null
 
   function createFolder(folder: Pick<ProjectFolder, 'name' | 'description' | 'color' | 'logo'>) {
     const creator = folderMemberFromProfile(currentProfile)
@@ -444,6 +453,30 @@ export default function ProjectsPage() {
     setFolders((current) =>
       current.map((folder) => (folder.id === folderId ? { ...folder, ...updates } : folder))
     )
+  }
+
+  function openFolderContextMenu(event: React.MouseEvent<HTMLElement>, folderId: string) {
+    event.preventDefault()
+    event.stopPropagation()
+    const menuWidth = 192
+    const menuHeight = 132
+    const x = Math.min(event.clientX, window.innerWidth - menuWidth - 12)
+    const y = Math.min(event.clientY, window.innerHeight - menuHeight - 12)
+    setFolderMenu({ folderId, x: Math.max(12, x), y: Math.max(12, y) })
+  }
+
+  function deleteFolder(folderId: string) {
+    const folder = folders.find((candidate) => candidate.id === folderId)
+    if (!folder) return
+    const confirmed = window.confirm(`Slette "${folder.name}"? Dette fjerner mappen og alt innholdet i den.`)
+    if (!confirmed) return
+
+    setFolders((current) => current.filter((candidate) => candidate.id !== folderId))
+    if (selectedFolderId === folderId) setSelectedFolderId(null)
+    if (previewFolderId === folderId) setPreviewFolderId(null)
+    if (renamingFolderId === folderId) setRenamingFolderId(null)
+    if (logoFolderId === folderId) setLogoFolderId(null)
+    setFolderMenu(null)
   }
 
   function openProjectChat(folder: ProjectFolder) {
@@ -764,6 +797,7 @@ export default function ProjectsPage() {
                         key={folder.id}
                         onClick={() => setPreviewFolderId(folder.id)}
                         onDoubleClick={() => setSelectedFolderId(folder.id)}
+                        onContextMenu={(event) => openFolderContextMenu(event, folder.id)}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') setPreviewFolderId(folder.id)
                         }}
@@ -861,6 +895,7 @@ export default function ProjectsPage() {
                   return (
                     <div
                       key={folder.id}
+                      onContextMenu={(event) => openFolderContextMenu(event, folder.id)}
                       className="group flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left transition hover:border-purple-400 hover:bg-purple-50/60 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
                     >
                       <button
@@ -881,6 +916,15 @@ export default function ProjectsPage() {
                         </span>
                       </button>
                       <ProjectMemberBubbles members={members} max={3} />
+                      <button
+                        type="button"
+                        onClick={(event) => openFolderContextMenu(event, folder.id)}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-purple-600 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 group-hover:opacity-100 dark:hover:bg-gray-800 dark:hover:text-purple-300"
+                        aria-label={`Mappevalg for ${folder.name}`}
+                        title="Mappevalg"
+                      >
+                        <MoreVertical size={16} />
+                      </button>
                       {collections.length > 0 && (
                         <select
                           value={folder.collectionId ?? ''}
@@ -909,6 +953,47 @@ export default function ProjectsPage() {
       <CreateFolderModal open={folderOpen} onClose={() => setFolderOpen(false)} onCreate={createFolder} />
       <CreateCollectionModal open={collectionOpen} onClose={() => setCollectionOpen(false)} onCreate={createCollection} />
       <CreateItemModal open={itemOpen} onClose={() => setItemOpen(false)} onCreate={createItem} />
+      {menuFolder && folderMenu && (
+        <FolderContextMenu
+          folder={menuFolder}
+          x={folderMenu.x}
+          y={folderMenu.y}
+          onClose={() => setFolderMenu(null)}
+          onRename={() => {
+            setRenamingFolderId(menuFolder.id)
+            setFolderMenu(null)
+          }}
+          onLogo={() => {
+            setLogoFolderId(menuFolder.id)
+            setFolderMenu(null)
+          }}
+          onDelete={() => deleteFolder(menuFolder.id)}
+        />
+      )}
+      {renamingFolder && (
+        <RenameFolderModal
+          key={renamingFolder.id}
+          open={Boolean(renamingFolder)}
+          folder={renamingFolder}
+          onClose={() => setRenamingFolderId(null)}
+          onSave={(name) => {
+            updateFolder(renamingFolder.id, { name })
+            setRenamingFolderId(null)
+          }}
+        />
+      )}
+      {logoFolder && (
+        <LogoEditorModal
+          key={`${logoFolder.id}-overview-logo`}
+          open={Boolean(logoFolder)}
+          onClose={() => setLogoFolderId(null)}
+          folder={logoFolder}
+          onSave={({ logo, color }) => {
+            updateFolder(logoFolder.id, { logo, color })
+            setLogoFolderId(null)
+          }}
+        />
+      )}
     </>
   )
 }
@@ -1707,6 +1792,127 @@ function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
         )}
       </div>
     </article>
+  )
+}
+
+function FolderContextMenu({
+  folder,
+  x,
+  y,
+  onClose,
+  onRename,
+  onLogo,
+  onDelete,
+}: {
+  folder: ProjectFolder
+  x: number
+  y: number
+  onClose: () => void
+  onRename: () => void
+  onLogo: () => void
+  onDelete: () => void
+}) {
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent) {
+      if (menuRef.current?.contains(event.target as Node)) return
+      onClose()
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose()
+    }
+
+    window.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onClose])
+
+  return (
+    <div
+      ref={menuRef}
+      className="fixed z-50 w-48 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-xl shadow-gray-900/10 dark:border-gray-800 dark:bg-gray-900 dark:shadow-black/30"
+      style={{ left: x, top: y }}
+      role="menu"
+      aria-label={`Mappevalg for ${folder.name}`}
+    >
+      <button
+        type="button"
+        onClick={onRename}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+        role="menuitem"
+      >
+        <Pencil size={15} />
+        Endre navn
+      </button>
+      <button
+        type="button"
+        onClick={onLogo}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+        role="menuitem"
+      >
+        <ImageIcon size={15} />
+        Endre logo
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+        role="menuitem"
+      >
+        <Trash2 size={15} />
+        Slett mappe
+      </button>
+    </div>
+  )
+}
+
+function RenameFolderModal({
+  open,
+  folder,
+  onClose,
+  onSave,
+}: {
+  open: boolean
+  folder: ProjectFolder
+  onClose: () => void
+  onSave: (name: string) => void
+}) {
+  const [name, setName] = useState(folder.name)
+
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
+    const nextName = name.trim()
+    if (!nextName) return
+    onSave(nextName)
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Endre mappenavn">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Input
+          autoFocus
+          label="Navn"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Mappenavn"
+          required
+        />
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Avbryt
+          </Button>
+          <Button type="submit">
+            <Check size={16} />
+            Lagre
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 
