@@ -48,6 +48,7 @@ type ProjectFolder = {
   description: string
   color: string
   logo?: ProjectLogo
+  parentId?: string
   createdAt: string
   members?: ProjectFolderMember[]
   sharedFrom?: ProjectFolderMember
@@ -203,6 +204,27 @@ function sharedFolderId(messageId: string) {
   return `shared-${messageId}`
 }
 
+function folderChildCount(folders: ProjectFolder[], folderId: string) {
+  return folders.filter((folder) => folder.parentId === folderId).length
+}
+
+function folderDescendantIds(folders: ProjectFolder[], folderId: string) {
+  const descendants = new Set<string>()
+  const stack = [folderId]
+
+  while (stack.length > 0) {
+    const parentId = stack.pop()
+    const children = folders.filter((folder) => folder.parentId === parentId)
+    for (const child of children) {
+      if (descendants.has(child.id)) continue
+      descendants.add(child.id)
+      stack.push(child.id)
+    }
+  }
+
+  return descendants
+}
+
 function isProjectFolderSharePayload(payload: AcceptedSharePayload | null | undefined) {
   return payload?.kind === 'project_folder_share' || Array.isArray(payload?.items)
 }
@@ -277,6 +299,9 @@ export default function ProjectsPage() {
   const [search, setSearch] = useState('')
   const [previewMode, setPreviewMode] = useState(false)
   const [previewFolderId, setPreviewFolderId] = useState<string | null>(null)
+  const [activeParentFolderId, setActiveParentFolderId] = useState<string | null>(null)
+  const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null)
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null)
   const [folderMenu, setFolderMenu] = useState<{ folderId: string; x: number; y: number } | null>(null)
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
   const [logoFolderId, setLogoFolderId] = useState<string | null>(null)
@@ -370,12 +395,16 @@ export default function ProjectsPage() {
   }, [currentProfile, storageReady])
 
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) ?? null
+  const activeParentFolder = activeParentFolderId
+    ? folders.find((folder) => folder.id === activeParentFolderId) ?? null
+    : null
   const activeItemFolder =
     selectedFolder?.items.find((item) => item.id === activeItemFolderId && item.type === 'local_folder') ?? null
 
   const visibleFolders = useMemo(() => {
     const query = search.trim().toLowerCase()
     return folders.filter((folder) => {
+      if ((folder.parentId ?? null) !== activeParentFolderId) return false
       if (!query) return true
       const folderText = `${folder.name} ${folder.description}`.toLowerCase()
       const itemText = folder.items
@@ -384,7 +413,21 @@ export default function ProjectsPage() {
         .toLowerCase()
       return folderText.includes(query) || itemText.includes(query)
     })
-  }, [folders, search])
+  }, [folders, search, activeParentFolderId])
+
+  const folderPath = useMemo(() => {
+    const path: ProjectFolder[] = []
+    const seen = new Set<string>()
+    let current = activeParentFolder
+
+    while (current && !seen.has(current.id)) {
+      path.unshift(current)
+      seen.add(current.id)
+      current = current.parentId ? folders.find((folder) => folder.id === current?.parentId) ?? null : null
+    }
+
+    return path
+  }, [activeParentFolder, folders])
 
   const previewFolder =
     visibleFolders.find((folder) => folder.id === previewFolderId) ?? visibleFolders[0] ?? null
@@ -394,12 +437,16 @@ export default function ProjectsPage() {
   const deleteFolderTarget = deleteFolderId ? folders.find((folder) => folder.id === deleteFolderId) ?? null : null
   const activeOverviewFolder =
     previewFolderId ? visibleFolders.find((folder) => folder.id === previewFolderId) ?? null : null
+  const previewFolderChildren = previewFolder
+    ? folders.filter((folder) => folder.parentId === previewFolder.id)
+    : []
 
   function createFolder(folder: Pick<ProjectFolder, 'name' | 'description' | 'color' | 'logo'>) {
     const creator = folderMemberFromProfile(currentProfile)
     const nextFolder: ProjectFolder = {
       ...folder,
       id: makeId('folder'),
+      parentId: activeParentFolderId ?? undefined,
       createdAt: new Date().toISOString(),
       members: creator ? [creator] : [],
       items: [],
@@ -412,6 +459,36 @@ export default function ProjectsPage() {
     setFolders((current) =>
       current.map((folder) => (folder.id === folderId ? { ...folder, ...updates } : folder))
     )
+  }
+
+  function canMoveFolderIntoFolder(folderId: string, targetParentId: string | null) {
+    if (folderId === targetParentId) return false
+    if (!targetParentId) return true
+    return !folderDescendantIds(folders, folderId).has(targetParentId)
+  }
+
+  function moveFolderIntoFolder(folderId: string, targetParentId: string | null) {
+    if (!canMoveFolderIntoFolder(folderId, targetParentId)) return
+    setFolders((current) =>
+      current.map((folder) =>
+        folder.id === folderId ? { ...folder, parentId: targetParentId ?? undefined } : folder
+      )
+    )
+    if (previewFolderId === folderId) setPreviewFolderId(null)
+    setDraggedFolderId(null)
+    setDragOverFolderId(null)
+  }
+
+  function enterFolder(folderId: string) {
+    setActiveParentFolderId(folderId)
+    setPreviewFolderId(null)
+    setSearch('')
+  }
+
+  function showFolderLevel(folderId: string | null) {
+    setActiveParentFolderId(folderId)
+    setPreviewFolderId(null)
+    setSearch('')
   }
 
   function openFolderContextMenu(event: React.MouseEvent<HTMLElement>, folderId: string) {
@@ -430,9 +507,11 @@ export default function ProjectsPage() {
   }
 
   function confirmDeleteFolder(folderId: string) {
-    setFolders((current) => current.filter((candidate) => candidate.id !== folderId))
-    if (selectedFolderId === folderId) setSelectedFolderId(null)
-    if (previewFolderId === folderId) setPreviewFolderId(null)
+    const deletedIds = new Set([folderId, ...folderDescendantIds(folders, folderId)])
+    setFolders((current) => current.filter((candidate) => !deletedIds.has(candidate.id)))
+    if (selectedFolderId && deletedIds.has(selectedFolderId)) setSelectedFolderId(null)
+    if (previewFolderId && deletedIds.has(previewFolderId)) setPreviewFolderId(null)
+    if (activeParentFolderId && deletedIds.has(activeParentFolderId)) setActiveParentFolderId(null)
     if (renamingFolderId === folderId) setRenamingFolderId(null)
     if (logoFolderId === folderId) setLogoFolderId(null)
     if (deleteFolderId === folderId) setDeleteFolderId(null)
@@ -715,6 +794,47 @@ export default function ProjectsPage() {
                   Slett mappe
                 </Button>
               </div>
+              {folderPath.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => showFolderLevel(null)}
+                    onDragOver={(event) => {
+                      if (!draggedFolderId || !canMoveFolderIntoFolder(draggedFolderId, null)) return
+                      event.preventDefault()
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault()
+                      const folderId = draggedFolderId ?? event.dataTransfer.getData('text/plain')
+                      if (folderId) moveFolderIntoFolder(folderId, null)
+                    }}
+                    className="font-medium text-gray-500 transition hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300"
+                  >
+                    Prosjekter
+                  </button>
+                  {folderPath.map((folder) => (
+                    <span key={folder.id} className="flex min-w-0 items-center gap-2">
+                      <span className="text-gray-400 dark:text-gray-600">/</span>
+                      <button
+                        type="button"
+                        onClick={() => showFolderLevel(folder.id)}
+                        onDragOver={(event) => {
+                          if (!draggedFolderId || !canMoveFolderIntoFolder(draggedFolderId, folder.id)) return
+                          event.preventDefault()
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault()
+                          const folderId = draggedFolderId ?? event.dataTransfer.getData('text/plain')
+                          if (folderId) moveFolderIntoFolder(folderId, folder.id)
+                        }}
+                        className="max-w-48 truncate font-semibold text-gray-950 transition hover:text-purple-600 dark:text-gray-100 dark:hover:text-purple-300"
+                      >
+                        {folder.name}
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {folders.length === 0 ? (
@@ -731,16 +851,54 @@ export default function ProjectsPage() {
                   Lag prosjektmappe
                 </Button>
               </div>
+            ) : visibleFolders.length === 0 ? (
+              <div className="flex min-h-[42vh] flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 text-center dark:border-gray-800 dark:bg-gray-900/30">
+                <FolderOpen size={38} className="mb-4 text-gray-300 dark:text-gray-700" />
+                <h2 className="font-medium text-gray-950 dark:text-gray-100">
+                  {search.trim() ? 'Ingen mapper funnet' : 'Ingen undermapper her'}
+                </h2>
+                <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+                  {search.trim()
+                    ? 'Prøv et annet søk, eller gå tilbake til en annen mappe.'
+                    : 'Dra en mappe hit, eller lag en ny mappe på dette nivået.'}
+                </p>
+              </div>
             ) : previewMode ? (
               <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
                 <aside className="space-y-3">
                   {visibleFolders.map((folder) => {
                     const active = folder.id === previewFolder?.id
                     const members = projectFolderMembers(folder, currentProfile)
+                    const childCount = folderChildCount(folders, folder.id)
+                    const isDropTarget = dragOverFolderId === folder.id
 
                     return (
                       <button
                         key={folder.id}
+                        draggable
+                        onDragStart={(event) => {
+                          setDraggedFolderId(folder.id)
+                          event.dataTransfer.effectAllowed = 'move'
+                          event.dataTransfer.setData('text/plain', folder.id)
+                        }}
+                        onDragEnd={() => {
+                          setDraggedFolderId(null)
+                          setDragOverFolderId(null)
+                        }}
+                        onDragOver={(event) => {
+                          if (!draggedFolderId || !canMoveFolderIntoFolder(draggedFolderId, folder.id)) return
+                          event.preventDefault()
+                          event.dataTransfer.dropEffect = 'move'
+                          setDragOverFolderId(folder.id)
+                        }}
+                        onDragLeave={() => {
+                          if (dragOverFolderId === folder.id) setDragOverFolderId(null)
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault()
+                          const folderId = draggedFolderId ?? event.dataTransfer.getData('text/plain')
+                          if (folderId) moveFolderIntoFolder(folderId, folder.id)
+                        }}
                         onClick={() => setPreviewFolderId(folder.id)}
                         onDoubleClick={() => setSelectedFolderId(folder.id)}
                         onContextMenu={(event) => openFolderContextMenu(event, folder.id)}
@@ -748,7 +906,9 @@ export default function ProjectsPage() {
                           if (event.key === 'Enter') setPreviewFolderId(folder.id)
                         }}
                         className={`group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
-                          active
+                          isDropTarget
+                            ? 'border-cyan-400 bg-cyan-50 shadow-sm dark:border-cyan-500 dark:bg-cyan-950/30'
+                            : active
                             ? 'border-purple-400 bg-purple-50 shadow-sm dark:border-purple-700 dark:bg-purple-950/30'
                             : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700'
                         }`}
@@ -757,7 +917,7 @@ export default function ProjectsPage() {
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
                           <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
-                            {projectFolderShareLabel(folder)}
+                            {childCount > 0 ? `${childCount} mapper` : projectFolderShareLabel(folder)}
                           </span>
                         </span>
                         <ProjectMemberBubbles members={members} max={3} />
@@ -789,7 +949,7 @@ export default function ProjectsPage() {
                         </Button>
                       </div>
 
-                      {previewFolder.items.length === 0 ? (
+                      {previewFolder.items.length === 0 && previewFolderChildren.length === 0 ? (
                         <div className="flex min-h-80 flex-col items-center justify-center px-6 text-center">
                           <FileText size={38} className="mb-4 text-gray-300 dark:text-gray-700" />
                           <h2 className="font-medium text-gray-950 dark:text-gray-100">Mappen er tom</h2>
@@ -799,6 +959,20 @@ export default function ProjectsPage() {
                         </div>
                       ) : (
                         <div className="grid gap-3 p-5 lg:grid-cols-2">
+                          {previewFolderChildren.map((childFolder) => (
+                            <button
+                              key={childFolder.id}
+                              type="button"
+                              onClick={() => enterFolder(childFolder.id)}
+                              className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-left transition hover:border-purple-400 hover:bg-purple-50/70 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
+                            >
+                              <ProjectLogoThumbnail folder={childFolder} className="h-9 w-9" iconSize={18} />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">{childFolder.name}</span>
+                                <span className="block truncate text-xs text-gray-500 dark:text-gray-400">Undermappe</span>
+                              </span>
+                            </button>
+                          ))}
                           {previewFolder.items.map((item) => (
                             <ProjectItemPreviewCard key={item.id} item={item} />
                           ))}
@@ -817,13 +991,41 @@ export default function ProjectsPage() {
                 {visibleFolders.map((folder) => {
                   const members = projectFolderMembers(folder, currentProfile)
                   const active = folder.id === previewFolderId
+                  const childCount = folderChildCount(folders, folder.id)
+                  const isDropTarget = dragOverFolderId === folder.id
 
                   return (
                     <div
                       key={folder.id}
+                      draggable
+                      onDragStart={(event) => {
+                        setDraggedFolderId(folder.id)
+                        event.dataTransfer.effectAllowed = 'move'
+                        event.dataTransfer.setData('text/plain', folder.id)
+                      }}
+                      onDragEnd={() => {
+                        setDraggedFolderId(null)
+                        setDragOverFolderId(null)
+                      }}
+                      onDragOver={(event) => {
+                        if (!draggedFolderId || !canMoveFolderIntoFolder(draggedFolderId, folder.id)) return
+                        event.preventDefault()
+                        event.dataTransfer.dropEffect = 'move'
+                        setDragOverFolderId(folder.id)
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverFolderId === folder.id) setDragOverFolderId(null)
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault()
+                        const folderId = draggedFolderId ?? event.dataTransfer.getData('text/plain')
+                        if (folderId) moveFolderIntoFolder(folderId, folder.id)
+                      }}
                       onContextMenu={(event) => openFolderContextMenu(event, folder.id)}
                       className={`group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
-                        active
+                        isDropTarget
+                          ? 'border-cyan-400 bg-cyan-50 shadow-sm dark:border-cyan-500 dark:bg-cyan-950/30'
+                          : active
                           ? 'border-purple-500 bg-purple-50/70 shadow-sm dark:border-purple-700 dark:bg-purple-950/30'
                           : 'border-gray-200 bg-white hover:border-purple-400 hover:bg-purple-50/60 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-700 dark:hover:bg-purple-950/20'
                       }`}
@@ -842,11 +1044,20 @@ export default function ProjectsPage() {
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
                           <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
-                            {projectFolderShareLabel(folder)}
+                            {childCount > 0 ? `${childCount} mapper` : projectFolderShareLabel(folder)}
                           </span>
                         </span>
                       </button>
                       <ProjectMemberBubbles members={members} max={3} />
+                      <button
+                        type="button"
+                        onClick={() => enterFolder(folder.id)}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-purple-600 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 group-hover:opacity-100 dark:hover:bg-gray-800 dark:hover:text-purple-300"
+                        aria-label={`Vis mapper i ${folder.name}`}
+                        title="Vis undermapper"
+                      >
+                        <FolderOpen size={16} />
+                      </button>
                       <button
                         type="button"
                         onClick={(event) => openFolderContextMenu(event, folder.id)}
@@ -885,6 +1096,7 @@ export default function ProjectsPage() {
       <DeleteFolderModal
         open={Boolean(deleteFolderTarget)}
         folder={deleteFolderTarget}
+        folders={folders}
         onClose={() => setDeleteFolderId(null)}
         onConfirm={(folderId) => confirmDeleteFolder(folderId)}
       />
@@ -1792,15 +2004,22 @@ function FolderContextMenu({
 function DeleteFolderModal({
   open,
   folder,
+  folders,
   onClose,
   onConfirm,
 }: {
   open: boolean
   folder: ProjectFolder | null
+  folders: ProjectFolder[]
   onClose: () => void
   onConfirm: (folderId: string) => void
 }) {
   if (!folder) return null
+
+  const descendantFolders = [...folderDescendantIds(folders, folder.id)]
+    .map((folderId) => folders.find((candidate) => candidate.id === folderId))
+    .filter((candidate): candidate is ProjectFolder => Boolean(candidate))
+  const totalItems = folder.items.length + descendantFolders.length
 
   return (
     <Modal open={open} onClose={onClose} title="Slett mappe" className="max-w-xl">
@@ -1819,16 +2038,28 @@ function DeleteFolderModal({
           <div className="mb-2 flex items-center justify-between gap-3">
             <h3 className="text-sm font-medium text-gray-950 dark:text-gray-100">Innhold i mappen</h3>
             <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-              {folder.items.length} {folder.items.length === 1 ? 'element' : 'elementer'}
+              {totalItems} {totalItems === 1 ? 'element' : 'elementer'}
             </span>
           </div>
 
-          {folder.items.length === 0 ? (
+          {totalItems === 0 ? (
             <div className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">
               Mappen er tom.
             </div>
           ) : (
             <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
+              {descendantFolders.map((childFolder) => (
+                <div
+                  key={childFolder.id}
+                  className="flex items-center gap-3 border-b border-gray-100 px-3 py-2.5 dark:border-gray-800"
+                >
+                  <ProjectLogoThumbnail folder={childFolder} className="h-8 w-8" iconSize={16} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-gray-950 dark:text-gray-100">{childFolder.name}</p>
+                    <p className="truncate text-xs text-gray-500 dark:text-gray-400">Undermappe</p>
+                  </div>
+                </div>
+              ))}
               {folder.items.map((item) => {
                 const meta = itemTypeMeta[item.type]
                 const Icon = meta.icon
