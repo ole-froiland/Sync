@@ -659,6 +659,8 @@ export default function ProjectsPage() {
   }
 
   if (selectedFolder) {
+    const selectedFolderChildren = folders.filter((folder) => folder.parentId === selectedFolder.id)
+
     return (
       <>
         <TopBar
@@ -704,6 +706,7 @@ export default function ProjectsPage() {
           <main className="min-h-[64vh] rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
             <ProjectDetailContent
               folder={selectedFolder}
+              childFolders={selectedFolderChildren}
               activeItemFolder={activeItemFolder}
               selectedItemIds={selectedItemIds}
               cutItemIds={clipboard?.mode === 'cut' ? clipboard.itemIds : []}
@@ -712,6 +715,12 @@ export default function ProjectsPage() {
               onOpenChat={() => openProjectChat(selectedFolder)}
               onShare={() => setShareOpen(true)}
               onUpdate={updateFolder}
+              onOpenProjectFolder={(folderId) => {
+                setSelectedFolderId(folderId)
+                setActiveItemFolderId(null)
+                setSelectedItemIds([])
+                setClipboard(null)
+              }}
               onToggleTask={toggleTask}
               onRemoveItem={removeItem}
               onOpenItemFolder={(itemId) => {
@@ -1458,6 +1467,7 @@ function ProjectMemberBubbles({
 
 function ProjectDetailContent({
   folder,
+  childFolders,
   activeItemFolder,
   selectedItemIds,
   cutItemIds,
@@ -1466,6 +1476,7 @@ function ProjectDetailContent({
   onOpenChat,
   onShare,
   onUpdate,
+  onOpenProjectFolder,
   onToggleTask,
   onRemoveItem,
   onOpenItemFolder,
@@ -1476,6 +1487,7 @@ function ProjectDetailContent({
   onPasteItems,
 }: {
   folder: ProjectFolder
+  childFolders: ProjectFolder[]
   activeItemFolder: ProjectItem | null
   selectedItemIds: string[]
   cutItemIds: string[]
@@ -1484,6 +1496,7 @@ function ProjectDetailContent({
   onOpenChat: () => void
   onShare: () => void
   onUpdate: (folderId: string, updates: Partial<Pick<ProjectFolder, 'name' | 'description' | 'logo' | 'color'>>) => void
+  onOpenProjectFolder: (folderId: string) => void
   onToggleTask: (itemId: string) => void
   onRemoveItem: (itemId: string) => void
   onOpenItemFolder: (itemId: string | null) => void
@@ -1675,7 +1688,7 @@ function ProjectDetailContent({
           </div>
         )}
 
-        {visibleItems.length === 0 ? (
+        {visibleItems.length === 0 && (activeItemFolder || childFolders.length === 0) ? (
           <div className="flex min-h-80 flex-col items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/70 px-6 text-center dark:border-gray-800 dark:bg-gray-950/40">
             {activeItemFolder ? (
               <FolderOpen size={38} className="mb-4 text-gray-300 dark:text-gray-700" />
@@ -1699,6 +1712,28 @@ function ProjectDetailContent({
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {!activeItemFolder &&
+              childFolders.map((childFolder) => (
+                <button
+                  key={childFolder.id}
+                  type="button"
+                  onClick={() => onOpenProjectFolder(childFolder.id)}
+                  className="group flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-left transition hover:border-purple-400 hover:bg-purple-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <ProjectLogoThumbnail folder={childFolder} className="h-10 w-10" iconSize={19} />
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-medium text-gray-950 dark:text-gray-100">{childFolder.name}</h3>
+                      <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                        {folderChildCount(childFolders, childFolder.id) > 0
+                          ? `${folderChildCount(childFolders, childFolder.id)} mapper`
+                          : 'Prosjektmappe'}
+                      </p>
+                    </div>
+                  </div>
+                  <FolderOpen size={16} className="shrink-0 text-gray-400 transition group-hover:text-purple-600 dark:group-hover:text-purple-300" />
+                </button>
+              ))}
             {visibleItems.map((item) => (
               <ProjectItemCard
                 key={item.id}
