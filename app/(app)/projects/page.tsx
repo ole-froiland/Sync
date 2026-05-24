@@ -480,15 +480,25 @@ export default function ProjectsPage() {
   }
 
   function enterFolder(folderId: string) {
+    setSelectedFolderId(null)
     setActiveParentFolderId(folderId)
     setPreviewFolderId(null)
     setSearch('')
   }
 
   function showFolderLevel(folderId: string | null) {
+    setSelectedFolderId(null)
     setActiveParentFolderId(folderId)
     setPreviewFolderId(null)
     setSearch('')
+  }
+
+  function openFolderFromOverview(folder: ProjectFolder) {
+    if (folderChildCount(folders, folder.id) > 0) {
+      enterFolder(folder.id)
+      return
+    }
+    setSelectedFolderId(folder.id)
   }
 
   function openFolderContextMenu(event: React.MouseEvent<HTMLElement>, folderId: string) {
@@ -909,10 +919,10 @@ export default function ProjectsPage() {
                           if (folderId) moveFolderIntoFolder(folderId, folder.id)
                         }}
                         onClick={() => setPreviewFolderId(folder.id)}
-                        onDoubleClick={() => setSelectedFolderId(folder.id)}
+                        onDoubleClick={() => openFolderFromOverview(folder)}
                         onContextMenu={(event) => openFolderContextMenu(event, folder.id)}
                         onKeyDown={(event) => {
-                          if (event.key === 'Enter') setPreviewFolderId(folder.id)
+                          if (event.key === 'Enter') openFolderFromOverview(folder)
                         }}
                         className={`group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
                           isDropTarget
@@ -952,7 +962,7 @@ export default function ProjectsPage() {
                             </div>
                           </div>
                         </div>
-                        <Button size="sm" onClick={() => setSelectedFolderId(previewFolder.id)}>
+                        <Button size="sm" onClick={() => openFolderFromOverview(previewFolder)}>
                           <FolderOpen size={16} />
                           Åpne mappe
                         </Button>
@@ -1042,9 +1052,9 @@ export default function ProjectsPage() {
                       <button
                         type="button"
                         onClick={() => setPreviewFolderId(folder.id)}
-                        onDoubleClick={() => setSelectedFolderId(folder.id)}
+                        onDoubleClick={() => openFolderFromOverview(folder)}
                         onKeyDown={(event) => {
-                          if (event.key === 'Enter') setSelectedFolderId(folder.id)
+                          if (event.key === 'Enter') openFolderFromOverview(folder)
                         }}
                         className="flex min-w-0 flex-1 items-center gap-3 text-left"
                         aria-pressed={active}
