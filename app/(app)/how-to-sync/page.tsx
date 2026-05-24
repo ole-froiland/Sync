@@ -1,154 +1,98 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { Lightbulb, FolderKanban, Code2, Users, Sparkles } from 'lucide-react'
 import TopBar from '@/components/layout/TopBar'
 import SyncWithOthersModal from '@/components/how-to-sync/SyncWithOthersModal'
 import Button from '@/components/ui/Button'
 import { useUser } from '@/context/UserContext'
 
-const SLIDES = [
+const STEPS = [
   {
+    icon: Lightbulb,
     title: 'Want to build something?',
-    text: 'Sync gives you one place for your projects, code, and people.',
-    cta: 'Start',
+    description: 'Sync gives you one place for your projects, code, and people.',
   },
   {
+    icon: FolderKanban,
     title: 'Create a project',
-    text: 'Give it a name, connect a repo, and keep everything organized.',
-    cta: 'Next',
+    description: 'Give it a name, connect a repo, and keep everything organized.',
   },
   {
+    icon: Code2,
     title: 'Open it where you build',
-    text: 'Use GitHub, VS Code, Cursor, Codex, or your favorite AI coding tool.',
-    cta: 'Next',
+    description: 'Use GitHub, VS Code, Cursor, Codex, or your favorite AI coding tool.',
   },
   {
+    icon: Users,
     title: 'Sync with your team',
-    text: 'Invite friends, share projects, and work together in one place.',
-    cta: 'Start syncing',
+    description: 'Invite friends, share projects, and work together in one place.',
   },
-] as const
+]
 
 export default function HowToSyncPage() {
   const profile = useUser()
-  const [currentSlide, setCurrentSlide] = useState(0)
   const [modalOpen, setModalOpen] = useState(false)
-
-  const isFirstSlide = currentSlide === 0
-  const isLastSlide = currentSlide === SLIDES.length - 1
-
-  function goToSlide(index: number) {
-    setCurrentSlide(Math.max(0, Math.min(index, SLIDES.length - 1)))
-  }
-
-  function handlePrimaryAction() {
-    if (isLastSlide) {
-      setModalOpen(true)
-      return
-    }
-
-    goToSlide(currentSlide + 1)
-  }
 
   return (
     <>
-      <TopBar
-        title="How to Sync"
-        className="border-white/10 bg-[#050816] text-white"
-        titleClassName="text-white"
-      />
-
-      <div className="relative flex flex-1 overflow-hidden bg-[#050816] text-white">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(217,70,239,0.16),_transparent_30%),radial-gradient(circle_at_80%_20%,rgba(168,85,247,0.14),_transparent_24%),linear-gradient(180deg,#050816_0%,#090d1f_100%)]" />
-        <div className="pointer-events-none absolute -left-20 top-24 h-72 w-72 rounded-full bg-fuchsia-500/12 blur-3xl" />
-        <div className="pointer-events-none absolute bottom-0 right-0 h-80 w-80 rounded-full bg-purple-500/12 blur-3xl" />
-
-        <div className="relative flex w-full flex-1 flex-col overflow-hidden px-6 py-6 md:px-10 md:py-8">
-          <div className="flex items-center justify-between">
-            <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-medium uppercase tracking-[0.28em] text-fuchsia-200/90">
-              Sync onboarding
-            </span>
-            <div className="text-sm text-white/45">
-              {currentSlide + 1}/{SLIDES.length}
+      <TopBar title="How to Sync" />
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-2xl px-6 py-12">
+          <div className="mb-12">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3.5 py-1 text-xs font-medium text-purple-600 dark:text-purple-400">
+              <Sparkles size={12} />
+              Getting started
             </div>
+            <h1 className="mt-4 text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+              How to Sync
+            </h1>
+            <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+              Get your projects and team in sync in four steps.
+            </p>
           </div>
 
-          <div className="mx-auto flex w-full max-w-6xl flex-1 items-center overflow-hidden">
-            <div
-              className="flex w-full h-full transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-              style={{ transform: `translateX(-${currentSlide * 100}%)` }}
-            >
-              {SLIDES.map((slide, index) => (
-                <section
-                  key={slide.title}
-                  aria-hidden={index !== currentSlide}
-                  className="flex min-w-full items-center justify-center py-6"
-                >
-                  <div className="w-full max-w-4xl text-center">
-                    <div className="mx-auto max-w-3xl rounded-[2rem] border border-white/10 bg-white/[0.04] px-8 py-12 shadow-[0_24px_80px_rgba(0,0,0,0.42)] backdrop-blur md:px-14 md:py-16">
-                      <p className="text-xs font-medium uppercase tracking-[0.3em] text-white/35">
-                        Step {index + 1}
-                      </p>
-                      <h1 className="mt-6 text-[clamp(3rem,7vw,6rem)] font-semibold leading-[0.92] tracking-[-0.05em] text-white">
-                        {slide.title}
-                      </h1>
-                      <p className="mx-auto mt-6 max-w-2xl text-[clamp(1.05rem,2.1vw,1.45rem)] leading-[1.35] text-white/68">
-                        {slide.text}
-                      </p>
-
-                      <div className="mt-10">
-                        <Button
-                          size="lg"
-                          onClick={handlePrimaryAction}
-                          className="min-h-14 rounded-full px-8 text-base font-semibold shadow-[0_0_36px_rgba(217,70,239,0.28)]"
-                        >
-                          {slide.cta}
-                          {!isLastSlide ? <ArrowRight size={18} /> : null}
-                        </Button>
-                      </div>
-                    </div>
+          <div className="space-y-3">
+            {STEPS.map((step, i) => (
+              <div
+                key={step.title}
+                className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-200 dark:hover:border-gray-700"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-purple-50 dark:bg-purple-950/60 text-sm font-semibold text-purple-600 dark:text-purple-400">
+                    {i + 1}
                   </div>
-                </section>
-              ))}
-            </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2.5">
+                      <step.icon size={16} className="shrink-0 text-purple-500 dark:text-purple-400" />
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        {step.title}
+                      </h3>
+                    </div>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      {step.description}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
 
-          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4">
-            <button
-              type="button"
-              onClick={() => goToSlide(currentSlide - 1)}
-              disabled={isFirstSlide}
-              className="inline-flex min-w-24 items-center gap-2 text-sm font-medium text-white/72 transition hover:text-white disabled:pointer-events-none disabled:text-white/20"
-            >
-              <ArrowLeft size={16} />
-              Back
-            </button>
-
-            <div className="flex items-center gap-3">
-              {SLIDES.map((slide, index) => (
-                <button
-                  key={slide.title}
-                  type="button"
-                  onClick={() => goToSlide(index)}
-                  aria-label={`Go to step ${index + 1}`}
-                  className={`h-2.5 rounded-full transition-all duration-300 ${
-                    index === currentSlide
-                      ? 'w-10 bg-gradient-to-r from-fuchsia-400 to-purple-400'
-                      : 'w-2.5 bg-white/20 hover:bg-white/35'
-                  }`}
-                />
-              ))}
+          <div className="mt-8 rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  Ready to sync?
+                </h3>
+                <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+                  Invite your team and start building together.
+                </p>
+              </div>
+              <Button onClick={() => setModalOpen(true)} className="shrink-0">
+                <Users size={15} />
+                Invite people
+              </Button>
             </div>
-
-            <button
-              type="button"
-              onClick={handlePrimaryAction}
-              className="inline-flex min-w-24 items-center justify-end gap-2 text-sm font-medium text-white/72 transition hover:text-white"
-            >
-              {isLastSlide ? 'Start syncing' : 'Next'}
-              {!isLastSlide ? <ArrowRight size={16} /> : null}
-            </button>
           </div>
         </div>
       </div>
