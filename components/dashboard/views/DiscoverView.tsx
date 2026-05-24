@@ -51,7 +51,6 @@ const SOURCES = [
   'OpenAI Dev',
   'Anthropic',
   'Google AI',
-  'Google Research',
   'DeepMind',
   'Meta AI',
   'Microsoft AI',
