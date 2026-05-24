@@ -5,10 +5,12 @@ export const revalidate = 900 // 15 minutes
 // ─── RSS / Atom sources ───────────────────────────────────────────────────────
 
 type SourceConfig = { name: string; url: string; max: number }
+const FRESH_NEWS_WINDOW_DAYS = 14
+const FUTURE_CLOCK_SKEW_SECONDS = 60 * 60
 
 function googleNewsUrl(query: string): string {
   const params = new URLSearchParams({
-    q: query,
+    q: `${query} when:${FRESH_NEWS_WINDOW_DAYS}d`,
     hl: 'en-US',
     gl: 'US',
     ceid: 'US:en',
@@ -50,6 +52,9 @@ const AI_NEWS_SIGNAL_PATTERNS = [
 
 const LOW_VALUE_AI_PATTERNS = [
   /\b(?:hot wheels|ferrari|superfans?|wearable|coding agents?|claude code|farm of the future)\b/i,
+  /\b(?:stock price,\s*news,\s*quote\s*&\s*history|quote\s*&\s*history|technical blog|success stories)\b/i,
+  /\b(?:portfolio trade construction|customer stories|case stud(?:y|ies))\b/i,
+  /\b(?:better ai stock|no-brainer buy|market is pricing|stock pick|buy before the end)\b/i,
 ]
 
 // ─── XML helpers ──────────────────────────────────────────────────────────────
@@ -147,6 +152,16 @@ function isAiTechItem(item: FeedItem): boolean {
   return !lowValue && mentionsRelevantCompanyOrModel && hasNewsSignal
 }
 
+function isFreshItem(item: FeedItem): boolean {
+  if (item.publishedAt <= 0) return false
+
+  const now = Math.floor(Date.now() / 1000)
+  const oldestAllowed = now - FRESH_NEWS_WINDOW_DAYS * 24 * 60 * 60
+  const newestAllowed = now + FUTURE_CLOCK_SKEW_SECONDS
+
+  return item.publishedAt >= oldestAllowed && item.publishedAt <= newestAllowed
+}
+
 function normalizeUrl(url: string): string {
   return url.split('?')[0].replace(/\/+$/, '').toLowerCase()
 }
@@ -228,7 +243,7 @@ export async function GET() {
   const results = await Promise.allSettled(RSS_SOURCES.map(fetchRssSource))
 
   const all = results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
-  const deduped = deduplicate(all.filter(isAiTechItem))
+  const deduped = deduplicate(all.filter((item) => isAiTechItem(item) && isFreshItem(item)))
 
   // Newest first; zero-timestamp items (unparseable date) go last
   deduped.sort((a, b) => {
