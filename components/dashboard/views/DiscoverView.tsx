@@ -55,8 +55,6 @@ const SOURCES = [
   'Meta AI',
   'Microsoft AI',
   'DeepSeek',
-  'MCP',
-  'Claude Code',
   'TechCrunch AI',
   'VentureBeat AI',
   'The Decoder',

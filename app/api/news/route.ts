@@ -14,23 +14,18 @@ const RSS_SOURCES: SourceConfig[] = [
   { name: 'DeepMind', url: 'https://deepmind.google/discover/blog/rss.xml', max: 3 },
   { name: 'Meta AI', url: 'https://news.google.com/rss/search?q=site%3Aai.meta.com%2Fblog%20AI&hl=en-US&gl=US&ceid=US%3Aen', max: 3 },
   { name: 'Microsoft AI', url: 'https://blogs.microsoft.com/ai/feed/', max: 3 },
-  { name: 'DeepSeek', url: 'https://news.google.com/rss/search?q=DeepSeek%20AI%20OR%20DeepSeek%20API%20OR%20DeepSeek%20model&hl=en-US&gl=US&ceid=US%3Aen', max: 3 },
-  { name: 'MCP', url: 'https://news.google.com/rss/search?q=%22Model%20Context%20Protocol%22%20OR%20%22MCP%20server%22%20AI%20coding&hl=en-US&gl=US&ceid=US%3Aen', max: 3 },
-  { name: 'Claude Code', url: 'https://news.google.com/rss/search?q=%22Claude%20Code%22%20OR%20%22Claude%20Code%20SDK%22%20OR%20%22Claude%22%20%22coding%20agent%22&hl=en-US&gl=US&ceid=US%3Aen', max: 3 },
+  { name: 'DeepSeek', url: 'https://news.google.com/rss/search?q=%22DeepSeek%22%20%28AI%20OR%20model%20OR%20LLM%29&hl=en-US&gl=US&ceid=US%3Aen', max: 2 },
   { name: 'TechCrunch AI', url: 'https://techcrunch.com/category/artificial-intelligence/feed/', max: 3 },
   { name: 'VentureBeat AI', url: 'https://venturebeat.com/category/ai/feed/', max: 3 },
   { name: 'The Decoder', url: 'https://the-decoder.com/feed/', max: 3 },
 ]
 
 const AI_TOPIC_PATTERNS = [
-  /\b(?:ai|a\.i\.)\b/i,
-  /\bartificial intelligence\b/i,
-  /\b(?:agentic|ai agent|coding agent|computer use|tool use)\b/i,
-  /\b(?:openai|anthropic|claude|chatgpt|deepseek|deepmind|gemini|llama|meta ai|microsoft ai|copilot)\b/i,
+  /\b(?:ai|a\.i\.|artificial intelligence|generative ai|genai)\b/i,
+  /\b(?:openai|anthropic|claude|chatgpt|deepseek|deepmind|gemini|llama|meta ai|microsoft ai)\b/i,
   /\b(?:gpt-?\d*|llm|large language model|foundation model|frontier model|reasoning model|multimodal model)\b/i,
-  /\b(?:model context protocol|mcp server|mcp client|mcp)\b/i,
-  /\b(?:inference|fine-tuning|fine tuning|embedding|evals?|prompt engineering|tokenizer|tokens)\b/i,
-  /\b(?:openai api|anthropic api|claude api|gemini api|deepseek api|responses api|assistants api)\b/i,
+  /\b(?:ai agent|agentic ai|coding agent|computer use|model context protocol|mcp server)\b/i,
+  /\b(?:inference|fine-tuning|fine tuning|prompt engineering|ai benchmark|ai model)\b/i,
 ]
 
 // ─── XML helpers ──────────────────────────────────────────────────────────────
@@ -108,15 +103,9 @@ function parseDate(str: string | null): number {
 }
 
 function isAiTechItem(item: FeedItem): boolean {
-  const haystack = [
-    item.title,
-    item.description ?? '',
-    item.source,
-    item.author ?? '',
-    item.url,
-  ].join(' ')
+  const titleAndPreview = [item.title, item.description ?? ''].join(' ')
 
-  return AI_TOPIC_PATTERNS.some((pattern) => pattern.test(haystack))
+  return AI_TOPIC_PATTERNS.some((pattern) => pattern.test(titleAndPreview))
 }
 
 function normalizeUrl(url: string): string {
