@@ -956,6 +956,10 @@ function projectItemOpenTarget(item: ProjectItem): ProjectItemOpenTarget | null 
     return { href: item.url, external: true, label: 'Åpne lenke' }
   }
 
+  if (item.type === 'document' && item.url) {
+    return { href: item.url, external: true, label: 'Åpne dokument' }
+  }
+
   return null
 }
 
@@ -964,11 +968,37 @@ function openProjectItem(item: ProjectItem) {
   if (!target) return
 
   if (target.external) {
+    if (target.href.startsWith('data:')) {
+      const blobUrl = dataUrlToBlobUrl(target.href)
+      if (blobUrl) {
+        window.open(blobUrl, '_blank', 'noopener,noreferrer')
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+        return
+      }
+    }
     window.open(target.href, '_blank', 'noopener,noreferrer')
     return
   }
 
   window.location.assign(target.href)
+}
+
+function dataUrlToBlobUrl(dataUrl: string): string | null {
+  const match = dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/)
+  if (!match) return null
+  const [, mime = 'application/octet-stream', base64Flag, payload] = match
+  try {
+    if (base64Flag) {
+      const binary = atob(payload)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+      return URL.createObjectURL(new Blob([bytes], { type: mime }))
+    }
+    const decoded = decodeURIComponent(payload)
+    return URL.createObjectURL(new Blob([decoded], { type: mime }))
+  } catch {
+    return null
+  }
 }
 
 function ProjectItemCard({
@@ -2103,14 +2133,36 @@ function CreateItemModal({
     const itemTitle = title.trim() || fallbackTitle
     if (!itemTitle) return
 
+    if (usesFile && file) {
+      if (file.size > 5 * 1024 * 1024) {
+        window.alert('Filen er for stor. Maks 5 MB for nå.')
+        return
+      }
+      const reader = new FileReader()
+      reader.onload = () => {
+        if (typeof reader.result !== 'string') return
+        onCreate({
+          type: 'document',
+          title: itemTitle,
+          body: '',
+          url: reader.result,
+          fileName: file.name,
+          fileSize: file.size,
+          status: 'Uploaded',
+        })
+        reset()
+        onClose()
+      }
+      reader.readAsDataURL(file)
+      return
+    }
+
     onCreate({
       type: mode === 'app' ? appType : mode,
       title: itemTitle,
       body: '',
       url: mode === 'url' ? url.trim() : mode === 'app' ? selectedApp.url : undefined,
-      fileName: usesFile ? file?.name : undefined,
-      fileSize: usesFile ? file?.size : undefined,
-      status: mode === 'app' ? 'Created' : usesFile ? 'Uploaded' : 'Connected',
+      status: mode === 'app' ? 'Created' : 'Connected',
     })
     reset()
     onClose()
