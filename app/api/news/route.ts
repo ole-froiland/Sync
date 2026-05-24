@@ -2,69 +2,60 @@ import type { FeedItem } from '@/types'
 
 export const revalidate = 900 // 15 minutes
 
-// ─── Hacker News (Firebase API) ───────────────────────────────────────────────
-
-const HN_TOP = 'https://hacker-news.firebaseio.com/v0/topstories.json'
-const HN_ITEM = (id: number) => `https://hacker-news.firebaseio.com/v0/item/${id}.json`
-
-type HNStory = {
-  id: number
-  title: string
-  url?: string
-  by: string
-  time: number
-  deleted?: boolean
-  dead?: boolean
-}
-
-async function fetchHackerNews(): Promise<FeedItem[]> {
-  const idsRes = await fetch(HN_TOP, { next: { revalidate: 900 } })
-  if (!idsRes.ok) return []
-
-  const ids: number[] = await idsRes.json()
-
-  const stories = await Promise.all(
-    ids.slice(0, 20).map((id) =>
-      fetch(HN_ITEM(id), { next: { revalidate: 900 } })
-        .then((r) => r.json() as Promise<HNStory>)
-        .catch(() => null)
-    )
-  )
-
-  return stories
-    .filter((s): s is HNStory => Boolean(s?.title && !s.deleted && !s.dead && s.url))
-    .slice(0, 5)
-    .map((s) => ({
-      id: String(s.id),
-      title: s.title,
-      description: null,
-      source: 'Hacker News',
-      author: s.by,
-      publishedAt: s.time,
-      url: s.url!,
-      imageUrl: null,
-    }))
-}
-
 // ─── RSS / Atom sources ───────────────────────────────────────────────────────
 
 type SourceConfig = { name: string; url: string; max: number }
 
 const RSS_SOURCES: SourceConfig[] = [
-  { name: 'TechCrunch', url: 'https://techcrunch.com/feed/', max: 3 },
-  { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml', max: 3 },
-  { name: 'Wired', url: 'https://www.wired.com/feed/rss', max: 3 },
-  { name: 'MIT Tech Review', url: 'https://www.technologyreview.com/feed/', max: 3 },
-  { name: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/index', max: 3 },
-  { name: 'VentureBeat', url: 'https://venturebeat.com/category/ai/feed/', max: 3 },
+  { name: 'OpenAI', url: 'https://openai.com/news/rss.xml', max: 4 },
+  { name: 'OpenAI Dev', url: 'https://developers.openai.com/rss.xml', max: 4 },
+  { name: 'Anthropic', url: 'https://www.anthropic.com/news/rss.xml', max: 4 },
+  { name: 'Google AI', url: 'https://blog.google/technology/ai/rss/', max: 3 },
+  { name: 'Google Research', url: 'https://research.google/blog/rss/', max: 3 },
+  { name: 'DeepMind', url: 'https://deepmind.google/discover/blog/rss.xml', max: 3 },
+  { name: 'Meta AI', url: 'https://news.google.com/rss/search?q=site%3Aai.meta.com%2Fblog%20AI&hl=en-US&gl=US&ceid=US%3Aen', max: 3 },
+  { name: 'Microsoft AI', url: 'https://blogs.microsoft.com/ai/feed/', max: 3 },
+  { name: 'DeepSeek', url: 'https://news.google.com/rss/search?q=DeepSeek%20AI%20OR%20DeepSeek%20API%20OR%20DeepSeek%20model&hl=en-US&gl=US&ceid=US%3Aen', max: 3 },
+  { name: 'MCP', url: 'https://news.google.com/rss/search?q=%22Model%20Context%20Protocol%22%20OR%20%22MCP%22%20Anthropic%20AI&hl=en-US&gl=US&ceid=US%3Aen', max: 3 },
+  { name: 'Claude Code', url: 'https://news.google.com/rss/search?q=%22Claude%20Code%22%20OR%20%22Claude%22%20%22coding%22%20Anthropic&hl=en-US&gl=US&ceid=US%3Aen', max: 3 },
+  { name: 'TechCrunch AI', url: 'https://techcrunch.com/category/artificial-intelligence/feed/', max: 3 },
+  { name: 'VentureBeat AI', url: 'https://venturebeat.com/category/ai/feed/', max: 3 },
   { name: 'The Decoder', url: 'https://the-decoder.com/feed/', max: 3 },
-  { name: 'OpenAI', url: 'https://openai.com/news/rss.xml', max: 2 },
-  { name: 'Anthropic', url: 'https://www.anthropic.com/news/rss.xml', max: 2 },
-  { name: 'DeepMind', url: 'https://deepmind.google/blog/rss/', max: 2 },
-  { name: 'Microsoft AI', url: 'https://blogs.microsoft.com/ai/feed/', max: 2 },
-  { name: 'GitHub', url: 'https://github.blog/feed/', max: 2 },
-  { name: 'Vercel', url: 'https://vercel.com/blog/rss.xml', max: 2 },
-  { name: 'Supabase', url: 'https://supabase.com/rss.xml', max: 2 },
+]
+
+const AI_TOPIC_TERMS = [
+  'ai',
+  'artificial intelligence',
+  'agent',
+  'agents',
+  'api',
+  'assistant',
+  'anthropic',
+  'claude',
+  'claude code',
+  'chatgpt',
+  'deep research',
+  'deepseek',
+  'embedding',
+  'eval',
+  'frontier model',
+  'gemini',
+  'genai',
+  'gpt',
+  'inference',
+  'llama',
+  'llm',
+  'machine learning',
+  'mcp',
+  'meta ai',
+  'microsoft ai',
+  'model context protocol',
+  'multimodal',
+  'openai',
+  'prompt',
+  'reasoning model',
+  'tokens',
+  'tools',
 ]
 
 // ─── XML helpers ──────────────────────────────────────────────────────────────
@@ -139,6 +130,18 @@ function parseDate(str: string | null): number {
   if (!str) return 0
   const d = new Date(str.trim())
   return isNaN(d.getTime()) ? 0 : Math.floor(d.getTime() / 1000)
+}
+
+function isAiTechItem(item: FeedItem): boolean {
+  const haystack = [
+    item.title,
+    item.description ?? '',
+    item.source,
+    item.author ?? '',
+    item.url,
+  ].join(' ').toLowerCase()
+
+  return AI_TOPIC_TERMS.some((term) => haystack.includes(term))
 }
 
 function normalizeUrl(url: string): string {
@@ -219,13 +222,10 @@ function deduplicate(items: FeedItem[]): FeedItem[] {
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function GET() {
-  const results = await Promise.allSettled([
-    fetchHackerNews(),
-    ...RSS_SOURCES.map(fetchRssSource),
-  ])
+  const results = await Promise.allSettled(RSS_SOURCES.map(fetchRssSource))
 
   const all = results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
-  const deduped = deduplicate(all)
+  const deduped = deduplicate(all.filter(isAiTechItem))
 
   // Newest first; zero-timestamp items (unparseable date) go last
   deduped.sort((a, b) => {

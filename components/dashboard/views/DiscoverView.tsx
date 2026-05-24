@@ -47,21 +47,20 @@ type PodcastState = {
 
 const SOURCES = [
   'All',
-  'Hacker News',
-  'TechCrunch',
-  'The Verge',
-  'Wired',
-  'Ars Technica',
-  'MIT Tech Review',
-  'VentureBeat',
-  'The Decoder',
   'OpenAI',
+  'OpenAI Dev',
   'Anthropic',
+  'Google AI',
+  'Google Research',
   'DeepMind',
+  'Meta AI',
   'Microsoft AI',
-  'GitHub',
-  'Vercel',
-  'Supabase',
+  'DeepSeek',
+  'MCP',
+  'Claude Code',
+  'TechCrunch AI',
+  'VentureBeat AI',
+  'The Decoder',
 ]
 
 const SUMMARY_OPTIONS: { value: SummaryMode; label: string }[] = [
@@ -691,7 +690,7 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
         <div>
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Discover</h1>
           <p className="mt-0.5 text-sm text-gray-400 dark:text-gray-500">
-            Your AI-powered tech briefing
+            AI news, model launches, APIs, and agent tooling
           </p>
         </div>
         <div className="flex items-center gap-2 pt-0.5">
