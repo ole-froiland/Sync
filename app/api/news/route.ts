@@ -107,6 +107,16 @@ function extractAuthor(block: string): string | null {
   return null
 }
 
+function extractSourceUrl(block: string): string | null {
+  const match = /<source[^>]+url=["']([^"']+)["']/i.exec(block)
+  return match?.[1]?.startsWith('http') ? match[1] : null
+}
+
+function publisherLogoUrl(sourceUrl: string | null): string | null {
+  if (!sourceUrl) return null
+  return `https://www.google.com/s2/favicons?domain_url=${encodeURIComponent(sourceUrl)}&sz=256`
+}
+
 function stripHtml(html: string): string {
   return html
     .replace(/&amp;/g, '&')
@@ -179,7 +189,7 @@ function parseRssFeed(xml: string, source: string, max: number): FeedItem[] {
       author: extractAuthor(block),
       publishedAt: parseDate(pubRaw),
       url,
-      imageUrl: extractImage(block),
+      imageUrl: extractImage(block) ?? publisherLogoUrl(extractSourceUrl(block)),
     })
   }
 

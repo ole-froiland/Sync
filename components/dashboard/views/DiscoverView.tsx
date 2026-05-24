@@ -124,6 +124,7 @@ function Thumbnail({ imageUrl, className, iconSize = 32 }: ThumbnailProps) {
   // Track which URL failed so the check is a simple comparison, not a useEffect
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const failed = typeof imageUrl === 'string' && imageUrl === failedUrl
+  const isPublisherLogo = typeof imageUrl === 'string' && imageUrl.includes('google.com/s2/favicons')
 
   if (imageUrl === undefined) {
     return <Skeleton className={cn('rounded-none', className)} />
@@ -142,7 +143,10 @@ function Thumbnail({ imageUrl, className, iconSize = 32 }: ThumbnailProps) {
     <img
       src={imageUrl}
       alt=""
-      className={cn('object-cover', className)}
+      className={cn(
+        isPublisherLogo ? 'bg-gray-50 object-contain p-8 dark:bg-gray-900 sm:p-10' : 'object-cover',
+        className
+      )}
       onError={() => setFailedUrl(imageUrl)}
     />
   )

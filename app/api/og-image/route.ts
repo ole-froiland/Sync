@@ -38,10 +38,14 @@ export async function GET(request: NextRequest) {
       await reader.cancel()
     }
 
-    // Match og:image in either attribute order, with single or double quotes
+    // Match common social image metadata in either attribute order.
     const match =
       /property=["']og:image["'][^>]+content=["']([^"'>\s]+)["']/i.exec(html) ??
-      /content=["']([^"'>\s]+)["'][^>]+property=["']og:image["']/i.exec(html)
+      /content=["']([^"'>\s]+)["'][^>]+property=["']og:image["']/i.exec(html) ??
+      /name=["']twitter:image(?::src)?["'][^>]+content=["']([^"'>\s]+)["']/i.exec(html) ??
+      /content=["']([^"'>\s]+)["'][^>]+name=["']twitter:image(?::src)?["']/i.exec(html) ??
+      /rel=["']image_src["'][^>]+href=["']([^"'>\s]+)["']/i.exec(html) ??
+      /href=["']([^"'>\s]+)["'][^>]+rel=["']image_src["']/i.exec(html)
 
     let imageUrl = match?.[1] ?? null
     if (!imageUrl) return Response.json({ imageUrl: null })
