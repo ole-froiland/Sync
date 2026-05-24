@@ -1156,7 +1156,7 @@ function ProjectLogoThumbnail({
 
   if (logo.type === 'image') {
     return (
-      <span className={`shrink-0 overflow-hidden rounded-lg bg-gray-100 shadow-sm dark:bg-gray-800 ${className}`}>
+      <span className={`inline-flex shrink-0 overflow-hidden rounded-lg bg-gray-100 shadow-sm dark:bg-gray-800 ${className}`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={logo.value} alt="" className="h-full w-full object-cover" />
       </span>
