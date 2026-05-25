@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { LanguageProvider } from "@/context/LanguageContext";
 
 const geist = Geist({ subsets: ["latin"] });
 
@@ -19,6 +20,13 @@ try {
 } catch(e) {}
 `
 
+const languageScript = `
+try {
+  var l = localStorage.getItem('sync-language')
+  document.documentElement.lang = l === 'no' ? 'no' : 'en'
+} catch(e) {}
+`
+
 export default function RootLayout({
   children,
 }: {
@@ -28,9 +36,12 @@ export default function RootLayout({
     <html lang="en" className="h-full">
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script dangerouslySetInnerHTML={{ __html: languageScript }} />
       </head>
       <body className={`${geist.className} antialiased h-full`}>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <LanguageProvider>{children}</LanguageProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

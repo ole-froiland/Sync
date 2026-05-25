@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button'
 import Avatar from '@/components/ui/Avatar'
 import { useUser } from '@/context/UserContext'
 import { useGitHub } from '@/context/GitHubContext'
+import { useLanguage } from '@/context/LanguageContext'
 import { GitBranch, CheckCircle, AlertCircle, X } from 'lucide-react'
 
 const TOOL_OPTIONS = [
@@ -34,6 +35,7 @@ export default function SettingsPage() {
   const router = useRouter()
   const profile = useUser()
   const github = useGitHub()
+  const { locale, setLocale, languageLabel } = useLanguage()
   const avatarInputRef = useRef<HTMLInputElement>(null)
 
   const [name, setName] = useState(profile?.name ?? '')
@@ -211,6 +213,52 @@ export default function SettingsPage() {
                 onChange={(e) => setRole(e.target.value)}
                 placeholder="e.g. Full-stack developer"
               />
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                  Norsk/Engelsk
+                </h2>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Choose the language used across Sync on this device.
+                </p>
+              </div>
+              <div className="flex flex-col items-start gap-2 sm:items-end">
+                <div
+                  className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-900"
+                  aria-label="Norsk/Engelsk"
+                  data-no-translate
+                >
+                  <button
+                    type="button"
+                    onClick={() => setLocale('en')}
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      locale === 'en'
+                        ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-800 dark:text-gray-100'
+                        : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    English
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLocale('no')}
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      locale === 'no'
+                        ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-800 dark:text-gray-100'
+                        : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    Norsk
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Current language: <span data-no-translate>{languageLabel}</span>
+                </p>
+              </div>
             </div>
           </Card>
 

@@ -225,6 +225,23 @@ function folderDescendantIds(folders: ProjectFolder[], folderId: string) {
   return descendants
 }
 
+function projectItemDescendantIds(items: ProjectItem[], itemId: string) {
+  const descendants = new Set<string>()
+  const stack = [itemId]
+
+  while (stack.length > 0) {
+    const parentId = stack.pop()
+    const children = items.filter((item) => item.parentId === parentId)
+    for (const child of children) {
+      if (descendants.has(child.id)) continue
+      descendants.add(child.id)
+      stack.push(child.id)
+    }
+  }
+
+  return descendants
+}
+
 function isProjectFolderSharePayload(payload: AcceptedSharePayload | null | undefined) {
   return payload?.kind === 'project_folder_share' || Array.isArray(payload?.items)
 }
@@ -306,6 +323,7 @@ export default function ProjectsPage() {
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
   const [logoFolderId, setLogoFolderId] = useState<string | null>(null)
   const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null)
+  const [deleteItemId, setDeleteItemId] = useState<string | null>(null)
   const [storageReady, setStorageReady] = useState(false)
   const loadedRef = useRef(false)
 
@@ -440,6 +458,9 @@ export default function ProjectsPage() {
   const previewFolderChildren = previewFolder
     ? folders.filter((folder) => folder.parentId === previewFolder.id)
     : []
+  const deleteItemTarget = selectedFolder && deleteItemId
+    ? selectedFolder.items.find((item) => item.id === deleteItemId) ?? null
+    : null
 
   function createFolder(folder: Pick<ProjectFolder, 'name' | 'description' | 'color' | 'logo'>) {
     const creator = folderMemberFromProfile(currentProfile)
@@ -566,17 +587,23 @@ export default function ProjectsPage() {
     )
   }
 
+  function requestRemoveItem(itemId: string) {
+    setDeleteItemId(itemId)
+  }
+
   function removeItem(itemId: string) {
     if (!selectedFolder) return
+    const deletedIds = new Set([itemId, ...projectItemDescendantIds(selectedFolder.items, itemId)])
     setFolders((current) =>
       current.map((folder) =>
         folder.id === selectedFolder.id
-          ? { ...folder, items: folder.items.filter((item) => item.id !== itemId && item.parentId !== itemId) }
+          ? { ...folder, items: folder.items.filter((item) => !deletedIds.has(item.id)) }
           : folder
       )
     )
-    if (activeItemFolderId === itemId) setActiveItemFolderId(null)
-    setSelectedItemIds((current) => current.filter((id) => id !== itemId))
+    if (activeItemFolderId && deletedIds.has(activeItemFolderId)) setActiveItemFolderId(null)
+    setSelectedItemIds((current) => current.filter((id) => !deletedIds.has(id)))
+    if (deleteItemId === itemId) setDeleteItemId(null)
   }
 
   function moveItemsToFolder(itemIds: string[], targetFolderId: string) {
@@ -732,7 +759,7 @@ export default function ProjectsPage() {
                 setClipboard(null)
               }}
               onToggleTask={toggleTask}
-              onRemoveItem={removeItem}
+              onRemoveItem={requestRemoveItem}
               onOpenItemFolder={(itemId) => {
                 setActiveItemFolderId(itemId)
                 setSelectedItemIds([])
@@ -746,8 +773,15 @@ export default function ProjectsPage() {
           </main>
         </div>
 
-        <CreateItemModal open={itemOpen} onClose={() => setItemOpen(false)} onCreate={createItem} />
-        <ShareProjectFolderModal
+      <CreateItemModal open={itemOpen} onClose={() => setItemOpen(false)} onCreate={createItem} />
+      <DeleteItemModal
+        open={Boolean(deleteItemTarget)}
+        item={deleteItemTarget}
+        items={selectedFolder.items}
+        onClose={() => setDeleteItemId(null)}
+        onConfirm={(itemId) => removeItem(itemId)}
+      />
+      <ShareProjectFolderModal
           open={shareOpen}
           onClose={() => setShareOpen(false)}
           folder={selectedFolder}
@@ -2043,6 +2077,71 @@ function FolderContextMenu({
         Slett mappe
       </button>
     </div>
+  )
+}
+
+function DeleteItemModal({
+  open,
+  item,
+  items,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean
+  item: ProjectItem | null
+  items: ProjectItem[]
+  onClose: () => void
+  onConfirm: (itemId: string) => void
+}) {
+  if (!item) return null
+
+  const descendantItems = [...projectItemDescendantIds(items, item.id)]
+    .map((itemId) => items.find((candidate) => candidate.id === itemId))
+    .filter((candidate): candidate is ProjectItem => Boolean(candidate))
+  const totalItems = 1 + descendantItems.length
+  const meta = itemTypeMeta[item.type]
+  const Icon = meta.icon
+
+  return (
+    <Modal open={open} onClose={onClose} title="Slett innhold" className="max-w-md">
+      <div className="space-y-5">
+        <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100">
+          <Trash2 size={20} className="mt-0.5 shrink-0" />
+          <div className="min-w-0">
+            <p className="font-semibold">Er du sikker på at du vil slette &quot;{item.title}&quot;?</p>
+            <p className="mt-1 text-sm text-red-700 dark:text-red-200">
+              {descendantItems.length > 0
+                ? `Dette sletter elementet og ${descendantItems.length} underliggende elementer.`
+                : 'Dette fjerner elementet fra prosjektmappen.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-300">
+              <Icon size={19} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-gray-950 dark:text-gray-100">{item.title}</p>
+              <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                {projectItemTypeLabel(item)} {totalItems > 1 ? `- ${totalItems} elementer totalt` : ''}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Avbryt
+          </Button>
+          <Button type="button" variant="danger" onClick={() => onConfirm(item.id)}>
+            <Trash2 size={16} />
+            Slett
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
