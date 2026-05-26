@@ -103,6 +103,7 @@ type AppResourceType = 'notion' | 'docs' | 'sheets' | 'word' | 'excel'
 type ProjectClipboard = { mode: 'copy' | 'cut'; itemIds: string[] } | null
 type ProjectItemOpenTarget = { href: string; external: boolean; label: string }
 type SendStatus = 'idle' | 'sending' | 'sent' | 'error'
+type ProjectPathSegment = { id: string; label: string }
 
 type AcceptedSharePayload = {
   kind?: string
@@ -198,6 +199,47 @@ function projectFolderMembers(
 function projectFolderShareLabel(folder: ProjectFolder) {
   if (folder.sharedFrom) return `Delt av ${folder.sharedFrom.name}`
   return 'Din mappe'
+}
+
+function projectFolderPath(folders: ProjectFolder[], folderId: string | null): ProjectFolder[] {
+  const path: ProjectFolder[] = []
+  const seen = new Set<string>()
+  let current = folderId ? folders.find((folder) => folder.id === folderId) ?? null : null
+
+  while (current && !seen.has(current.id)) {
+    path.unshift(current)
+    seen.add(current.id)
+    current = current.parentId ? folders.find((folder) => folder.id === current?.parentId) ?? null : null
+  }
+
+  return path
+}
+
+function projectItemFolderPath(items: ProjectItem[], itemFolderId: string | null): ProjectItem[] {
+  const path: ProjectItem[] = []
+  const seen = new Set<string>()
+  let current = itemFolderId
+    ? items.find((item) => item.id === itemFolderId && item.type === 'local_folder') ?? null
+    : null
+
+  while (current && !seen.has(current.id)) {
+    path.unshift(current)
+    seen.add(current.id)
+    current = current.parentId
+      ? items.find((item) => item.id === current?.parentId && item.type === 'local_folder') ?? null
+      : null
+  }
+
+  return path
+}
+
+function projectReturnQuery(projectPath: string[]) {
+  if (projectPath.length === 0) return ''
+  const params = new URLSearchParams({
+    from: 'projects',
+    path: projectPath.join(' / '),
+  })
+  return `?${params.toString()}`
 }
 
 function sharedFolderId(messageId: string) {
@@ -433,19 +475,14 @@ export default function ProjectsPage() {
     })
   }, [folders, search, activeParentFolderId])
 
-  const folderPath = useMemo(() => {
-    const path: ProjectFolder[] = []
-    const seen = new Set<string>()
-    let current = activeParentFolder
-
-    while (current && !seen.has(current.id)) {
-      path.unshift(current)
-      seen.add(current.id)
-      current = current.parentId ? folders.find((folder) => folder.id === current?.parentId) ?? null : null
-    }
-
-    return path
-  }, [activeParentFolder, folders])
+  const folderPath = useMemo(
+    () => projectFolderPath(folders, activeParentFolder?.id ?? null),
+    [activeParentFolder, folders]
+  )
+  const selectedFolderPath = useMemo(
+    () => projectFolderPath(folders, selectedFolder?.id ?? null),
+    [folders, selectedFolder?.id]
+  )
 
   const previewFolder =
     visibleFolders.find((folder) => folder.id === previewFolderId) ?? visibleFolders[0] ?? null
@@ -515,11 +552,10 @@ export default function ProjectsPage() {
   }
 
   function openFolderFromOverview(folder: ProjectFolder) {
-    if (folderChildCount(folders, folder.id) > 0) {
-      enterFolder(folder.id)
-      return
-    }
     setSelectedFolderId(folder.id)
+    setActiveItemFolderId(null)
+    setSelectedItemIds([])
+    setClipboard(null)
   }
 
   function openFolderContextMenu(event: React.MouseEvent<HTMLElement>, folderId: string) {
@@ -697,6 +733,22 @@ export default function ProjectsPage() {
 
   if (selectedFolder) {
     const selectedFolderChildren = folders.filter((folder) => folder.parentId === selectedFolder.id)
+    const openFolderId = selectedFolder.id
+    const openFolderParentId = selectedFolder.parentId ?? null
+    const selectedFolderParent = selectedFolder.parentId
+      ? folders.find((folder) => folder.id === selectedFolder.parentId) ?? null
+      : null
+
+    function returnToSelectedFolderParent() {
+      setSelectedFolderId(null)
+      setActiveParentFolderId(openFolderParentId)
+      setPreviewFolderId(openFolderId)
+      setActiveItemFolderId(null)
+      setSelectedItemIds([])
+      setClipboard(null)
+      setItemOpen(false)
+      setLocalFolderOpen(false)
+    }
 
     return (
       <>
@@ -710,7 +762,7 @@ export default function ProjectsPage() {
               </Button>
               <Button size="sm" variant="secondary" onClick={() => setLocalFolderOpen(true)}>
                 <FolderOpen size={16} />
-                Add mappe
+                Ny mappe
               </Button>
               <Button size="sm" variant="secondary" onClick={() => setShareOpen(true)}>
                 <Share2 size={16} />
@@ -718,7 +770,7 @@ export default function ProjectsPage() {
               </Button>
               <Button size="sm" onClick={() => setItemOpen(true)}>
                 <Plus size={16} />
-                Add Resource
+                Legg til
               </Button>
             </div>
           }
@@ -726,23 +778,61 @@ export default function ProjectsPage() {
 
         <div className="flex-1 overflow-y-auto px-6 py-8">
           <button
-            onClick={() => {
-              setSelectedFolderId(null)
-              setActiveItemFolderId(null)
-              setSelectedItemIds([])
-              setClipboard(null)
-              setItemOpen(false)
-              setLocalFolderOpen(false)
-            }}
-            className="mb-6 inline-flex h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+            onClick={returnToSelectedFolderParent}
+            className="mb-3 inline-flex h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100"
           >
             <ArrowLeft size={16} />
-            Tilbake til prosjektmapper
+            {selectedFolderParent ? `Tilbake til ${selectedFolderParent.name}` : 'Tilbake til mapper'}
           </button>
+
+          <nav className="mb-6 flex flex-wrap items-center gap-2 text-sm" aria-label="Prosjektsti">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedFolderId(null)
+                setActiveParentFolderId(null)
+                setPreviewFolderId(selectedFolder.id)
+                setActiveItemFolderId(null)
+              }}
+              className="font-medium text-gray-500 transition hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300"
+            >
+              Projects
+            </button>
+            {selectedFolderPath.map((folder, index) => {
+              const current = index === selectedFolderPath.length - 1
+              return (
+                <span key={folder.id} className="flex min-w-0 items-center gap-2">
+                  <span className="text-gray-400 dark:text-gray-600">/</span>
+                  {current ? (
+                    <span className="max-w-56 truncate font-semibold text-gray-950 dark:text-gray-100">
+                      {folder.name}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFolderId(folder.id)
+                        setActiveItemFolderId(null)
+                        setSelectedItemIds([])
+                        setClipboard(null)
+                      }}
+                      className="max-w-56 truncate font-medium text-gray-500 transition hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300"
+                    >
+                      {folder.name}
+                    </button>
+                  )}
+                </span>
+              )
+            })}
+          </nav>
 
           <main className="min-h-[64vh] rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
             <ProjectDetailContent
               folder={selectedFolder}
+              projectFolderPath={selectedFolderPath.map((folder) => ({
+                id: folder.id,
+                label: folder.name,
+              }))}
               childFolders={selectedFolderChildren}
               activeItemFolder={activeItemFolder}
               selectedItemIds={selectedItemIds}
@@ -800,7 +890,7 @@ export default function ProjectsPage() {
       <TopBar
         title="Projects"
         actions={
-          <Button size="sm" onClick={() => setFolderOpen(true)} className="h-10 w-10 px-0" aria-label="Lag prosjektmappe">
+          <Button size="sm" onClick={() => setFolderOpen(true)} className="h-10 w-10 px-0" aria-label="Lag mappe">
             <Plus size={20} />
           </Button>
         }
@@ -814,7 +904,7 @@ export default function ProjectsPage() {
                   <input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Søk i prosjektmapper"
+                    placeholder="Søk i mapper"
                     className="h-10 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100"
                   />
                 </div>
@@ -897,11 +987,11 @@ export default function ProjectsPage() {
                 </div>
                 <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Ingen prosjekter enda</h2>
                 <p className="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
-                  Start med en prosjektmappe. Etterpå kan du legge inn hva du vil samle for prosjektet.
+                  Start med en mappe. Etterpå kan du legge inn repoer, dokumenter, lenker og andre ressurser.
                 </p>
                 <Button className="mt-5" onClick={() => setFolderOpen(true)}>
                   <Plus size={18} />
-                  Lag prosjektmappe
+                  Lag mappe
                 </Button>
               </div>
             ) : visibleFolders.length === 0 ? (
@@ -1214,10 +1304,12 @@ function githubRepoPath(item: ProjectItem) {
   }
 }
 
-function projectItemOpenTarget(item: ProjectItem): ProjectItemOpenTarget | null {
+function projectItemOpenTarget(item: ProjectItem, projectPath: string[] = []): ProjectItemOpenTarget | null {
   if (item.type === 'github') {
     const repoPath = githubRepoPath(item)
-    return repoPath ? { href: repoPath, external: false, label: 'Åpne reposide' } : null
+    return repoPath
+      ? { href: `${repoPath}${projectReturnQuery(projectPath)}`, external: false, label: 'Åpne reposide' }
+      : null
   }
 
   if (item.url && ['url', 'notion', 'docs', 'sheets', 'word', 'excel'].includes(item.type)) {
@@ -1231,8 +1323,8 @@ function projectItemOpenTarget(item: ProjectItem): ProjectItemOpenTarget | null 
   return null
 }
 
-function openProjectItem(item: ProjectItem) {
-  const target = projectItemOpenTarget(item)
+function openProjectItem(item: ProjectItem, projectPath: string[] = []) {
+  const target = projectItemOpenTarget(item, projectPath)
   if (!target) return
 
   if (target.external) {
@@ -1271,6 +1363,7 @@ function dataUrlToBlobUrl(dataUrl: string): string | null {
 
 function ProjectItemCard({
   item,
+  projectPath,
   selected,
   cut,
   onToggle,
@@ -1281,6 +1374,7 @@ function ProjectItemCard({
   onMoveToFolder,
 }: {
   item: ProjectItem
+  projectPath: string[]
   selected: boolean
   cut: boolean
   onToggle: (itemId: string) => void
@@ -1293,7 +1387,7 @@ function ProjectItemCard({
   const meta = itemTypeMeta[item.type]
   const Icon = meta.icon
   const isFolder = item.type === 'local_folder'
-  const openTarget = projectItemOpenTarget(item)
+  const openTarget = projectItemOpenTarget(item, projectPath)
 
   function handleDragStart(event: React.DragEvent<HTMLElement>) {
     const draggedIds = onDragItems(item.id)
@@ -1418,12 +1512,12 @@ function ProjectItemCard({
       tabIndex={0}
       onClick={(event) => onSelect(item.id, event)}
       onDoubleClick={() => {
-        if (openTarget) openProjectItem(item)
+        if (openTarget) openProjectItem(item, projectPath)
       }}
       onKeyDown={(event) => {
         if (event.key === 'Enter' && openTarget) {
           event.preventDefault()
-          openProjectItem(item)
+          openProjectItem(item, projectPath)
         }
       }}
       onDragStart={handleDragStart}
@@ -1511,6 +1605,7 @@ function ProjectMemberBubbles({
 
 function ProjectDetailContent({
   folder,
+  projectFolderPath,
   childFolders,
   activeItemFolder,
   selectedItemIds,
@@ -1531,6 +1626,7 @@ function ProjectDetailContent({
   onPasteItems,
 }: {
   folder: ProjectFolder
+  projectFolderPath: ProjectPathSegment[]
   childFolders: ProjectFolder[]
   activeItemFolder: ProjectItem | null
   selectedItemIds: string[]
@@ -1554,6 +1650,14 @@ function ProjectDetailContent({
   const currentProfile = useUser()
   const members = projectFolderMembers(folder, currentProfile)
   const visibleItems = folder.items.filter((item) => (item.parentId ?? null) === (activeItemFolder?.id ?? null))
+  const activeItemFolderPath = useMemo(
+    () => projectItemFolderPath(folder.items, activeItemFolder?.id ?? null),
+    [activeItemFolder?.id, folder.items]
+  )
+  const projectPathLabels = useMemo(
+    () => [...projectFolderPath.map((segment) => segment.label), ...activeItemFolderPath.map((item) => item.title)],
+    [activeItemFolderPath, projectFolderPath]
+  )
   const selectedVisibleIndex = visibleItems.findIndex((item) => selectedItemIds.includes(item.id))
   const selectedVisibleIds = selectedItemIds.filter((id) => visibleItems.some((item) => item.id === id))
 
@@ -1619,7 +1723,7 @@ function ProjectDetailContent({
       }
       if (selected && projectItemOpenTarget(selected)) {
         event.preventDefault()
-        openProjectItem(selected)
+        openProjectItem(selected, projectPathLabels)
       }
       return
     }
@@ -1698,7 +1802,7 @@ function ProjectDetailContent({
           </Button>
           <Button size="sm" variant="secondary" onClick={onAddLocalFolder}>
             <FolderOpen size={16} />
-            Add mappe
+            Ny mappe
           </Button>
           <Button size="sm" variant="secondary" onClick={onShare}>
             <Share2 size={16} />
@@ -1706,7 +1810,7 @@ function ProjectDetailContent({
           </Button>
           <Button size="sm" onClick={onAddResource}>
             <Plus size={16} />
-            Add Resource
+            Legg til
           </Button>
         </div>
       </div>
@@ -1718,19 +1822,53 @@ function ProjectDetailContent({
           if (event.currentTarget === event.target) onSelectItems([])
         }}
       >
-        {activeItemFolder && (
-          <div className="mb-4 flex items-center gap-2 text-sm">
-            <button
-              type="button"
-              onClick={() => onOpenItemFolder(null)}
-              className="font-medium text-gray-500 transition hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300"
-            >
-              {folder.name}
-            </button>
-            <span className="text-gray-400 dark:text-gray-600">/</span>
-            <span className="font-semibold text-gray-950 dark:text-gray-100">{activeItemFolder.title}</span>
-          </div>
-        )}
+        <nav className="mb-4 flex flex-wrap items-center gap-2 text-sm" aria-label="Mappesti">
+          {projectFolderPath.map((segment, index) => {
+            const current = index === projectFolderPath.length - 1 && activeItemFolderPath.length === 0
+            return (
+              <span key={segment.id} className="flex min-w-0 items-center gap-2">
+                {index > 0 && <span className="text-gray-400 dark:text-gray-600">/</span>}
+                {current ? (
+                  <span className="max-w-56 truncate font-semibold text-gray-950 dark:text-gray-100">
+                    {segment.label}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (index === projectFolderPath.length - 1) onOpenItemFolder(null)
+                    }}
+                    className="max-w-56 truncate font-medium text-gray-500 transition hover:text-purple-600 disabled:pointer-events-none dark:text-gray-400 dark:hover:text-purple-300"
+                    disabled={index !== projectFolderPath.length - 1}
+                  >
+                    {segment.label}
+                  </button>
+                )}
+              </span>
+            )
+          })}
+          {activeItemFolderPath.map((item, index) => {
+            const current = index === activeItemFolderPath.length - 1
+            return (
+              <span key={item.id} className="flex min-w-0 items-center gap-2">
+                <span className="text-gray-400 dark:text-gray-600">/</span>
+                {current ? (
+                  <span className="max-w-56 truncate font-semibold text-gray-950 dark:text-gray-100">
+                    {item.title}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onOpenItemFolder(item.id)}
+                    className="max-w-56 truncate font-medium text-gray-500 transition hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300"
+                  >
+                    {item.title}
+                  </button>
+                )}
+              </span>
+            )
+          })}
+        </nav>
 
         {visibleItems.length === 0 && (activeItemFolder || childFolders.length === 0) ? (
           <div className="flex min-h-80 flex-col items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/70 px-6 text-center dark:border-gray-800 dark:bg-gray-950/40">
@@ -1747,11 +1885,11 @@ function ProjectDetailContent({
             </p>
             <Button className="mt-5" onClick={onAddResource}>
               <Plus size={16} />
-              Add Resource
+              Legg til
             </Button>
             <Button className="mt-2" variant="secondary" onClick={onAddLocalFolder}>
               <FolderOpen size={16} />
-              Add mappe
+              Ny mappe
             </Button>
           </div>
         ) : (
@@ -1771,7 +1909,7 @@ function ProjectDetailContent({
                       <p className="truncate text-xs text-gray-500 dark:text-gray-400">
                         {folderChildCount(childFolders, childFolder.id) > 0
                           ? `${folderChildCount(childFolders, childFolder.id)} mapper`
-                          : 'Prosjektmappe'}
+                          : 'Mappe'}
                       </p>
                     </div>
                   </div>
@@ -1782,6 +1920,7 @@ function ProjectDetailContent({
               <ProjectItemCard
                 key={item.id}
                 item={item}
+                projectPath={projectPathLabels}
                 selected={selectedItemIds.includes(item.id)}
                 cut={cutItemIds.includes(item.id)}
                 onToggle={onToggleTask}
@@ -2112,7 +2251,7 @@ function DeleteItemModal({
             <p className="mt-1 text-sm text-red-700 dark:text-red-200">
               {descendantItems.length > 0
                 ? `Dette sletter elementet og ${descendantItems.length} underliggende elementer.`
-                : 'Dette fjerner elementet fra prosjektmappen.'}
+                : 'Dette fjerner elementet fra mappen.'}
             </p>
           </div>
         </div>
@@ -2310,7 +2449,7 @@ function CreateFolderModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Ny prosjektmappe">
+    <Modal open={open} onClose={onClose} title="Ny mappe">
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input label="Navn" value={name} onChange={(event) => setName(event.target.value)} placeholder="F.eks. Nettside, app, kundeprosjekt" required />
         <Textarea label="Beskrivelse" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Hva skal samles i denne mappen?" rows={3} />
@@ -2444,7 +2583,7 @@ function ShareProjectFolderModal({
 
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string }
-        throw new Error(body.error ?? 'Kunne ikke dele prosjektmappen.')
+        throw new Error(body.error ?? 'Kunne ikke dele mappen.')
       }
 
       setStatusByUser((current) => ({ ...current, [targetProfile.id]: 'sent' }))
@@ -2454,7 +2593,7 @@ function ShareProjectFolderModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Del prosjektmappe">
+    <Modal open={open} onClose={onClose} title="Del mappe">
       <div className="space-y-4">
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950/50">
           <div className="flex items-center gap-3">
@@ -2511,7 +2650,7 @@ function ShareProjectFolderModal({
             <Users size={20} className="text-gray-300 dark:text-gray-600" />
             <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Ingen synkede venner ennå</p>
             <p className="max-w-xs text-xs text-gray-400 dark:text-gray-500">
-              Gå til People og sync med noen før du deler prosjektmapper.
+              Gå til People og sync med noen før du deler mapper.
             </p>
           </div>
         ) : filtered.length === 0 ? (
@@ -2750,7 +2889,7 @@ function CreateItemModal({
   }
 
   return (
-    <Modal open={open} onClose={() => { reset(); onClose() }} title="Add Resource" className="max-w-4xl">
+    <Modal open={open} onClose={() => { reset(); onClose() }} title="Legg til ressurs" className="max-w-4xl">
       <div className="space-y-5">
         <div className="grid gap-2 sm:grid-cols-4">
           {[
@@ -2999,7 +3138,7 @@ function CreateLocalFolderModal({
   }
 
   return (
-    <Modal open={open} onClose={() => { reset(); onClose() }} title="Add mappe">
+    <Modal open={open} onClose={() => { reset(); onClose() }} title="Ny mappe">
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
           label="Navn"

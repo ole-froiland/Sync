@@ -69,10 +69,15 @@ type SummaryState =
 
 export default function RepositoryDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ owner: string; repo: string }>
+  searchParams: Promise<{ from?: string | string[]; path?: string | string[] }>
 }) {
   const { owner, repo } = use(params)
+  const query = use(searchParams)
+  const projectPath =
+    query.from === 'projects' && typeof query.path === 'string' ? query.path : null
 
   const [data, setData] = useState<RepoDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -223,6 +228,26 @@ export default function RepositoryDetailPage({
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl px-6 py-8">
+          {projectPath && (
+            <div className="mb-5 flex flex-wrap items-center gap-2 text-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.history.length > 1) window.history.back()
+                  else window.location.href = '/projects'
+                }}
+                className="inline-flex items-center gap-1.5 font-medium text-gray-500 transition hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300"
+              >
+                <ArrowLeft size={14} />
+                Tilbake til Projects
+              </button>
+              <span className="text-gray-400 dark:text-gray-600">/</span>
+              <span className="min-w-0 truncate font-semibold text-gray-950 dark:text-gray-100">
+                {projectPath}
+              </span>
+            </div>
+          )}
+
           {loading && <DetailSkeleton />}
 
           {!loading && error && (
