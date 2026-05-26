@@ -1281,7 +1281,7 @@ function projectItemTypeLabel(item: ProjectItem) {
   if (item.type === 'excel') return 'Excel'
   if (item.type === 'url') return 'URL'
   if (item.type === 'document') return 'Document'
-  if (item.type === 'local_folder') return 'Folder'
+  if (item.type === 'local_folder') return 'Mappe'
   return meta.label
 }
 
@@ -3131,7 +3131,7 @@ function CreateLocalFolderModal({
       title: itemTitle,
       body: '',
       path: path.trim() || itemTitle,
-      status: 'Folder',
+      status: 'Mappe',
     })
     reset()
     onClose()
