@@ -750,6 +750,23 @@ export default function ProjectsPage() {
       setLocalFolderOpen(false)
     }
 
+    function createChildFolder(folder: Pick<ProjectFolder, 'name' | 'description' | 'color' | 'logo'>) {
+      const creator = folderMemberFromProfile(currentProfile)
+      const nextFolder: ProjectFolder = {
+        ...folder,
+        id: makeId('folder'),
+        parentId: openFolderId,
+        createdAt: new Date().toISOString(),
+        members: creator ? [creator] : [],
+        items: [],
+      }
+      setFolders((current) => [nextFolder, ...current])
+      setSelectedFolderId(nextFolder.id)
+      setActiveItemFolderId(null)
+      setSelectedItemIds([])
+      setClipboard(null)
+    }
+
     return (
       <>
         <TopBar
@@ -760,7 +777,7 @@ export default function ProjectsPage() {
                 <MessageSquare size={16} />
                 Chat
               </Button>
-              <Button size="sm" variant="secondary" onClick={() => setLocalFolderOpen(true)}>
+              <Button size="sm" variant="secondary" onClick={() => setFolderOpen(true)}>
                 <FolderOpen size={16} />
                 <span data-no-translate>Ny mappe</span>
               </Button>
@@ -839,7 +856,7 @@ export default function ProjectsPage() {
               selectedItemIds={selectedItemIds}
               cutItemIds={clipboard?.mode === 'cut' ? clipboard.itemIds : []}
               onAddResource={() => setItemOpen(true)}
-              onAddLocalFolder={() => setLocalFolderOpen(true)}
+              onAddLocalFolder={() => setFolderOpen(true)}
               onOpenChat={() => openProjectChat(selectedFolder)}
               onShare={() => setShareOpen(true)}
               onUpdate={updateFolder}
@@ -865,6 +882,7 @@ export default function ProjectsPage() {
         </div>
 
       <CreateItemModal open={itemOpen} onClose={() => setItemOpen(false)} onCreate={createItem} />
+      <CreateFolderModal open={folderOpen} onClose={() => setFolderOpen(false)} onCreate={createChildFolder} />
       <DeleteItemModal
         open={Boolean(deleteItemTarget)}
         item={deleteItemTarget}
@@ -1497,13 +1515,34 @@ function ProjectItemCard({
         }}
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
-        className={`cursor-pointer rounded-lg border px-3 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 ${
-          selected
-            ? 'border-purple-400 bg-purple-50/80 dark:border-purple-700 dark:bg-purple-950/30'
-            : 'border-gray-200 bg-gray-50 hover:border-purple-400 hover:bg-purple-50/70 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-purple-700 dark:hover:bg-purple-950/20'
-        } ${cut ? 'opacity-45' : ''}`}
+        className={`group cursor-pointer rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-left transition hover:border-purple-400 hover:bg-purple-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-purple-700 dark:hover:bg-purple-950/20 ${
+          cut ? 'opacity-45' : ''
+        }`}
       >
-        {content}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-fuchsia-500 text-white shadow-sm">
+              <Folder size={19} />
+            </span>
+            <div className="min-w-0">
+              <h3 className="truncate text-sm font-medium text-gray-950 dark:text-gray-100">{item.title}</h3>
+              <p className="truncate text-xs text-gray-500 dark:text-gray-400">Mappe</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <FolderOpen size={16} className="text-gray-400 transition group-hover:text-purple-600 dark:group-hover:text-purple-300" />
+            <button
+              onClick={(event) => {
+                event.stopPropagation()
+                onRemove(item.id)
+              }}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 opacity-0 transition hover:bg-white hover:text-red-500 focus:opacity-100 dark:hover:bg-gray-900 group-hover:opacity-100"
+              aria-label="Fjern mappe"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
       </article>
     )
   }
@@ -1653,6 +1692,8 @@ function ProjectDetailContent({
   const currentProfile = useUser()
   const members = projectFolderMembers(folder, currentProfile)
   const visibleItems = folder.items.filter((item) => (item.parentId ?? null) === (activeItemFolder?.id ?? null))
+  const visibleFolderItems = visibleItems.filter((item) => item.type === 'local_folder')
+  const visibleResourceItems = visibleItems.filter((item) => item.type !== 'local_folder')
   const activeItemFolderPath = useMemo(
     () => projectItemFolderPath(folder.items, activeItemFolder?.id ?? null),
     [activeItemFolder?.id, folder.items]
@@ -1919,7 +1960,7 @@ function ProjectDetailContent({
                   <FolderOpen size={16} className="shrink-0 text-gray-400 transition group-hover:text-purple-600 dark:group-hover:text-purple-300" />
                 </button>
               ))}
-            {visibleItems.map((item) => (
+            {[...visibleFolderItems, ...visibleResourceItems].map((item) => (
               <ProjectItemCard
                 key={item.id}
                 item={item}
