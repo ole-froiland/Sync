@@ -1866,54 +1866,6 @@ function ProjectDetailContent({
           if (event.currentTarget === event.target) onSelectItems([])
         }}
       >
-        <nav className="mb-4 flex flex-wrap items-center gap-2 text-sm" aria-label="Mappesti">
-          {projectFolderPath.map((segment, index) => {
-            const current = index === projectFolderPath.length - 1 && activeItemFolderPath.length === 0
-            return (
-              <span key={segment.id} className="flex min-w-0 items-center gap-2">
-                {index > 0 && <span className="text-gray-400 dark:text-gray-600">/</span>}
-                {current ? (
-                  <span className="max-w-56 truncate font-semibold text-gray-950 dark:text-gray-100">
-                    {segment.label}
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (index === projectFolderPath.length - 1) onOpenItemFolder(null)
-                    }}
-                    className="max-w-56 truncate font-medium text-gray-500 transition hover:text-purple-600 disabled:pointer-events-none dark:text-gray-400 dark:hover:text-purple-300"
-                    disabled={index !== projectFolderPath.length - 1}
-                  >
-                    {segment.label}
-                  </button>
-                )}
-              </span>
-            )
-          })}
-          {activeItemFolderPath.map((item, index) => {
-            const current = index === activeItemFolderPath.length - 1
-            return (
-              <span key={item.id} className="flex min-w-0 items-center gap-2">
-                <span className="text-gray-400 dark:text-gray-600">/</span>
-                {current ? (
-                  <span className="max-w-56 truncate font-semibold text-gray-950 dark:text-gray-100">
-                    {item.title}
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onOpenItemFolder(item.id)}
-                    className="max-w-56 truncate font-medium text-gray-500 transition hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300"
-                  >
-                    {item.title}
-                  </button>
-                )}
-              </span>
-            )
-          })}
-        </nav>
-
         {visibleItems.length === 0 && (activeItemFolder || childFolders.length === 0) ? (
           <div className="flex min-h-80 flex-col items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/70 px-6 text-center dark:border-gray-800 dark:bg-gray-950/40">
             {activeItemFolder ? (
