@@ -236,10 +236,11 @@ export default function RepositoryDetailPage({
                   if (window.history.length > 1) window.history.back()
                   else window.location.href = '/projects'
                 }}
+                data-no-translate
                 className="inline-flex items-center gap-1.5 font-medium text-gray-500 transition hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300"
               >
                 <ArrowLeft size={14} />
-                Tilbake til Projects
+                Tilbake til Prosjekter
               </button>
               <span className="text-gray-400 dark:text-gray-600">/</span>
               <span className="min-w-0 truncate font-semibold text-gray-950 dark:text-gray-100">

@@ -10,9 +10,10 @@ interface TopBarProps {
   actions?: React.ReactNode
   className?: string
   titleClassName?: string
+  noTranslateTitle?: boolean
 }
 
-export default function TopBar({ title }: TopBarProps) {
+export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
   function openRepoModal() {
     window.dispatchEvent(new Event('sync:open-repo-modal'))
   }
@@ -28,7 +29,12 @@ export default function TopBar({ title }: TopBarProps) {
     <header
       className="h-14 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-6 flex items-center justify-between flex-shrink-0"
     >
-      <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h1>
+      <h1
+        className="text-base font-semibold text-gray-900 dark:text-gray-100"
+        data-no-translate={noTranslateTitle ? true : undefined}
+      >
+        {title}
+      </h1>
       <div className="flex items-center gap-2">
         <a
           href="https://claude.ai"
