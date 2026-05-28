@@ -741,6 +741,47 @@ export default function ProjectsPage() {
     setSelectedItemIds(movableIds)
   }
 
+  function moveItemsToProjectFolder(itemIds: string[], targetProjectFolderId: string) {
+    if (!selectedFolder || selectedFolder.id === targetProjectFolderId || itemIds.length === 0) return
+
+    const selected = new Set(itemIds)
+    const sourceItems = selectedFolder.items
+    const movingItems = sourceItems.filter((item) => {
+      if (selected.has(item.id)) return true
+
+      let parentId = item.parentId
+      while (parentId) {
+        if (selected.has(parentId)) return true
+        parentId = sourceItems.find((candidate) => candidate.id === parentId)?.parentId
+      }
+
+      return false
+    })
+    if (movingItems.length === 0) return
+
+    const movingIds = new Set(movingItems.map((item) => item.id))
+    const now = new Date().toISOString()
+    const movedItems = movingItems.map((item) => ({
+      ...item,
+      parentId: item.parentId && movingIds.has(item.parentId) ? item.parentId : undefined,
+      updatedAt: now,
+    }))
+
+    setFolders((current) =>
+      current.map((folder) => {
+        if (folder.id === selectedFolder.id) {
+          return { ...folder, items: folder.items.filter((item) => !movingIds.has(item.id)) }
+        }
+        if (folder.id === targetProjectFolderId) {
+          return { ...folder, items: [...movedItems, ...folder.items] }
+        }
+        return folder
+      })
+    )
+    setSelectedItemIds([])
+    setClipboard(null)
+  }
+
   function copyItemsToFolder(itemIds: string[], targetFolderId: string | null) {
     if (!selectedFolder || itemIds.length === 0) return
     const sourceItems = selectedFolder.items
@@ -966,6 +1007,7 @@ export default function ProjectsPage() {
                 if (dragOverFolderId === folderId) setDragOverFolderId(null)
               }}
               onMoveProjectFolder={moveFolderIntoFolder}
+              onMoveItemsToProjectFolder={moveItemsToProjectFolder}
             />
           </main>
         </div>
@@ -1763,6 +1805,7 @@ function ProjectDetailContent({
   onProjectFolderDragOver,
   onProjectFolderDragLeave,
   onMoveProjectFolder,
+  onMoveItemsToProjectFolder,
 }: {
   folder: ProjectFolder
   projectFolderPath: ProjectPathSegment[]
@@ -1792,6 +1835,7 @@ function ProjectDetailContent({
   onProjectFolderDragOver: (folderId: string | null) => void
   onProjectFolderDragLeave: (folderId: string) => void
   onMoveProjectFolder: (folderId: string, targetParentId: string | null) => void
+  onMoveItemsToProjectFolder: (itemIds: string[], targetProjectFolderId: string) => void
 }) {
   const [logoOpen, setLogoOpen] = useState(false)
   const currentProfile = useUser()
@@ -1923,6 +1967,24 @@ function ProjectDetailContent({
     )
   }
 
+  function projectItemIdsFromDrag(event: React.DragEvent<HTMLElement>) {
+    const fallback = event.dataTransfer.getData('text/plain')
+    let draggedItemIds = fallback ? [fallback] : []
+
+    try {
+      const encoded = event.dataTransfer.getData('application/x-sync-project-items')
+      if (encoded) draggedItemIds = JSON.parse(encoded) as string[]
+    } catch {
+      draggedItemIds = fallback ? [fallback] : []
+    }
+
+    return draggedItemIds
+  }
+
+  function isProjectItemDrag(event: React.DragEvent<HTMLElement>) {
+    return Array.from(event.dataTransfer.types).includes('application/x-sync-project-items')
+  }
+
   function handleProjectFolderDragStart(event: React.DragEvent<HTMLElement>, folderId: string) {
     onProjectFolderDragStart(folderId)
     event.dataTransfer.effectAllowed = 'move'
@@ -1936,6 +1998,19 @@ function ProjectDetailContent({
     event.preventDefault()
     event.stopPropagation()
     onMoveProjectFolder(folderId, targetParentId)
+  }
+
+  function handleProjectItemDrop(event: React.DragEvent<HTMLElement>, targetProjectFolderId: string) {
+    if (!isProjectItemDrag(event)) return false
+
+    const draggedItemIds = projectItemIdsFromDrag(event)
+    if (draggedItemIds.length === 0) return false
+
+    event.preventDefault()
+    event.stopPropagation()
+    onMoveItemsToProjectFolder(draggedItemIds, targetProjectFolderId)
+    onProjectFolderDragOver(null)
+    return true
   }
 
   return (
@@ -2041,6 +2116,13 @@ function ProjectDetailContent({
                     onDragStart={(event) => handleProjectFolderDragStart(event, childFolder.id)}
                     onDragEnd={onProjectFolderDragEnd}
                     onDragOver={(event) => {
+                      if (isProjectItemDrag(event)) {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        event.dataTransfer.dropEffect = 'move'
+                        onProjectFolderDragOver(childFolder.id)
+                        return
+                      }
                       if (!draggedProjectFolderId || !canMoveProjectFolder(draggedProjectFolderId, childFolder.id)) return
                       event.preventDefault()
                       event.stopPropagation()
@@ -2048,7 +2130,10 @@ function ProjectDetailContent({
                       onProjectFolderDragOver(childFolder.id)
                     }}
                     onDragLeave={() => onProjectFolderDragLeave(childFolder.id)}
-                    onDrop={(event) => handleProjectFolderDrop(event, childFolder.id)}
+                    onDrop={(event) => {
+                      if (handleProjectItemDrop(event, childFolder.id)) return
+                      handleProjectFolderDrop(event, childFolder.id)
+                    }}
                     onClick={() => onOpenProjectFolder(childFolder.id)}
                     className={`group flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 ${
                       isDropTarget
