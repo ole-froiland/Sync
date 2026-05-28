@@ -953,6 +953,19 @@ export default function ProjectsPage() {
               onCopyItems={(itemIds) => setClipboard({ mode: 'copy', itemIds })}
               onCutItems={(itemIds) => setClipboard({ mode: 'cut', itemIds })}
               onPasteItems={pasteItems}
+              draggedProjectFolderId={draggedFolderId}
+              dragOverProjectFolderId={dragOverFolderId}
+              canMoveProjectFolder={canMoveFolderIntoFolder}
+              onProjectFolderDragStart={(folderId) => setDraggedFolderId(folderId)}
+              onProjectFolderDragEnd={() => {
+                setDraggedFolderId(null)
+                setDragOverFolderId(null)
+              }}
+              onProjectFolderDragOver={setDragOverFolderId}
+              onProjectFolderDragLeave={(folderId) => {
+                if (dragOverFolderId === folderId) setDragOverFolderId(null)
+              }}
+              onMoveProjectFolder={moveFolderIntoFolder}
             />
           </main>
         </div>
@@ -1742,6 +1755,14 @@ function ProjectDetailContent({
   onCopyItems,
   onCutItems,
   onPasteItems,
+  draggedProjectFolderId,
+  dragOverProjectFolderId,
+  canMoveProjectFolder,
+  onProjectFolderDragStart,
+  onProjectFolderDragEnd,
+  onProjectFolderDragOver,
+  onProjectFolderDragLeave,
+  onMoveProjectFolder,
 }: {
   folder: ProjectFolder
   projectFolderPath: ProjectPathSegment[]
@@ -1763,6 +1784,14 @@ function ProjectDetailContent({
   onCopyItems: (itemIds: string[]) => void
   onCutItems: (itemIds: string[]) => void
   onPasteItems: (targetFolderId: string | null) => void
+  draggedProjectFolderId: string | null
+  dragOverProjectFolderId: string | null
+  canMoveProjectFolder: (folderId: string, targetParentId: string | null) => boolean
+  onProjectFolderDragStart: (folderId: string) => void
+  onProjectFolderDragEnd: () => void
+  onProjectFolderDragOver: (folderId: string | null) => void
+  onProjectFolderDragLeave: (folderId: string) => void
+  onMoveProjectFolder: (folderId: string, targetParentId: string | null) => void
 }) {
   const [logoOpen, setLogoOpen] = useState(false)
   const currentProfile = useUser()
@@ -1887,6 +1916,28 @@ function ProjectDetailContent({
     return selectedItemIds.includes(itemId) ? selectedItemIds : [itemId]
   }
 
+  function projectFolderFromDrag(event: React.DragEvent<HTMLElement>) {
+    return (
+      event.dataTransfer.getData('application/x-sync-project-folder') ||
+      event.dataTransfer.getData('text/plain')
+    )
+  }
+
+  function handleProjectFolderDragStart(event: React.DragEvent<HTMLElement>, folderId: string) {
+    onProjectFolderDragStart(folderId)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('application/x-sync-project-folder', folderId)
+    event.dataTransfer.setData('text/plain', folderId)
+  }
+
+  function handleProjectFolderDrop(event: React.DragEvent<HTMLElement>, targetParentId: string | null) {
+    const folderId = projectFolderFromDrag(event)
+    if (!folderId || !canMoveProjectFolder(folderId, targetParentId)) return
+    event.preventDefault()
+    event.stopPropagation()
+    onMoveProjectFolder(folderId, targetParentId)
+  }
+
   return (
     <>
       <div className="flex flex-col gap-4 border-b border-gray-200 pb-5 dark:border-gray-800 md:flex-row md:items-start md:justify-between">
@@ -1938,6 +1989,17 @@ function ProjectDetailContent({
       <section
         className="pt-5 focus-visible:outline-none"
         tabIndex={0}
+        onDragOver={(event) => {
+          const folderId = draggedProjectFolderId
+          if (!folderId || !canMoveProjectFolder(folderId, folder.id)) return
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'move'
+          onProjectFolderDragOver(folder.id)
+        }}
+        onDragLeave={(event) => {
+          if (event.currentTarget === event.target) onProjectFolderDragLeave(folder.id)
+        }}
+        onDrop={(event) => handleProjectFolderDrop(event, folder.id)}
         onClick={(event) => {
           if (event.currentTarget === event.target) onSelectItems([])
         }}
@@ -1967,13 +2029,33 @@ function ProjectDetailContent({
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {!activeItemFolder &&
-              childFolders.map((childFolder) => (
-                <button
-                  key={childFolder.id}
-                  type="button"
-                  onClick={() => onOpenProjectFolder(childFolder.id)}
-                  className="group flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-left transition hover:border-purple-400 hover:bg-purple-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
-                >
+              childFolders.map((childFolder) => {
+                const isDropTarget = dragOverProjectFolderId === childFolder.id
+                const isDragging = draggedProjectFolderId === childFolder.id
+
+                return (
+                  <button
+                    key={childFolder.id}
+                    type="button"
+                    draggable
+                    onDragStart={(event) => handleProjectFolderDragStart(event, childFolder.id)}
+                    onDragEnd={onProjectFolderDragEnd}
+                    onDragOver={(event) => {
+                      if (!draggedProjectFolderId || !canMoveProjectFolder(draggedProjectFolderId, childFolder.id)) return
+                      event.preventDefault()
+                      event.stopPropagation()
+                      event.dataTransfer.dropEffect = 'move'
+                      onProjectFolderDragOver(childFolder.id)
+                    }}
+                    onDragLeave={() => onProjectFolderDragLeave(childFolder.id)}
+                    onDrop={(event) => handleProjectFolderDrop(event, childFolder.id)}
+                    onClick={() => onOpenProjectFolder(childFolder.id)}
+                    className={`group flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 ${
+                      isDropTarget
+                        ? 'border-purple-500 bg-purple-950/30 ring-1 ring-purple-500/70 dark:border-purple-500'
+                        : 'border-gray-200 bg-gray-50 hover:border-purple-400 hover:bg-purple-50/70 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-purple-700 dark:hover:bg-purple-950/20'
+                    } ${isDragging ? 'opacity-50' : ''}`}
+                  >
                   <div className="flex min-w-0 items-center gap-3">
                     <ProjectLogoThumbnail folder={childFolder} className="h-10 w-10" iconSize={19} />
                     <div className="min-w-0">
@@ -1986,8 +2068,9 @@ function ProjectDetailContent({
                     </div>
                   </div>
                   <FolderOpen size={16} className="shrink-0 text-gray-400 transition group-hover:text-purple-600 dark:group-hover:text-purple-300" />
-                </button>
-              ))}
+                  </button>
+                )
+              })}
             {[...visibleFolderItems, ...visibleResourceItems].map((item) => (
               <ProjectItemCard
                 key={item.id}
