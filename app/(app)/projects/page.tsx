@@ -344,6 +344,81 @@ function sharedFolderFromAcceptedMessage({
   }
 }
 
+function migratedLocalFolderId(containerFolderId: string, itemId: string) {
+  return `migrated-${containerFolderId}-${itemId}`
+}
+
+function migrateLocalFolderItems(projectFolders: ProjectFolder[]): ProjectFolder[] {
+  const existingFolderIds = new Set(projectFolders.map((folder) => folder.id))
+  const migratedFolders: ProjectFolder[] = []
+
+  const updatedFolders = projectFolders.map((folder) => {
+    const localFolderItems = folder.items.filter((item) => item.type === 'local_folder')
+    if (localFolderItems.length === 0) return folder
+
+    const localItemsById = new Map(localFolderItems.map((item) => [item.id, item]))
+    const movedItemsByFolderId = new Map<string, ProjectItem[]>()
+
+    function nearestLocalFolderId(item: ProjectItem) {
+      const seen = new Set<string>()
+      let parentId = item.parentId
+
+      while (parentId && !seen.has(parentId)) {
+        if (localItemsById.has(parentId)) return parentId
+        seen.add(parentId)
+        parentId = folder.items.find((candidate) => candidate.id === parentId)?.parentId
+      }
+
+      return null
+    }
+
+    const remainingItems: ProjectItem[] = []
+    for (const item of folder.items) {
+      if (item.type === 'local_folder') continue
+
+      const localParentId = nearestLocalFolderId(item)
+      if (!localParentId) {
+        remainingItems.push(item)
+        continue
+      }
+
+      const targetFolderId = migratedLocalFolderId(folder.id, localParentId)
+      const targetItems = movedItemsByFolderId.get(targetFolderId) ?? []
+      targetItems.push({
+        ...item,
+        parentId: item.parentId === localParentId ? undefined : item.parentId,
+      })
+      movedItemsByFolderId.set(targetFolderId, targetItems)
+    }
+
+    for (const item of localFolderItems) {
+      const migratedId = migratedLocalFolderId(folder.id, item.id)
+      if (existingFolderIds.has(migratedId)) continue
+
+      migratedFolders.push({
+        id: migratedId,
+        name: item.title,
+        description: item.body,
+        color: folder.color,
+        logo: { type: 'icon', value: 'folder' },
+        parentId:
+          item.parentId && localItemsById.has(item.parentId)
+            ? migratedLocalFolderId(folder.id, item.parentId)
+            : folder.id,
+        createdAt: item.createdAt,
+        members: folder.members,
+        sharedFrom: folder.sharedFrom,
+        items: movedItemsByFolderId.get(migratedId) ?? [],
+      })
+      existingFolderIds.add(migratedId)
+    }
+
+    return { ...folder, items: remainingItems }
+  })
+
+  return migratedFolders.length > 0 ? [...updatedFolders, ...migratedFolders] : updatedFolders
+}
+
 export default function ProjectsPage() {
   const currentProfile = useUser()
   const [folders, setFolders] = useState<ProjectFolder[]>([])
@@ -375,7 +450,7 @@ export default function ProjectsPage() {
       if (saved) {
         try {
           const parsed = JSON.parse(saved) as ProjectFolder[]
-          setFolders(parsed)
+          setFolders(migrateLocalFolderItems(parsed))
           setSelectedFolderId(null)
         } catch {
           window.localStorage.removeItem(STORAGE_KEY)
