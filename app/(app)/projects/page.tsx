@@ -770,7 +770,8 @@ export default function ProjectsPage() {
     return (
       <>
         <TopBar
-          title={selectedFolder.name}
+          title="Prosjekter"
+          noTranslateTitle
           actions={
             <div className="flex items-center gap-2">
               <Button size="sm" variant="secondary" onClick={() => openProjectChat(selectedFolder)}>
