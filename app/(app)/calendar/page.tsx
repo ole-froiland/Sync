@@ -15,7 +15,6 @@ import {
 } from 'lucide-react'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
-import Badge from '@/components/ui/Badge'
 import Input from '@/components/ui/Input'
 import Modal from '@/components/ui/Modal'
 import { useUser } from '@/context/UserContext'

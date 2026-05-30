@@ -25,10 +25,11 @@ export default function HistoryModal({ open, onClose }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // setState calls here are intentional resets before the async fetch.
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    setLoading(true)
+    setLoading(true) // eslint-disable-line react-hooks/set-state-in-effect
     setError(null)
     listCompleted()
       .then((rows) => {

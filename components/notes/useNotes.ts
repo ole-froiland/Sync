@@ -24,10 +24,10 @@ export function useNotes(userId: string | undefined): UseNotesResult {
     notesRef.current = notes
   }, [notes])
 
-  // Initial fetch.
+  // Initial fetch. setState calls here are intentional resets before the async fetch.
   useEffect(() => {
     if (!userId) {
-      setNotes([])
+      setNotes([]) // eslint-disable-line react-hooks/set-state-in-effect
       setLoading(false)
       return
     }
