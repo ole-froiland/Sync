@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { Bell, GitBranch } from 'lucide-react'
+import { Bell, GitBranch, Menu } from 'lucide-react'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 import Button from '@/components/ui/Button'
 
@@ -22,19 +22,33 @@ export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
     window.dispatchEvent(new Event('sync:open-post-modal'))
   }
 
+  function openDrawer() {
+    window.dispatchEvent(new Event('sync:open-drawer'))
+  }
+
   const aiButtonClass =
     'inline-flex h-8 w-8 items-center justify-center text-gray-700 transition-all duration-200 hover:scale-[1.04] hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 dark:text-gray-200'
 
   return (
     <header
-      className="h-14 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-6 flex items-center justify-between flex-shrink-0"
+      className="h-14 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 lg:px-6 flex items-center justify-between flex-shrink-0 gap-3"
     >
-      <h1
-        className="text-base font-semibold text-gray-900 dark:text-gray-100"
-        data-no-translate={noTranslateTitle ? true : undefined}
-      >
-        {title}
-      </h1>
+      <div className="flex items-center gap-2 min-w-0">
+        <button
+          type="button"
+          onClick={openDrawer}
+          aria-label="Open menu"
+          className="lg:hidden inline-flex h-10 w-10 items-center justify-center -ml-2 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        >
+          <Menu size={20} />
+        </button>
+        <h1
+          className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate"
+          data-no-translate={noTranslateTitle ? true : undefined}
+        >
+          {title}
+        </h1>
+      </div>
       <div className="flex items-center gap-2">
         <a
           href="https://claude.ai"
