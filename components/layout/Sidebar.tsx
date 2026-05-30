@@ -15,7 +15,7 @@ export default function Sidebar({ profile, onSignOut, signingOut, className }: S
   return (
     <aside
       className={cn(
-        'w-60 flex-shrink-0 h-screen sticky top-0 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex flex-col',
+        'w-60 flex-shrink-0 h-screen sticky top-0 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 hidden lg:flex flex-col',
         className
       )}
     >
