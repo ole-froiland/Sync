@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent, FormEvent } from 'react'
 import {
   Apple,
@@ -31,6 +31,7 @@ type CalendarEvent = {
   kind: 'focus' | 'meeting' | 'launch' | 'deadline'
   note?: string
   external?: boolean
+  allDay?: boolean
   provider?: CalendarProvider
 }
 
@@ -251,6 +252,7 @@ export default function CalendarPage() {
   const [applePassword, setApplePassword] = useState('')
   const [appleServerUrl, setAppleServerUrl] = useState('https://caldav.icloud.com')
   const [appleSaving, setAppleSaving] = useState(false)
+  const fetchSeqRef = useRef(0)
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -291,11 +293,6 @@ export default function CalendarPage() {
   useEffect(() => {
     void refreshProviderStatus()
   }, [])
-
-  useEffect(() => {
-    void fetchExternalEvents()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, viewDate])
 
   const filteredEvents = useMemo(
     () => [...events, ...externalEvents].filter((event) => eventMatches(event, searchQuery)),
@@ -340,7 +337,9 @@ export default function CalendarPage() {
 
   const monthEvents = useMemo(
     () =>
-      filteredEvents.filter((event) => monthKey(new Date(event.start)) === monthKey(currentMonth)),
+      filteredEvents.filter(
+        (event) => !event.external && monthKey(new Date(event.start)) === monthKey(currentMonth)
+      ),
     [currentMonth, filteredEvents]
   )
 
@@ -356,7 +355,8 @@ export default function CalendarPage() {
     return new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(currentMonth)
   }, [currentMonth, view, viewDate, weekDays])
 
-  async function fetchExternalEvents() {
+  const fetchExternalEvents = useCallback(async function fetchExternalEvents() {
+    const seq = ++fetchSeqRef.current
     setExternalLoading(true)
     try {
       const { start, end } = visibleRange(view, viewDate)
@@ -367,14 +367,22 @@ export default function CalendarPage() {
         events?: ExternalEvent[]
         providerErrors?: { provider: string; message: string }[]
       }
+      if (seq !== fetchSeqRef.current) return
       setExternalEvents((body.events ?? []).map(externalToCalendarEvent))
       setProviderErrors(body.providerErrors ?? [])
+      setProviderError(null)
     } catch (error) {
+      if (seq !== fetchSeqRef.current) return
       setProviderError(error instanceof Error ? error.message : 'Could not load external events.')
     } finally {
-      setExternalLoading(false)
+      if (seq === fetchSeqRef.current) setExternalLoading(false)
     }
-  }
+  }, [view, viewDate])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchExternalEvents()
+  }, [fetchExternalEvents])
 
   async function refreshProviderStatus() {
     try {
@@ -536,6 +544,7 @@ export default function CalendarPage() {
     return filteredEvents
       .filter((event) => isSameDay(new Date(event.start), day))
       .filter((event) => {
+        if (event.allDay) return true
         const hour = new Date(event.start).getHours()
         return hour >= VISIBLE_START_HOUR && hour < VISIBLE_END_HOUR
       })
@@ -1082,19 +1091,32 @@ function TimelineColumn({
           aria-label={`Create event at ${pad(hour)}:00`}
         />
       ))}
-      {events.map((event) => {
-        const position = eventPosition(event)
-        return (
+      {events
+        .filter((event) => !event.allDay)
+        .map((event) => {
+          const position = eventPosition(event)
+          return (
+            <div
+              key={event.id}
+              className={`absolute left-1 right-1 z-10 overflow-hidden rounded-md px-2 py-1 text-[11px] ring-1 ${toneClasses(event.tone)}`}
+              style={{ top: position.top + 2, height: Math.max(22, position.height - 4) }}
+            >
+              <p className="truncate font-semibold">{event.title}</p>
+              <p className="truncate opacity-80">{formatTimeRange(event.start, event.end)}</p>
+            </div>
+          )
+        })}
+      {events
+        .filter((event) => event.allDay)
+        .map((event, index) => (
           <div
             key={event.id}
-            className={`absolute left-1 right-1 z-10 overflow-hidden rounded-md px-2 py-1 text-[11px] ring-1 ${toneClasses(event.tone)}`}
-            style={{ top: position.top + 2, height: Math.max(22, position.height - 4) }}
+            className={`absolute left-1 right-1 z-20 overflow-hidden rounded-md px-2 py-0.5 text-[11px] ring-1 ${toneClasses(event.tone)}`}
+            style={{ top: 1 + index * 20, height: 18 }}
           >
-            <p className="truncate font-semibold">{event.title}</p>
-            <p className="truncate opacity-80">{formatTimeRange(event.start, event.end)}</p>
+            <p className="truncate font-semibold">All day · {event.title}</p>
           </div>
-        )
-      })}
+        ))}
     </div>
   )
 }

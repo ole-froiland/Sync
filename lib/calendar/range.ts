@@ -11,6 +11,7 @@ export type RenderableEvent = {
   kind: 'focus' | 'meeting' | 'launch' | 'deadline'
   note?: string
   external?: boolean
+  allDay?: boolean
   provider?: CalendarProvider
 }
 
@@ -48,16 +49,22 @@ const PROVIDER_TONE: Record<CalendarProvider, RenderableEvent['tone']> = {
   apple: 'amber',
 }
 
+function normalizeAllDay(value: string, allDay: boolean): string {
+  if (allDay && /^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T00:00:00`
+  return value
+}
+
 export function externalToCalendarEvent(event: ExternalEvent): RenderableEvent {
   return {
     id: event.id,
     title: event.title,
-    start: event.start,
-    end: event.end,
+    start: normalizeAllDay(event.start, event.allDay),
+    end: normalizeAllDay(event.end, event.allDay),
     tone: PROVIDER_TONE[event.provider],
     kind: 'meeting',
     note: event.location,
     external: true,
+    allDay: event.allDay,
     provider: event.provider,
   }
 }

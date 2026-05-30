@@ -30,4 +30,13 @@ describe('externalToCalendarEvent', () => {
     expect(ev.tone).toBe('sky')
     expect(ev.id).toBe('google:abc')
   })
+
+  it('propagates allDay and normalizes a date-only start to local midnight', () => {
+    const ev = externalToCalendarEvent({
+      id: 'apple:x', title: 'Holiday', start: '2026-06-01', end: '2026-06-02',
+      allDay: true, provider: 'apple',
+    })
+    expect(ev.allDay).toBe(true)
+    expect(ev.start).toBe('2026-06-01T00:00:00')
+  })
 })
