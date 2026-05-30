@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import type { CalendarConnectionRow, CalendarProvider } from './providers/types'
+import type { CalendarConnectionRow } from './providers/types'
 
 const SKEW_MS = 60_000
 
