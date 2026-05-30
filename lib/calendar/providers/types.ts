@@ -27,11 +27,3 @@ export type CalendarConnectionRow = {
   caldav_app_password: string | null
   status: string
 }
-
-export interface CalendarProviderAdapter {
-  fetchEvents(
-    connection: CalendarConnectionRow,
-    rangeStart: Date,
-    rangeEnd: Date,
-  ): Promise<ExternalEvent[]>
-}
