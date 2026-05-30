@@ -47,5 +47,14 @@ create trigger set_notes_updated_at
   before update on public.notes
   for each row execute function public.set_updated_at();
 
--- Stream INSERT/UPDATE/DELETE to clients.
-alter publication supabase_realtime add table public.notes;
+-- Stream INSERT/UPDATE/DELETE to clients (idempotent — safe for db reset).
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'notes'
+  ) then
+    alter publication supabase_realtime add table public.notes;
+  end if;
+end;
+$$;
