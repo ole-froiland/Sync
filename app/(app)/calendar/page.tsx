@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent, FormEvent } from 'react'
 import {
   Apple,
@@ -13,6 +13,8 @@ import {
   Search,
   Trash2,
 } from 'lucide-react'
+import { visibleRange, externalToCalendarEvent } from '@/lib/calendar/range'
+import type { ExternalEvent } from '@/lib/calendar/providers/types'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -28,6 +30,9 @@ type CalendarEvent = {
   tone: 'violet' | 'emerald' | 'amber' | 'sky'
   kind: 'focus' | 'meeting' | 'launch' | 'deadline'
   note?: string
+  external?: boolean
+  allDay?: boolean
+  provider?: CalendarProvider
 }
 
 type CalendarView = 'month' | 'week' | 'day'
@@ -239,11 +244,15 @@ export default function CalendarPage() {
   const [externalOpen, setExternalOpen] = useState(false)
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([])
   const [providerError, setProviderError] = useState<string | null>(null)
+  const [externalEvents, setExternalEvents] = useState<CalendarEvent[]>([])
+  const [externalLoading, setExternalLoading] = useState(false)
+  const [providerErrors, setProviderErrors] = useState<{ provider: string; message: string }[]>([])
   const [appleModalOpen, setAppleModalOpen] = useState(false)
   const [appleUsername, setAppleUsername] = useState('')
   const [applePassword, setApplePassword] = useState('')
   const [appleServerUrl, setAppleServerUrl] = useState('https://caldav.icloud.com')
   const [appleSaving, setAppleSaving] = useState(false)
+  const fetchSeqRef = useRef(0)
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -286,8 +295,8 @@ export default function CalendarPage() {
   }, [])
 
   const filteredEvents = useMemo(
-    () => events.filter((event) => eventMatches(event, searchQuery)),
-    [events, searchQuery]
+    () => [...events, ...externalEvents].filter((event) => eventMatches(event, searchQuery)),
+    [events, externalEvents, searchQuery]
   )
 
   const eventMap = useMemo(() => {
@@ -328,7 +337,9 @@ export default function CalendarPage() {
 
   const monthEvents = useMemo(
     () =>
-      filteredEvents.filter((event) => monthKey(new Date(event.start)) === monthKey(currentMonth)),
+      filteredEvents.filter(
+        (event) => !event.external && monthKey(new Date(event.start)) === monthKey(currentMonth)
+      ),
     [currentMonth, filteredEvents]
   )
 
@@ -343,6 +354,35 @@ export default function CalendarPage() {
     }
     return new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(currentMonth)
   }, [currentMonth, view, viewDate, weekDays])
+
+  const fetchExternalEvents = useCallback(async function fetchExternalEvents() {
+    const seq = ++fetchSeqRef.current
+    setExternalLoading(true)
+    try {
+      const { start, end } = visibleRange(view, viewDate)
+      const params = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() })
+      const res = await fetch(`/api/calendar/events?${params}`)
+      if (!res.ok) throw new Error('Could not load external events.')
+      const body = (await res.json()) as {
+        events?: ExternalEvent[]
+        providerErrors?: { provider: string; message: string }[]
+      }
+      if (seq !== fetchSeqRef.current) return
+      setExternalEvents((body.events ?? []).map(externalToCalendarEvent))
+      setProviderErrors(body.providerErrors ?? [])
+      setProviderError(null)
+    } catch (error) {
+      if (seq !== fetchSeqRef.current) return
+      setProviderError(error instanceof Error ? error.message : 'Could not load external events.')
+    } finally {
+      if (seq === fetchSeqRef.current) setExternalLoading(false)
+    }
+  }, [view, viewDate])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchExternalEvents()
+  }, [fetchExternalEvents])
 
   async function refreshProviderStatus() {
     try {
@@ -441,6 +481,7 @@ export default function CalendarPage() {
   }
 
   function handleEventDragStart(event: DragEvent<HTMLDivElement>, calendarEvent: CalendarEvent) {
+    if (calendarEvent.external) return
     event.stopPropagation()
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('application/x-sync-calendar-event', calendarEvent.id)
@@ -454,7 +495,7 @@ export default function CalendarPage() {
   function moveEventToDay(eventId: string, day: Date, hour?: number) {
     setEvents((prev) =>
       prev.map((event) => {
-        if (event.id !== eventId) return event
+        if (event.id !== eventId || event.external) return event
         const start = new Date(event.start)
         const end = new Date(event.end)
         const duration = +end - +start
@@ -503,6 +544,7 @@ export default function CalendarPage() {
     return filteredEvents
       .filter((event) => isSameDay(new Date(event.start), day))
       .filter((event) => {
+        if (event.allDay) return true
         const hour = new Date(event.start).getHours()
         return hour >= VISIBLE_START_HOUR && hour < VISIBLE_END_HOUR
       })
@@ -514,12 +556,15 @@ export default function CalendarPage() {
     return (
       <div
         key={event.id}
-        draggable={view === 'month'}
+        draggable={view === 'month' && !event.external}
         onClick={(clickEvent) => clickEvent.stopPropagation()}
-        onDragStart={(dragEvent) => handleEventDragStart(dragEvent, event)}
-        className={`cursor-grab rounded-md px-2 py-1 text-[11px] ring-1 active:cursor-grabbing ${toneClasses(event.tone, isSearchHit)}`}
+        onDragStart={(dragEvent) => !event.external && handleEventDragStart(dragEvent, event)}
+        className={`rounded-md px-2 py-1 text-[11px] ring-1 ${event.external ? 'cursor-default opacity-90' : 'cursor-grab active:cursor-grabbing'} ${toneClasses(event.tone, isSearchHit)}`}
       >
-        <p className="truncate font-semibold">{event.title}</p>
+        <p className="truncate font-semibold">
+          {event.external && <span className="mr-1 opacity-60">●</span>}
+          {event.title}
+        </p>
         {!compact && (
           <p className="mt-0.5 truncate opacity-80">
             {new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(new Date(event.start))}
@@ -542,6 +587,7 @@ export default function CalendarPage() {
       return
     }
     await refreshProviderStatus()
+    await fetchExternalEvents()
   }
 
   function connectProvider(provider: CalendarProvider) {
@@ -844,6 +890,26 @@ export default function CalendarPage() {
 
               {externalOpen && (
                 <div className="mt-4 space-y-2">
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void fetchExternalEvents()}
+                      loading={externalLoading}
+                    >
+                      Refresh events
+                    </Button>
+                  </div>
+                  {providerErrors.length > 0 && (
+                    <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+                      {providerErrors.map((pe) => (
+                        <p key={pe.provider}>
+                          {providerMeta[pe.provider as CalendarProvider]?.label ?? pe.provider}: {pe.message}
+                        </p>
+                      ))}
+                    </div>
+                  )}
                   {(['apple', 'microsoft', 'google'] as CalendarProvider[]).map((provider) => {
                     const status = providerStatus(provider)
                     return (
@@ -1025,19 +1091,32 @@ function TimelineColumn({
           aria-label={`Create event at ${pad(hour)}:00`}
         />
       ))}
-      {events.map((event) => {
-        const position = eventPosition(event)
-        return (
+      {events
+        .filter((event) => !event.allDay)
+        .map((event) => {
+          const position = eventPosition(event)
+          return (
+            <div
+              key={event.id}
+              className={`absolute left-1 right-1 z-10 overflow-hidden rounded-md px-2 py-1 text-[11px] ring-1 ${toneClasses(event.tone)}`}
+              style={{ top: position.top + 2, height: Math.max(22, position.height - 4) }}
+            >
+              <p className="truncate font-semibold">{event.title}</p>
+              <p className="truncate opacity-80">{formatTimeRange(event.start, event.end)}</p>
+            </div>
+          )
+        })}
+      {events
+        .filter((event) => event.allDay)
+        .map((event, index) => (
           <div
             key={event.id}
-            className={`absolute left-1 right-1 z-10 overflow-hidden rounded-md px-2 py-1 text-[11px] ring-1 ${toneClasses(event.tone)}`}
-            style={{ top: position.top + 2, height: Math.max(22, position.height - 4) }}
+            className={`absolute left-1 right-1 z-20 overflow-hidden rounded-md px-2 py-0.5 text-[11px] ring-1 ${toneClasses(event.tone)}`}
+            style={{ top: 1 + index * 20, height: 18 }}
           >
-            <p className="truncate font-semibold">{event.title}</p>
-            <p className="truncate opacity-80">{formatTimeRange(event.start, event.end)}</p>
+            <p className="truncate font-semibold">All day · {event.title}</p>
           </div>
-        )
-      })}
+        ))}
     </div>
   )
 }
