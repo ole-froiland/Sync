@@ -48,8 +48,9 @@ user's existing local events.
   "Refresh" button. Always fresh; simplest.
 - **External events are read-only.** Visually distinct, not draggable/editable.
   Local events and the notepad drag feature stay exactly as today.
-- **Apple ICS parsing:** add the `node-ical` dependency (well-tested) rather than
-  hand-rolling an iCalendar parser.
+- **Apple:** use the `tsdav` CalDAV client for the protocol (discovery, auth,
+  range query) and the `node-ical` dependency to parse the returned iCalendar
+  bodies — "simplest and safest" rather than hand-rolling CalDAV XML + ICS.
 - **Security (token encryption at rest):** out of scope for this change; noted
   as a follow-up.
 
@@ -87,11 +88,16 @@ export interface CalendarProviderAdapter {
   to `ExternalEvent`. Handles all-day (`start.date`) vs timed (`start.dateTime`).
 - `microsoft.ts` — `GET https://graph.microsoft.com/v1.0/me/calendarView`
   with `startDateTime`/`endDateTime`. Maps `value[]` to `ExternalEvent`.
-- `apple.ts` — CalDAV `REPORT` (`calendar-query`) against `caldav_server_url`
-  with Basic auth (`caldav_username` + `caldav_app_password`), then parse the
-  returned `.ics` bodies with `node-ical` into `ExternalEvent`.
+- `apple.ts` — use the `tsdav` CalDAV client (handles iCloud principal/calendar
+  discovery, Basic auth with `caldav_username` + `caldav_app_password`, and
+  time-range queries), then parse each returned `.ics` body with `node-ical`
+  into `ExternalEvent`. (Hand-rolling CalDAV XML discovery against iCloud is
+  fragile; `tsdav` is the simpler, safer choice.)
 
-Each adapter is independently unit-testable with mocked HTTP responses.
+Each adapter exposes a **pure mapper** (`mapGoogleEvents`, `mapMicrosoftEvents`,
+`parseAppleIcs`) that is unit-tested against sample responses with no network,
+plus a `fetchEvents` that performs the HTTP/CalDAV call and delegates to the
+mapper.
 
 ### 2. Token refresh (Google / Microsoft)
 
@@ -190,7 +196,9 @@ Documented as a short step-by-step in this spec's appendix:
 **Modified**
 - `app/(app)/calendar/page.tsx` (fetch + render external read-only events,
   refresh button, error surfacing)
-- `package.json` (add `node-ical`)
+- `package.json` (add `node-ical`, `tsdav`; add `vitest` +
+  `vite-tsconfig-paths` dev deps and a `test` script — the repo currently has
+  no test runner)
 
 **Unchanged**
 - DB schema, existing connect/callback/setup/status/disconnect routes.
