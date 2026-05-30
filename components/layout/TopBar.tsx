@@ -1,9 +1,10 @@
 'use client'
 
 import Image from 'next/image'
-import { Bell, GitBranch, Menu } from 'lucide-react'
+import { Bell, GitBranch, Menu, Plus } from 'lucide-react'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 import Button from '@/components/ui/Button'
+import { cn } from '@/lib/utils'
 
 interface TopBarProps {
   title: string
@@ -56,7 +57,7 @@ export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
           rel="noreferrer"
           aria-label="Open Claude"
           title="Claude"
-          className={aiButtonClass}
+          className={cn(aiButtonClass, 'hidden sm:inline-flex')}
         >
           <Image src="/brand/claude-logo.svg" alt="" width={18} height={18} aria-hidden="true" />
         </a>
@@ -66,7 +67,7 @@ export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
           rel="noreferrer"
           aria-label="Open ChatGPT"
           title="ChatGPT"
-          className={aiButtonClass}
+          className={cn(aiButtonClass, 'hidden sm:inline-flex')}
         >
           <Image
             src="/brand/chatgpt-logo.png"
@@ -77,12 +78,24 @@ export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
             className="rounded-sm"
           />
         </a>
-        <Button size="sm" variant="secondary" onClick={openRepoModal} className="h-8">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={openRepoModal}
+          className="h-8"
+          aria-label="New repo"
+        >
           <GitBranch size={14} />
-          New repo
+          <span className="hidden sm:inline">New repo</span>
         </Button>
-        <Button size="sm" onClick={openPostModal} className="h-8">
-          New post
+        <Button
+          size="sm"
+          onClick={openPostModal}
+          className="h-8"
+          aria-label="New post"
+        >
+          <Plus size={14} />
+          <span className="hidden sm:inline">New post</span>
         </Button>
         <ThemeToggle />
         <button className="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300 transition-colors relative">
