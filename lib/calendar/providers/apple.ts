@@ -12,6 +12,13 @@ type VEvent = {
   datetype?: string
 }
 
+function toLocalDateKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export function parseAppleIcs(ics: string): ExternalEvent[] {
   const parsed = nodeIcal.sync.parseICS(ics) as Record<string, VEvent>
   const events: ExternalEvent[] = []
@@ -20,12 +27,13 @@ export function parseAppleIcs(ics: string): ExternalEvent[] {
     if (component.type !== 'VEVENT' || !component.start) continue
     const start = component.start
     const end = component.end ?? component.start
+    const allDay = component.datetype === 'date'
     events.push({
       id: `apple:${component.uid ?? key}`,
       title: component.summary ?? '(No title)',
-      start: new Date(start).toISOString(),
-      end: new Date(end).toISOString(),
-      allDay: component.datetype === 'date',
+      start: allDay ? toLocalDateKey(start) : new Date(start).toISOString(),
+      end: allDay ? toLocalDateKey(end) : new Date(end).toISOString(),
+      allDay,
       provider: 'apple',
       location: component.location || undefined,
     })

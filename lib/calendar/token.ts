@@ -55,7 +55,7 @@ type RefreshResponse = {
 export async function getValidAccessToken(
   connection: CalendarConnectionRow,
 ): Promise<string> {
-  const provider = connection.provider as CalendarProvider
+  const provider = connection.provider
   if (provider === 'apple') {
     throw new Error('Apple connections do not use OAuth access tokens')
   }
@@ -95,7 +95,7 @@ export async function getValidAccessToken(
     : null
 
   const supabase = await createClient()
-  await supabase
+  const { error: persistError } = await supabase
     .from('calendar_connections')
     .update({
       access_token: data.access_token,
@@ -104,6 +104,9 @@ export async function getValidAccessToken(
       ...(data.refresh_token ? { refresh_token: data.refresh_token } : {}),
     })
     .eq('id', connection.id)
+  if (persistError) {
+    console.error('Failed to persist refreshed calendar token:', persistError.message)
+  }
 
   return data.access_token
 }

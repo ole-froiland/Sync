@@ -34,10 +34,12 @@ describe('parseAppleIcs', () => {
     expect(out[0].provider).toBe('apple')
   })
 
-  it('parses an all-day VEVENT', () => {
+  it('parses an all-day VEVENT as a timezone-independent date string', () => {
     const out = parseAppleIcs(ALLDAY_ICS)
     expect(out[0].allDay).toBe(true)
     expect(out[0].title).toBe('Vacation')
+    expect(out[0].start).toBe('2026-06-01')
+    expect(out[0].end).toBe('2026-06-02')
   })
 
   it('returns [] for an ICS with no events', () => {
