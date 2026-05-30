@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createNote, completeNote, listActive, removeNote } from '@/lib/notes'
 import type { Note } from '@/types/notes'
@@ -16,14 +16,24 @@ type UseNotesResult = {
 
 export function useNotes(userId: string | undefined): UseNotesResult {
   const [notes, setNotes] = useState<Note[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const notesRef = useRef<Note[]>([])
+  useEffect(() => {
+    notesRef.current = notes
+  }, [notes])
 
   // Initial fetch.
   useEffect(() => {
-    if (!userId) return
+    if (!userId) {
+      setNotes([])
+      setLoading(false)
+      return
+    }
     let cancelled = false
     setLoading(true)
+    setNotes([])
     listActive()
       .then((rows) => {
         if (!cancelled) setNotes(rows)
@@ -85,6 +95,7 @@ export function useNotes(userId: string | undefined): UseNotesResult {
         updated_at: new Date().toISOString(),
       }
       setNotes((prev) => [optimistic, ...prev])
+      setError(null)
       try {
         const saved = await createNote(trimmed, userId)
         setNotes((prev) => {
@@ -101,7 +112,8 @@ export function useNotes(userId: string | undefined): UseNotesResult {
   )
 
   const complete = useCallback(async (id: string) => {
-    const snapshot = notes
+    const snapshot = notesRef.current
+    setError(null)
     setNotes((prev) => prev.filter((n) => n.id !== id))
     try {
       await completeNote(id)
@@ -109,10 +121,11 @@ export function useNotes(userId: string | undefined): UseNotesResult {
       setNotes(snapshot)
       setError(err instanceof Error ? err.message : 'Failed to complete note')
     }
-  }, [notes])
+  }, [])
 
   const remove = useCallback(async (id: string) => {
-    const snapshot = notes
+    const snapshot = notesRef.current
+    setError(null)
     setNotes((prev) => prev.filter((n) => n.id !== id))
     try {
       await removeNote(id)
@@ -120,7 +133,7 @@ export function useNotes(userId: string | undefined): UseNotesResult {
       setNotes(snapshot)
       setError(err instanceof Error ? err.message : 'Failed to delete note')
     }
-  }, [notes])
+  }, [])
 
   return { notes, loading, error, add, complete, remove }
 }
