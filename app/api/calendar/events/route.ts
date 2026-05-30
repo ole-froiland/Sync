@@ -1,21 +1,33 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import * as google from '@/lib/calendar/providers/google'
-import * as microsoft from '@/lib/calendar/providers/microsoft'
-import * as apple from '@/lib/calendar/providers/apple'
 import type {
   CalendarConnectionRow,
   CalendarProvider,
   ExternalEvent,
 } from '@/lib/calendar/providers/types'
 
-const adapters: Record<
-  CalendarProvider,
-  (c: CalendarConnectionRow, s: Date, e: Date) => Promise<ExternalEvent[]>
-> = {
-  google: google.fetchEvents,
-  microsoft: microsoft.fetchEvents,
-  apple: apple.fetchEvents,
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+type FetchEvents = (
+  c: CalendarConnectionRow,
+  s: Date,
+  e: Date,
+) => Promise<ExternalEvent[]>
+
+// Adapters are imported lazily so the build's page-data collection does not
+// evaluate their heavy CalDAV/ICS dependencies (tsdav, node-ical).
+async function getAdapter(provider: CalendarProvider): Promise<FetchEvents | null> {
+  switch (provider) {
+    case 'google':
+      return (await import('@/lib/calendar/providers/google')).fetchEvents
+    case 'microsoft':
+      return (await import('@/lib/calendar/providers/microsoft')).fetchEvents
+    case 'apple':
+      return (await import('@/lib/calendar/providers/apple')).fetchEvents
+    default:
+      return null
+  }
 }
 
 export async function GET(request: Request) {
@@ -55,7 +67,7 @@ export async function GET(request: Request) {
 
   await Promise.all(
     (connections ?? []).map(async (connection: CalendarConnectionRow) => {
-      const adapter = adapters[connection.provider]
+      const adapter = await getAdapter(connection.provider)
       if (!adapter) return
       try {
         const result = await adapter(connection, rangeStart, rangeEnd)
