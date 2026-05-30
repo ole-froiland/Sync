@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Clock3,
   GripVertical,
   Plus,
   Search,
@@ -20,6 +19,7 @@ import Badge from '@/components/ui/Badge'
 import Input from '@/components/ui/Input'
 import Modal from '@/components/ui/Modal'
 import { useUser } from '@/context/UserContext'
+import NotesPanel from '@/components/notes/NotesPanel'
 
 type CalendarEvent = {
   id: string
@@ -891,43 +891,7 @@ export default function CalendarPage() {
               )}
             </section>
 
-            <section className="min-h-0 flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Upcoming</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Filtered by search.</p>
-                </div>
-                <Clock3 size={16} className="text-gray-400 dark:text-gray-500" />
-              </div>
-              <div className="mt-3 space-y-2 overflow-hidden">
-                {[...filteredEvents]
-                  .sort((a, b) => +new Date(a.start) - +new Date(b.start))
-                  .slice(0, 4)
-                  .map((event) => (
-                    <div key={event.id} className="rounded-lg border border-gray-100 p-2 dark:border-gray-800">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="min-w-0 truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
-                          {event.title}
-                        </p>
-                        <Badge className={toneClasses(event.tone)}>{event.kind}</Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        {new Intl.DateTimeFormat('en', {
-                          weekday: 'short',
-                          month: 'short',
-                          day: 'numeric',
-                        }).format(new Date(event.start))}{' '}
-                        · {formatTimeRange(event.start, event.end)}
-                      </p>
-                    </div>
-                  ))}
-                {filteredEvents.length === 0 && (
-                  <p className="rounded-lg border border-dashed border-gray-200 p-3 text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">
-                    No events match this search.
-                  </p>
-                )}
-              </div>
-            </section>
+            <NotesPanel variant="embedded" />
           </aside>
         </div>
       </div>
