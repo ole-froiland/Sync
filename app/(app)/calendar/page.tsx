@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { visibleRange, externalToCalendarEvent } from '@/lib/calendar/range'
 import { buildCalendarList, filterByCalendars } from '@/lib/calendar/calendar-filter'
+import { upsertEvent, removeEvent } from '@/lib/calendar/event-mutations'
 import type { ExternalEvent } from '@/lib/calendar/providers/types'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
@@ -178,6 +179,8 @@ export default function CalendarPage() {
   const [eventStart, setEventStart] = useState('09:00')
   const [eventEnd, setEventEnd] = useState('10:00')
   const [eventKind, setEventKind] = useState<CalendarEvent['kind']>('meeting')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [hiddenCalendarIds, setHiddenCalendarIds] = useState<Set<string>>(new Set())
   const [manageOpen, setManageOpen] = useState(false)
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([])
@@ -370,12 +373,47 @@ export default function CalendarPage() {
   }
 
   function openCreateModal(day: Date, time = '09:00') {
+    setEditingId(null)
+    setConfirmDelete(false)
     setEventTitle('')
     setEventStart(time)
     setEventEnd(endTimeFor(time))
     setEventKind('meeting')
     setCreateTarget({ date: new Date(day.getFullYear(), day.getMonth(), day.getDate()), time })
     setViewDate(day)
+  }
+
+  function openEditModal(calendarEvent: CalendarEvent) {
+    if (calendarEvent.external) return
+    const startDate = new Date(calendarEvent.start)
+    const endDate = new Date(calendarEvent.end)
+    const time = `${pad(startDate.getHours())}:${pad(startDate.getMinutes())}`
+    setEditingId(calendarEvent.id)
+    setConfirmDelete(false)
+    setEventTitle(calendarEvent.title)
+    setEventStart(time)
+    setEventEnd(`${pad(endDate.getHours())}:${pad(endDate.getMinutes())}`)
+    setEventKind(calendarEvent.kind)
+    setCreateTarget({
+      date: new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate()),
+      time,
+    })
+  }
+
+  function closeEventModal() {
+    setCreateTarget(null)
+    setEditingId(null)
+    setConfirmDelete(false)
+  }
+
+  function deleteCurrentEvent() {
+    if (!editingId) return
+    if (!confirmDelete) {
+      setConfirmDelete(true)
+      return
+    }
+    setEvents((prev) => removeEvent(prev, editingId))
+    closeEventModal()
   }
 
   function saveEvent(event: FormEvent<HTMLFormElement>) {
@@ -386,16 +424,30 @@ export default function CalendarPage() {
     const end = dateWithTime(createTarget.date, eventEnd)
     if (+end <= +start) end.setHours(start.getHours() + 1, start.getMinutes())
 
-    const newEvent: CalendarEvent = {
-      id: `cal-${Date.now()}`,
-      title: eventTitle.trim(),
-      start: localDateTimeString(start),
-      end: localDateTimeString(end),
-      tone: selectedKind.tone,
-      kind: selectedKind.kind,
+    if (editingId) {
+      const existing = events.find((e) => e.id === editingId)
+      const updated: CalendarEvent = {
+        ...existing,
+        id: editingId,
+        title: eventTitle.trim(),
+        start: localDateTimeString(start),
+        end: localDateTimeString(end),
+        tone: selectedKind.tone,
+        kind: selectedKind.kind,
+      }
+      setEvents((prev) => upsertEvent(prev, updated))
+    } else {
+      const newEvent: CalendarEvent = {
+        id: `cal-${Date.now()}`,
+        title: eventTitle.trim(),
+        start: localDateTimeString(start),
+        end: localDateTimeString(end),
+        tone: selectedKind.tone,
+        kind: selectedKind.kind,
+      }
+      setEvents((prev) => upsertEvent(prev, newEvent))
     }
-    setEvents((prev) => [...prev, newEvent].sort((a, b) => +new Date(a.start) - +new Date(b.start)))
-    setCreateTarget(null)
+    closeEventModal()
   }
 
   function addQuickEvent() {
@@ -469,7 +521,10 @@ export default function CalendarPage() {
       <div
         key={event.id}
         draggable={view === 'month' && !event.external}
-        onClick={(clickEvent) => clickEvent.stopPropagation()}
+        onClick={(clickEvent) => {
+          clickEvent.stopPropagation()
+          if (!event.external) openEditModal(event)
+        }}
         onDragStart={(dragEvent) => !event.external && handleEventDragStart(dragEvent, event)}
         className={`rounded-md px-2 py-1 text-[11px] ring-1 ${event.external ? 'cursor-default opacity-90' : 'cursor-grab active:cursor-grabbing'} ${toneClasses(event.tone, isSearchHit)}`}
       >
@@ -688,6 +743,7 @@ export default function CalendarPage() {
                         events={timelineEvents(day)}
                         onCreate={openCreateModal}
                         onDropTask={handleCalendarDrop}
+                        onEventClick={openEditModal}
                       />
                     ))}
                   </div>
@@ -702,6 +758,7 @@ export default function CalendarPage() {
                     events={timelineEvents(viewDate)}
                     onCreate={openCreateModal}
                     onDropTask={handleCalendarDrop}
+                    onEventClick={openEditModal}
                   />
                 </div>
               )}
@@ -775,7 +832,7 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      <Modal open={Boolean(createTarget)} onClose={() => setCreateTarget(null)} title="Create event">
+      <Modal open={Boolean(createTarget)} onClose={closeEventModal} title={editingId ? 'Edit event' : 'Create event'}>
         <form onSubmit={saveEvent} className="space-y-4">
           <Input
             label="Title"
@@ -802,13 +859,27 @@ export default function CalendarPage() {
               ))}
             </select>
           </label>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => setCreateTarget(null)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!eventTitle.trim()}>
-              Save event
-            </Button>
+          <div className="flex items-center justify-between gap-2 pt-2">
+            <div>
+              {editingId && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={deleteCurrentEvent}
+                  className={confirmDelete ? 'text-red-600 dark:text-red-400' : ''}
+                >
+                  {confirmDelete ? 'Confirm delete?' : 'Delete'}
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" onClick={closeEventModal}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!eventTitle.trim()}>
+                {editingId ? 'Save changes' : 'Save event'}
+              </Button>
+            </div>
           </div>
         </form>
       </Modal>
@@ -922,11 +993,13 @@ function TimelineColumn({
   events,
   onCreate,
   onDropTask,
+  onEventClick,
 }: {
   day: Date
   events: CalendarEvent[]
   onCreate: (day: Date, time?: string) => void
   onDropTask: (event: DragEvent<HTMLElement>, day: Date, preferredHour: number) => void
+  onEventClick: (event: CalendarEvent) => void
 }) {
   return (
     <div
@@ -952,7 +1025,11 @@ function TimelineColumn({
           return (
             <div
               key={event.id}
-              className={`absolute left-1 right-1 z-10 overflow-hidden rounded-md px-2 py-1 text-[11px] ring-1 ${toneClasses(event.tone)}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (!event.external) onEventClick(event)
+              }}
+              className={`absolute left-1 right-1 z-10 overflow-hidden rounded-md px-2 py-1 text-[11px] ring-1 ${event.external ? 'cursor-default' : 'cursor-pointer'} ${toneClasses(event.tone)}`}
               style={{ top: position.top + 2, height: Math.max(22, position.height - 4) }}
             >
               <p className="truncate font-semibold">{event.title}</p>
@@ -965,6 +1042,10 @@ function TimelineColumn({
         .map((event, index) => (
           <div
             key={event.id}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (!event.external) onEventClick(event)
+            }}
             className={`absolute left-1 right-1 z-20 overflow-hidden rounded-md px-2 py-0.5 text-[11px] ring-1 ${toneClasses(event.tone)}`}
             style={{ top: 1 + index * 20, height: 18 }}
           >
