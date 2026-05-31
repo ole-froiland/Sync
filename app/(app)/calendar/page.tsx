@@ -83,43 +83,7 @@ const kindOptions: Array<{ kind: CalendarEvent['kind']; label: string; tone: Cal
   { kind: 'deadline', label: 'Deadline', tone: 'amber' },
 ]
 
-const seedEvents: CalendarEvent[] = [
-  {
-    id: 'cal-1',
-    title: 'Sprint planning',
-    start: '2026-05-12T09:00:00',
-    end: '2026-05-12T10:00:00',
-    tone: 'violet',
-    kind: 'meeting',
-    note: 'Scope dashboard polish and chat follow-ups.',
-  },
-  {
-    id: 'cal-2',
-    title: 'Ship unread badge',
-    start: '2026-05-13T14:00:00',
-    end: '2026-05-13T15:00:00',
-    tone: 'emerald',
-    kind: 'launch',
-    note: 'Deploy and verify notification state.',
-  },
-  {
-    id: 'cal-3',
-    title: 'Deep work: calendar UX',
-    start: '2026-05-15T10:00:00',
-    end: '2026-05-15T12:30:00',
-    tone: 'sky',
-    kind: 'focus',
-  },
-  {
-    id: 'cal-4',
-    title: 'Feedback review',
-    start: '2026-05-19T13:00:00',
-    end: '2026-05-19T14:00:00',
-    tone: 'amber',
-    kind: 'deadline',
-    note: 'Sort roadmap ideas and mark next wins.',
-  },
-]
+const seedEvents: CalendarEvent[] = []
 
 function pad(value: number) {
   return String(value).padStart(2, '0')
@@ -234,7 +198,10 @@ export default function CalendarPage() {
       if (rawEvents) {
         try {
           const parsed = JSON.parse(rawEvents) as CalendarEvent[]
-          if (Array.isArray(parsed) && parsed.length > 0) setEvents(parsed)
+          const SEED_IDS = new Set(['cal-1', 'cal-2', 'cal-3', 'cal-4'])
+          const cleaned = Array.isArray(parsed) ? parsed.filter((e) => !SEED_IDS.has(e.id)) : []
+          if (cleaned.length > 0) setEvents(cleaned)
+          else setEvents([])
         } catch {}
       }
 
