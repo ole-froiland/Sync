@@ -7,6 +7,8 @@ export type ExternalEvent = {
   end: string // ISO 8601
   allDay: boolean
   provider: CalendarProvider
+  calendarId: string // stable key for filtering, e.g. "primary" or a CalDAV URL
+  calendarName: string // display label, e.g. "Trening"
   location?: string
 }
 

@@ -12,7 +12,7 @@ describe('mapGoogleEvents', () => {
         start: { dateTime: '2026-05-12T09:00:00+02:00' },
         end: { dateTime: '2026-05-12T10:00:00+02:00' },
       },
-    ])
+    ], 'primary', 'Primary')
     expect(out).toEqual([
       {
         id: 'google:abc',
@@ -21,9 +21,13 @@ describe('mapGoogleEvents', () => {
         end: '2026-05-12T10:00:00+02:00',
         allDay: false,
         provider: 'google',
+        calendarId: 'primary',
+        calendarName: 'Primary',
         location: 'Room 1',
       },
     ])
+    expect(out[0].calendarId).toBe('primary')
+    expect(out[0].calendarName).toBe('Primary')
   })
 
   it('maps an all-day event using date fields', () => {

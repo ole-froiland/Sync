@@ -24,7 +24,7 @@ END:VCALENDAR`
 
 describe('parseAppleIcs', () => {
   it('parses a timed VEVENT', () => {
-    const out = parseAppleIcs(TIMED_ICS)
+    const out = parseAppleIcs(TIMED_ICS, 'cal-url-1', 'Trening')
     expect(out).toHaveLength(1)
     expect(out[0].id).toBe('apple:evt-1@icloud.com')
     expect(out[0].title).toBe('Dentist')
@@ -32,10 +32,12 @@ describe('parseAppleIcs', () => {
     expect(out[0].allDay).toBe(false)
     expect(new Date(out[0].start).toISOString()).toBe('2026-05-12T09:00:00.000Z')
     expect(out[0].provider).toBe('apple')
+    expect(out[0].calendarId).toBe('cal-url-1')
+    expect(out[0].calendarName).toBe('Trening')
   })
 
   it('parses an all-day VEVENT as a timezone-independent date string', () => {
-    const out = parseAppleIcs(ALLDAY_ICS)
+    const out = parseAppleIcs(ALLDAY_ICS, 'cal-url-1', 'Trening')
     expect(out[0].allDay).toBe(true)
     expect(out[0].title).toBe('Vacation')
     expect(out[0].start).toBe('2026-06-01')
@@ -43,7 +45,7 @@ describe('parseAppleIcs', () => {
   })
 
   it('returns [] for an ICS with no events', () => {
-    expect(parseAppleIcs('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR')).toEqual([])
+    expect(parseAppleIcs('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR', 'cal-url-1', 'Trening')).toEqual([])
   })
 
   const RECURRING_ICS = `BEGIN:VCALENDAR
@@ -61,6 +63,8 @@ END:VCALENDAR`
   it('expands a daily recurring event across the requested range', () => {
     const out = parseAppleIcs(
       RECURRING_ICS,
+      'cal-url-1',
+      'Trening',
       new Date('2026-05-01T00:00:00Z'),
       new Date('2026-05-08T00:00:00Z'),
     )
@@ -80,6 +84,8 @@ END:VCALENDAR`
   it('gives each recurring occurrence a unique id', () => {
     const out = parseAppleIcs(
       RECURRING_ICS,
+      'cal-url-1',
+      'Trening',
       new Date('2026-05-01T00:00:00Z'),
       new Date('2026-05-08T00:00:00Z'),
     )
@@ -89,7 +95,7 @@ END:VCALENDAR`
   })
 
   it('falls back to a single occurrence when no range is given (recurrence not expanded)', () => {
-    const out = parseAppleIcs(RECURRING_ICS)
+    const out = parseAppleIcs(RECURRING_ICS, 'cal-url-1', 'Trening')
     expect(out).toHaveLength(1)
   })
 
@@ -113,6 +119,8 @@ END:VEVENT
 END:VCALENDAR`
     const out = parseAppleIcs(
       ics,
+      'cal-url-1',
+      'Trening',
       new Date('2026-05-01T00:00:00Z'),
       new Date('2026-06-01T00:00:00Z'),
     )

@@ -17,7 +17,11 @@ function toIso(dt: MsDateTime): string {
   return dt.dateTime.endsWith('Z') ? dt.dateTime : `${dt.dateTime}Z`
 }
 
-export function mapMicrosoftEvents(value: MsEvent[]): ExternalEvent[] {
+export function mapMicrosoftEvents(
+  value: MsEvent[],
+  calendarId = 'primary',
+  calendarName = 'Outlook',
+): ExternalEvent[] {
   return value.map((event) => ({
     id: `microsoft:${event.id}`,
     title: event.subject ?? '(No title)',
@@ -25,6 +29,8 @@ export function mapMicrosoftEvents(value: MsEvent[]): ExternalEvent[] {
     end: toIso(event.end),
     allDay: Boolean(event.isAllDay),
     provider: 'microsoft' as const,
+    calendarId,
+    calendarName,
     location: event.location?.displayName || undefined,
   }))
 }

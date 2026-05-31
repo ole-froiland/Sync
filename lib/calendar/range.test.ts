@@ -24,6 +24,8 @@ describe('externalToCalendarEvent', () => {
       end: '2026-05-12T10:00:00Z',
       allDay: false,
       provider: 'google',
+      calendarId: 'primary',
+      calendarName: 'Primary',
     })
     expect(ev.external).toBe(true)
     expect(ev.provider).toBe('google')
@@ -34,7 +36,7 @@ describe('externalToCalendarEvent', () => {
   it('propagates allDay and normalizes a date-only start to local midnight', () => {
     const ev = externalToCalendarEvent({
       id: 'apple:x', title: 'Holiday', start: '2026-06-01', end: '2026-06-02',
-      allDay: true, provider: 'apple',
+      allDay: true, provider: 'apple', calendarId: 'cal-url-1', calendarName: 'Calendar',
     })
     expect(ev.allDay).toBe(true)
     expect(ev.start).toBe('2026-06-01T00:00:00')

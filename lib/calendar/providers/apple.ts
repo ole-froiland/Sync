@@ -55,6 +55,8 @@ function buildEvent(
   start: Date,
   end: Date,
   id: string,
+  calendarId: string,
+  calendarName: string,
 ): ExternalEvent {
   const allDay = source.datetype === 'date'
   return {
@@ -64,12 +66,16 @@ function buildEvent(
     end: allDay ? toLocalDateKey(end) : new Date(end).toISOString(),
     allDay,
     provider: 'apple',
+    calendarId,
+    calendarName,
     location: source.location || undefined,
   }
 }
 
 export function parseAppleIcs(
   ics: string,
+  calendarId: string,
+  calendarName: string,
   rangeStart?: Date,
   rangeEnd?: Date,
 ): ExternalEvent[] {
@@ -89,15 +95,15 @@ export function parseAppleIcs(
         const override = findOverride(component.recurrences, occ)
         const id = `apple:${baseId}:${occ.toISOString()}`
         if (override?.start) {
-          events.push(buildEvent(override, override.start, override.end ?? override.start, id))
+          events.push(buildEvent(override, override.start, override.end ?? override.start, id, calendarId, calendarName))
         } else {
-          events.push(buildEvent(component, occ, new Date(occ.getTime() + durationMs), id))
+          events.push(buildEvent(component, occ, new Date(occ.getTime() + durationMs), id, calendarId, calendarName))
         }
       }
       continue
     }
 
-    events.push(buildEvent(component, start, end, `apple:${baseId}`))
+    events.push(buildEvent(component, start, end, `apple:${baseId}`, calendarId, calendarName))
   }
   return events
 }
@@ -125,16 +131,18 @@ export async function fetchEvents(
   const events: ExternalEvent[] = []
 
   for (const calendar of calendars) {
+    const calendarId = String(calendar.url)
+    const calendarName =
+      typeof calendar.displayName === 'string' && calendar.displayName
+        ? calendar.displayName
+        : 'Calendar'
     const objects = await client.fetchCalendarObjects({
       calendar,
-      timeRange: {
-        start: rangeStart.toISOString(),
-        end: rangeEnd.toISOString(),
-      },
+      timeRange: { start: rangeStart.toISOString(), end: rangeEnd.toISOString() },
     })
     for (const object of objects) {
       if (object.data) {
-        events.push(...parseAppleIcs(object.data, rangeStart, rangeEnd))
+        events.push(...parseAppleIcs(object.data, calendarId, calendarName, rangeStart, rangeEnd))
       }
     }
   }

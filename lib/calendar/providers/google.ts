@@ -11,7 +11,11 @@ type GoogleEvent = {
   end?: GoogleDate
 }
 
-export function mapGoogleEvents(items: GoogleEvent[]): ExternalEvent[] {
+export function mapGoogleEvents(
+  items: GoogleEvent[],
+  calendarId = 'primary',
+  calendarName = 'Primary',
+): ExternalEvent[] {
   return items
     .filter((item) => item.status !== 'cancelled')
     .map((item) => {
@@ -23,6 +27,8 @@ export function mapGoogleEvents(items: GoogleEvent[]): ExternalEvent[] {
         end: item.end?.dateTime ?? item.end?.date ?? '',
         allDay,
         provider: 'google' as const,
+        calendarId,
+        calendarName,
         location: item.location || undefined,
       }
     })

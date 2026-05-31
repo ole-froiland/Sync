@@ -30,6 +30,8 @@ function event(provider: CalendarProvider, id: string): ExternalEvent {
     end: '2026-05-12T10:00:00.000Z',
     allDay: false,
     provider,
+    calendarId: provider,
+    calendarName: provider,
   }
 }
 

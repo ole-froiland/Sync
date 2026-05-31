@@ -3,7 +3,7 @@ import { mapMicrosoftEvents } from './microsoft'
 
 describe('mapMicrosoftEvents', () => {
   it('maps a timed event and forces UTC Z suffix', () => {
-    const out = mapMicrosoftEvents([
+    const value = [
       {
         id: 'm1',
         subject: 'Standup',
@@ -12,7 +12,8 @@ describe('mapMicrosoftEvents', () => {
         start: { dateTime: '2026-05-12T07:00:00.0000000', timeZone: 'UTC' },
         end: { dateTime: '2026-05-12T07:30:00.0000000', timeZone: 'UTC' },
       },
-    ])
+    ]
+    const out = mapMicrosoftEvents(value, 'primary', 'Outlook')
     expect(out).toEqual([
       {
         id: 'microsoft:m1',
@@ -21,9 +22,13 @@ describe('mapMicrosoftEvents', () => {
         end: '2026-05-12T07:30:00.0000000Z',
         allDay: false,
         provider: 'microsoft',
+        calendarId: 'primary',
+        calendarName: 'Outlook',
         location: 'Teams',
       },
     ])
+    expect(out[0].calendarId).toBe('primary')
+    expect(out[0].calendarName).toBe('Outlook')
   })
 
   it('handles all-day and missing subject/location', () => {
