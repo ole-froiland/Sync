@@ -31,6 +31,8 @@ type CalendarEvent = {
   external?: boolean
   allDay?: boolean
   provider?: CalendarProvider
+  calendarId?: string
+  calendarName?: string
 }
 
 type CalendarView = 'month' | 'week' | 'day'

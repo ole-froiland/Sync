@@ -13,6 +13,8 @@ export type RenderableEvent = {
   external?: boolean
   allDay?: boolean
   provider?: CalendarProvider
+  calendarId?: string
+  calendarName?: string
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -66,5 +68,7 @@ export function externalToCalendarEvent(event: ExternalEvent): RenderableEvent {
     external: true,
     allDay: event.allDay,
     provider: event.provider,
+    calendarId: event.calendarId,
+    calendarName: event.calendarName,
   }
 }
