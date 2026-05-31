@@ -1,19 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import type {
-  CalendarConnectionRow,
-  CalendarProvider,
-  ExternalEvent,
-} from '@/lib/calendar/providers/types'
+import { gatherExternalEvents, type FetchEvents } from '@/lib/calendar/gather-events'
+import type { CalendarProvider } from '@/lib/calendar/providers/types'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-
-type FetchEvents = (
-  c: CalendarConnectionRow,
-  s: Date,
-  e: Date,
-) => Promise<ExternalEvent[]>
 
 // Adapters are imported lazily so the build's page-data collection does not
 // evaluate their heavy CalDAV/ICS dependencies (tsdav, node-ical).
@@ -62,28 +53,19 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const events: ExternalEvent[] = []
-  const providerErrors: { provider: string; message: string }[] = []
-
-  await Promise.all(
-    (connections ?? []).map(async (connection: CalendarConnectionRow) => {
-      const adapter = await getAdapter(connection.provider)
-      if (!adapter) return
-      try {
-        const result = await adapter(connection, rangeStart, rangeEnd)
-        events.push(...result)
-      } catch (caught) {
-        providerErrors.push({
-          provider: connection.provider,
-          message: caught instanceof Error ? caught.message : 'Fetch failed',
-        })
-        await supabase
-          .from('calendar_connections')
-          .update({ status: 'error' })
-          .eq('id', connection.id)
-      }
-    }),
+  const { events, providerErrors, failedConnectionIds } = await gatherExternalEvents(
+    connections ?? [],
+    getAdapter,
+    rangeStart,
+    rangeEnd,
   )
+
+  if (failedConnectionIds.length > 0) {
+    await supabase
+      .from('calendar_connections')
+      .update({ status: 'error' })
+      .in('id', failedConnectionIds)
+  }
 
   return NextResponse.json({ events, providerErrors })
 }
