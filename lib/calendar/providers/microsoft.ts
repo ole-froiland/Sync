@@ -60,5 +60,6 @@ export async function fetchEvents(
     throw new Error(`Microsoft Graph API error: ${res.status}`)
   }
   const data = (await res.json()) as { value?: MsEvent[] }
+  // Primary calendar only; pass calendarId/calendarName when multi-calendar support lands.
   return mapMicrosoftEvents(data.value ?? [])
 }

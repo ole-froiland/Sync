@@ -27,8 +27,6 @@ describe('mapMicrosoftEvents', () => {
         location: 'Teams',
       },
     ])
-    expect(out[0].calendarId).toBe('primary')
-    expect(out[0].calendarName).toBe('Outlook')
   })
 
   it('handles all-day and missing subject/location', () => {

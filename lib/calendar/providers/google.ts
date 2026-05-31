@@ -56,5 +56,6 @@ export async function fetchEvents(
     throw new Error(`Google Calendar API error: ${res.status}`)
   }
   const data = (await res.json()) as { items?: GoogleEvent[] }
+  // Primary calendar only; pass calendarId/calendarName when multi-calendar support lands.
   return mapGoogleEvents(data.items ?? [])
 }

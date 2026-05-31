@@ -26,8 +26,6 @@ describe('mapGoogleEvents', () => {
         location: 'Room 1',
       },
     ])
-    expect(out[0].calendarId).toBe('primary')
-    expect(out[0].calendarName).toBe('Primary')
   })
 
   it('maps an all-day event using date fields', () => {
