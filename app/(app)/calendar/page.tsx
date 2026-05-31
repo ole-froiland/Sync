@@ -426,9 +426,12 @@ export default function CalendarPage() {
 
     if (editingId) {
       const existing = events.find((e) => e.id === editingId)
+      if (!existing) {
+        closeEventModal()
+        return
+      }
       const updated: CalendarEvent = {
         ...existing,
-        id: editingId,
         title: eventTitle.trim(),
         start: localDateTimeString(start),
         end: localDateTimeString(end),
