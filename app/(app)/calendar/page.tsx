@@ -4,14 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent, FormEvent } from 'react'
 import {
   Apple,
-  CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Plus,
   Search,
+  Settings,
 } from 'lucide-react'
 import { visibleRange, externalToCalendarEvent } from '@/lib/calendar/range'
+import { buildCalendarList, filterByCalendars } from '@/lib/calendar/calendar-filter'
 import type { ExternalEvent } from '@/lib/calendar/providers/types'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
@@ -54,6 +55,7 @@ const SLOT_HOURS = Array.from(
   (_, index) => VISIBLE_START_HOUR + index
 )
 const STORAGE_KEY = 'sync-calendar-events'
+const HIDDEN_CALENDARS_KEY = 'sync-calendar-hidden-calendars'
 const HOUR_HEIGHT = 30
 
 const providerMeta: Record<CalendarProvider, { label: string; button: string; description: string }> = {
@@ -121,10 +123,6 @@ const seedEvents: CalendarEvent[] = [
 
 function pad(value: number) {
   return String(value).padStart(2, '0')
-}
-
-function monthKey(date: Date) {
-  return `${date.getFullYear()}-${date.getMonth()}`
 }
 
 function dateKey(date: Date) {
@@ -216,7 +214,8 @@ export default function CalendarPage() {
   const [eventStart, setEventStart] = useState('09:00')
   const [eventEnd, setEventEnd] = useState('10:00')
   const [eventKind, setEventKind] = useState<CalendarEvent['kind']>('meeting')
-  const [externalOpen, setExternalOpen] = useState(false)
+  const [hiddenCalendarIds, setHiddenCalendarIds] = useState<Set<string>>(new Set())
+  const [manageOpen, setManageOpen] = useState(false)
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([])
   const [providerError, setProviderError] = useState<string | null>(null)
   const [externalEvents, setExternalEvents] = useState<CalendarEvent[]>([])
@@ -239,10 +238,18 @@ export default function CalendarPage() {
         } catch {}
       }
 
+      const rawHidden = window.localStorage.getItem(HIDDEN_CALENDARS_KEY)
+      if (rawHidden) {
+        try {
+          const parsed = JSON.parse(rawHidden) as string[]
+          if (Array.isArray(parsed)) setHiddenCalendarIds(new Set(parsed))
+        } catch {}
+      }
+
       const params = new URLSearchParams(window.location.search)
       const error = calendarErrorMessage(params.get('calendar_error'), params.get('detail'))
       if (error) setProviderError(error)
-      if (params.get('calendar_connected')) setExternalOpen(true)
+      if (params.get('calendar_connected')) setManageOpen(true)
       if (params.get('calendar_error') || params.get('calendar_connected')) {
         window.history.replaceState({}, '', '/calendar')
       }
@@ -254,12 +261,24 @@ export default function CalendarPage() {
   }, [events])
 
   useEffect(() => {
+    window.localStorage.setItem(HIDDEN_CALENDARS_KEY, JSON.stringify([...hiddenCalendarIds]))
+  }, [hiddenCalendarIds])
+
+  useEffect(() => {
     void refreshProviderStatus()
   }, [])
 
+  const calendarList = useMemo(
+    () => buildCalendarList([...events, ...externalEvents]),
+    [events, externalEvents],
+  )
+
   const filteredEvents = useMemo(
-    () => [...events, ...externalEvents].filter((event) => eventMatches(event, searchQuery)),
-    [events, externalEvents, searchQuery]
+    () =>
+      filterByCalendars([...events, ...externalEvents], hiddenCalendarIds).filter((event) =>
+        eventMatches(event, searchQuery),
+      ),
+    [events, externalEvents, searchQuery, hiddenCalendarIds],
   )
 
   const eventMap = useMemo(() => {
@@ -297,14 +316,6 @@ export default function CalendarPage() {
       return date
     })
   }, [viewDate])
-
-  const monthEvents = useMemo(
-    () =>
-      filteredEvents.filter(
-        (event) => !event.external && monthKey(new Date(event.start)) === monthKey(currentMonth)
-      ),
-    [currentMonth, filteredEvents]
-  )
 
   const title = useMemo(() => {
     if (view === 'day') {
@@ -356,6 +367,23 @@ export default function CalendarPage() {
     } catch (error) {
       setProviderError(error instanceof Error ? error.message : 'Could not load calendar connections.')
     }
+  }
+
+  function toggleCalendar(id: string) {
+    setHiddenCalendarIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function showAllCalendars() {
+    setHiddenCalendarIds(new Set())
+  }
+
+  function hideAllCalendars() {
+    setHiddenCalendarIds(new Set(calendarList.map((c) => c.id)))
   }
 
   function shiftPeriod(offset: number) {
@@ -716,106 +744,62 @@ export default function CalendarPage() {
 
           <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-hidden">
             <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-              <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-purple-50 p-2 text-purple-600 dark:bg-purple-950/40 dark:text-purple-300">
-                  <CalendarDays size={16} />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Calendar pulse</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {monthEvents.length} visible blocks this month
-                  </p>
-                </div>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Calendars</h3>
+                <button
+                  type="button"
+                  onClick={() => setManageOpen(true)}
+                  className="flex items-center gap-1 text-xs text-gray-500 transition hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300"
+                >
+                  <Settings size={13} /> Manage
+                </button>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <Metric label="Focus" value={monthEvents.filter((event) => event.kind === 'focus').length} />
-                <Metric label="Meetings" value={monthEvents.filter((event) => event.kind === 'meeting').length} />
-              </div>
-            </section>
 
-            <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-              <label className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={externalOpen}
-                  onChange={(event) => setExternalOpen(event.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                />
-                <span>
-                  <span className="block text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    Add external calendars
-                  </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    Connect Apple, Outlook, or Google for setup status.
-                  </span>
-                </span>
-              </label>
-
-              {externalOpen && (
-                <div className="mt-4 space-y-2">
-                  <div className="flex justify-end">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => void fetchExternalEvents()}
-                      loading={externalLoading}
-                    >
-                      Refresh events
-                    </Button>
-                  </div>
-                  {providerErrors.length > 0 && (
-                    <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
-                      {providerErrors.map((pe) => (
-                        <p key={pe.provider}>
-                          {providerMeta[pe.provider as CalendarProvider]?.label ?? pe.provider}: {pe.message}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                  {(['apple', 'microsoft', 'google'] as CalendarProvider[]).map((provider) => {
-                    const status = providerStatus(provider)
-                    return (
-                      <div key={provider} className="rounded-lg border border-gray-100 p-3 dark:border-gray-800">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                              {providerMeta[provider].label}
+              {calendarList.length === 0 ? (
+                <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                  No events to filter yet.
+                </p>
+              ) : (
+                <>
+                  <div className="mt-3 space-y-3">
+                    {(['sync', 'google', 'apple', 'microsoft'] as const).map((source) => {
+                      const rows = calendarList.filter((c) => c.source === source)
+                      if (rows.length === 0) return null
+                      return (
+                        <div key={source}>
+                          {source !== 'sync' && (
+                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                              {source === 'google' ? 'Google' : source === 'apple' ? 'Apple' : 'Outlook'}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              {status?.connected ? status.account ?? 'Connected' : providerMeta[provider].description}
-                            </p>
-                          </div>
-                          {status?.connected && <CheckCircle2 size={16} className="shrink-0 text-emerald-500" />}
-                        </div>
-                        <div className="mt-3 flex gap-2">
-                          {status?.connected ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              className="w-full"
-                              onClick={() => void disconnectProvider(provider)}
-                            >
-                              Disconnect
-                            </Button>
-                          ) : (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              className="w-full"
-                              onClick={() => connectProvider(provider)}
-                            >
-                              {provider === 'apple' && <Apple size={14} />}
-                              {providerMeta[provider].button}
-                            </Button>
                           )}
+                          {rows.map((cal) => {
+                            const visible = !hiddenCalendarIds.has(cal.id)
+                            return (
+                              <label key={cal.id} className="flex cursor-pointer items-center gap-2 py-1">
+                                <input
+                                  type="checkbox"
+                                  checked={visible}
+                                  onChange={() => toggleCalendar(cal.id)}
+                                  className="h-3.5 w-3.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                />
+                                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: cal.color }} />
+                                <span className="truncate text-sm text-gray-700 dark:text-gray-200">{cal.name}</span>
+                              </label>
+                            )
+                          })}
                         </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                      )
+                    })}
+                  </div>
+                  <div className="mt-3 flex gap-3 border-t border-gray-100 pt-2 text-xs dark:border-gray-800">
+                    <button type="button" onClick={showAllCalendars} className="text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300">
+                      Show all
+                    </button>
+                    <button type="button" onClick={hideAllCalendars} className="text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300">
+                      Hide all
+                    </button>
+                  </div>
+                </>
               )}
             </section>
 
@@ -896,16 +880,56 @@ export default function CalendarPage() {
           </div>
         </form>
       </Modal>
-    </>
-  )
-}
 
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/70">
-      <p className="text-[10px] uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
-    </div>
+      <Modal open={manageOpen} onClose={() => setManageOpen(false)} title="Manage calendars">
+        <div className="space-y-2">
+          <div className="flex justify-end">
+            <Button type="button" size="sm" variant="secondary" onClick={() => void fetchExternalEvents()} loading={externalLoading}>
+              Refresh events
+            </Button>
+          </div>
+          {providerErrors.length > 0 && (
+            <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+              {providerErrors.map((pe) => (
+                <p key={pe.provider}>
+                  {providerMeta[pe.provider as CalendarProvider]?.label ?? pe.provider}: {pe.message}
+                </p>
+              ))}
+            </div>
+          )}
+          {(['apple', 'microsoft', 'google'] as CalendarProvider[]).map((provider) => {
+            const status = providerStatus(provider)
+            return (
+              <div key={provider} className="rounded-lg border border-gray-100 p-3 dark:border-gray-800">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {providerMeta[provider].label}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {status?.connected ? status.account ?? 'Connected' : providerMeta[provider].description}
+                    </p>
+                  </div>
+                  {status?.connected && <CheckCircle2 size={16} className="shrink-0 text-emerald-500" />}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  {status?.connected ? (
+                    <Button type="button" size="sm" variant="secondary" className="w-full" onClick={() => void disconnectProvider(provider)}>
+                      Disconnect
+                    </Button>
+                  ) : (
+                    <Button type="button" size="sm" variant="secondary" className="w-full" onClick={() => connectProvider(provider)}>
+                      {provider === 'apple' && <Apple size={14} />}
+                      {providerMeta[provider].button}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </Modal>
+    </>
   )
 }
 
