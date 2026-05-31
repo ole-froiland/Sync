@@ -3,12 +3,13 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
-  // CalDAV/ICS parsing pulls in temporal-polyfill, whose minified global build
-  // breaks when bundled (`s.BigInt is not a function`). Use native require for
-  // these packages so they run unminified in the serverless function.
+  // node-ical's recurrence expansion uses temporal-polyfill, whose minified
+  // build breaks when bundled (`s.BigInt is not a function`). Use native
+  // require for that chain so it runs unminified. tsdav is intentionally NOT
+  // listed: it bundles correctly, and externalizing it resolves to its ESM
+  // build, which native require can't load ("import statement outside a module").
   serverExternalPackages: [
     'node-ical',
-    'tsdav',
     'rrule-temporal',
     'temporal-polyfill',
   ],
