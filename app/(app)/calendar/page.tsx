@@ -8,10 +8,8 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  GripVertical,
   Plus,
   Search,
-  Trash2,
 } from 'lucide-react'
 import { visibleRange, externalToCalendarEvent } from '@/lib/calendar/range'
 import type { ExternalEvent } from '@/lib/calendar/providers/types'
@@ -37,7 +35,6 @@ type CalendarEvent = {
 
 type CalendarView = 'month' | 'week' | 'day'
 type CalendarProvider = 'apple' | 'microsoft' | 'google'
-type NotepadTask = { id: string; title: string; createdAt: string }
 type ProviderStatus = {
   provider: CalendarProvider
   configured: boolean
@@ -55,7 +52,6 @@ const SLOT_HOURS = Array.from(
   (_, index) => VISIBLE_START_HOUR + index
 )
 const STORAGE_KEY = 'sync-calendar-events'
-const NOTEPAD_STORAGE_KEY = 'sync-calendar-notepad-tasks'
 const HOUR_HEIGHT = 30
 
 const providerMeta: Record<CalendarProvider, { label: string; button: string; description: string }> = {
@@ -197,26 +193,6 @@ function toneClasses(tone: CalendarEvent['tone'], active = false) {
   }
 }
 
-function dayTimeOverlaps(events: CalendarEvent[], day: Date, hour: number) {
-  const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0)
-  const end = new Date(start.getTime() + 60 * 60 * 1000)
-  return events.some((event) => {
-    const eventStart = new Date(event.start)
-    const eventEnd = new Date(event.end)
-    return isSameDay(eventStart, day) && start < eventEnd && end > eventStart
-  })
-}
-
-function firstFreeHour(events: CalendarEvent[], day: Date, preferredHour: number) {
-  const candidates = [
-    preferredHour,
-    ...SLOT_HOURS.filter((hour) => hour !== preferredHour && hour > preferredHour),
-    ...SLOT_HOURS.filter((hour) => hour < preferredHour),
-  ].filter((hour) => hour >= VISIBLE_START_HOUR && hour < VISIBLE_END_HOUR)
-
-  return candidates.find((hour) => !dayTimeOverlaps(events, day, hour)) ?? null
-}
-
 function calendarErrorMessage(code: string | null, detail: string | null) {
   if (!code) return null
   const suffix = detail ? ` (${decodeURIComponent(detail)})` : ''
@@ -238,9 +214,6 @@ export default function CalendarPage() {
   const [eventStart, setEventStart] = useState('09:00')
   const [eventEnd, setEventEnd] = useState('10:00')
   const [eventKind, setEventKind] = useState<CalendarEvent['kind']>('meeting')
-  const [notepadTasks, setNotepadTasks] = useState<NotepadTask[]>([])
-  const [notepadDraft, setNotepadDraft] = useState('')
-  const [dropError, setDropError] = useState<string | null>(null)
   const [externalOpen, setExternalOpen] = useState(false)
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([])
   const [providerError, setProviderError] = useState<string | null>(null)
@@ -264,14 +237,6 @@ export default function CalendarPage() {
         } catch {}
       }
 
-      const rawTasks = window.localStorage.getItem(NOTEPAD_STORAGE_KEY)
-      if (rawTasks) {
-        try {
-          const parsed = JSON.parse(rawTasks) as NotepadTask[]
-          if (Array.isArray(parsed)) setNotepadTasks(parsed)
-        } catch {}
-      }
-
       const params = new URLSearchParams(window.location.search)
       const error = calendarErrorMessage(params.get('calendar_error'), params.get('detail'))
       if (error) setProviderError(error)
@@ -285,10 +250,6 @@ export default function CalendarPage() {
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(events))
   }, [events])
-
-  useEffect(() => {
-    window.localStorage.setItem(NOTEPAD_STORAGE_KEY, JSON.stringify(notepadTasks))
-  }, [notepadTasks])
 
   useEffect(() => {
     void refreshProviderStatus()
@@ -420,21 +381,6 @@ export default function CalendarPage() {
     setViewDate(day)
   }
 
-  function createEventFromTitle(titleText: string, day: Date, hour: number, source: 'note' | 'manual') {
-    const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0)
-    const end = new Date(start.getTime() + 60 * 60 * 1000)
-    const noteEvent: CalendarEvent = {
-      id: `cal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      title: titleText.trim(),
-      start: localDateTimeString(start),
-      end: localDateTimeString(end),
-      tone: source === 'note' ? 'sky' : 'violet',
-      kind: source === 'note' ? 'focus' : 'meeting',
-    }
-    setEvents((prev) => [...prev, noteEvent].sort((a, b) => +new Date(a.start) - +new Date(b.start)))
-    setDropError(null)
-  }
-
   function saveEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!createTarget || !eventTitle.trim()) return
@@ -469,27 +415,11 @@ export default function CalendarPage() {
     setEvents((prev) => [...prev, newEvent].sort((a, b) => +new Date(a.start) - +new Date(b.start)))
   }
 
-  function addNotepadTask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const titleText = notepadDraft.trim()
-    if (!titleText) return
-    setNotepadTasks((prev) => [
-      { id: `note-${Date.now()}`, title: titleText, createdAt: new Date().toISOString() },
-      ...prev,
-    ])
-    setNotepadDraft('')
-  }
-
   function handleEventDragStart(event: DragEvent<HTMLDivElement>, calendarEvent: CalendarEvent) {
     if (calendarEvent.external) return
     event.stopPropagation()
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('application/x-sync-calendar-event', calendarEvent.id)
-  }
-
-  function handleTaskDragStart(event: DragEvent<HTMLDivElement>, task: NotepadTask) {
-    event.dataTransfer.effectAllowed = 'copy'
-    event.dataTransfer.setData('application/x-sync-notepad-task', task.id)
   }
 
   function moveEventToDay(eventId: string, day: Date, hour?: number) {
@@ -518,22 +448,7 @@ export default function CalendarPage() {
     const eventId = event.dataTransfer.getData('application/x-sync-calendar-event')
     if (eventId) {
       moveEventToDay(eventId, day, preferredHour)
-      return
     }
-
-    const taskId = event.dataTransfer.getData('application/x-sync-notepad-task')
-    if (!taskId) return
-
-    const task = notepadTasks.find((item) => item.id === taskId)
-    if (!task) return
-
-    const freeHour = firstFreeHour(events, day, preferredHour)
-    if (freeHour == null) {
-      setDropError('No free one-hour slot is available that day between 06:00 and 22:00.')
-      return
-    }
-
-    createEventFromTitle(task.title, day, freeHour, 'note')
   }
 
   function dayEvents(day: Date) {
@@ -691,12 +606,6 @@ export default function CalendarPage() {
                 {providerError}
               </p>
             )}
-            {dropError && (
-              <p className="mx-4 mt-3 shrink-0 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
-                {dropError}
-              </p>
-            )}
-
             <div className="min-h-0 flex-1 p-3">
               {view === 'month' && (
                 <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] gap-2">
@@ -801,54 +710,6 @@ export default function CalendarPage() {
               )}
             </div>
 
-            <section className="shrink-0 border-t border-gray-100 bg-gray-50/70 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/30">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Notepad</h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Write tasks here, then drag them into a free calendar slot.
-                  </p>
-                </div>
-                <form onSubmit={addNotepadTask} className="flex w-[420px] max-w-full gap-2">
-                  <Input
-                    value={notepadDraft}
-                    onChange={(event) => setNotepadDraft(event.target.value)}
-                    placeholder="Add a task to schedule..."
-                    className="h-9"
-                  />
-                  <Button type="submit" size="sm" disabled={!notepadDraft.trim()}>
-                    Add
-                  </Button>
-                </form>
-              </div>
-              <div className="mt-2 flex min-h-12 gap-2 overflow-hidden">
-                {notepadTasks.length === 0 ? (
-                  <p className="flex h-12 w-full items-center rounded-lg border border-dashed border-gray-200 px-3 text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">
-                    No tasks yet.
-                  </p>
-                ) : (
-                  notepadTasks.slice(0, 8).map((task) => (
-                    <div
-                      key={task.id}
-                      draggable
-                      onDragStart={(event) => handleTaskDragStart(event, task)}
-                      className="flex max-w-56 shrink-0 cursor-grab items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm active:cursor-grabbing dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200"
-                    >
-                      <GripVertical size={14} className="shrink-0 text-gray-400" />
-                      <span className="truncate">{task.title}</span>
-                      <button
-                        type="button"
-                        onClick={() => setNotepadTasks((prev) => prev.filter((item) => item.id !== task.id))}
-                        className="ml-auto shrink-0 text-gray-400 transition hover:text-red-500"
-                        aria-label="Remove task"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
           </section>
 
           <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-hidden">
