@@ -2,6 +2,10 @@ import { createDAVClient } from 'tsdav'
 import nodeIcal from 'node-ical'
 import type { CalendarConnectionRow, ExternalEvent } from './types'
 
+type RRule = {
+  between: (after: Date, before: Date, inc?: boolean) => Date[]
+}
+
 type VEvent = {
   type: string
   uid?: string
@@ -10,6 +14,9 @@ type VEvent = {
   start?: Date
   end?: Date
   datetype?: string
+  rrule?: RRule
+  exdate?: Record<string, Date>
+  recurrences?: Record<string, VEvent>
 }
 
 function toLocalDateKey(date: Date): string {
@@ -19,24 +26,78 @@ function toLocalDateKey(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
-export function parseAppleIcs(ics: string): ExternalEvent[] {
+// node-ical keys exdate/recurrences by several string forms (full ISO, the
+// date portion, and the local date); check all so excluded and overridden
+// occurrences match regardless of how the source calendar wrote them.
+function occurrenceKeys(occ: Date): string[] {
+  const iso = occ.toISOString()
+  return [iso, iso.slice(0, 10), toLocalDateKey(occ)]
+}
+
+function isExcluded(exdate: Record<string, Date> | undefined, occ: Date): boolean {
+  if (!exdate) return false
+  return occurrenceKeys(occ).some((key) => key in exdate)
+}
+
+function findOverride(
+  recurrences: Record<string, VEvent> | undefined,
+  occ: Date,
+): VEvent | undefined {
+  if (!recurrences) return undefined
+  for (const key of occurrenceKeys(occ)) {
+    if (recurrences[key]) return recurrences[key]
+  }
+  return undefined
+}
+
+function buildEvent(
+  source: VEvent,
+  start: Date,
+  end: Date,
+  id: string,
+): ExternalEvent {
+  const allDay = source.datetype === 'date'
+  return {
+    id,
+    title: source.summary ?? '(No title)',
+    start: allDay ? toLocalDateKey(start) : new Date(start).toISOString(),
+    end: allDay ? toLocalDateKey(end) : new Date(end).toISOString(),
+    allDay,
+    provider: 'apple',
+    location: source.location || undefined,
+  }
+}
+
+export function parseAppleIcs(
+  ics: string,
+  rangeStart?: Date,
+  rangeEnd?: Date,
+): ExternalEvent[] {
   const parsed = nodeIcal.sync.parseICS(ics) as Record<string, VEvent>
   const events: ExternalEvent[] = []
   for (const key of Object.keys(parsed)) {
     const component = parsed[key]
     if (component.type !== 'VEVENT' || !component.start) continue
+    const baseId = component.uid ?? key
     const start = component.start
     const end = component.end ?? component.start
-    const allDay = component.datetype === 'date'
-    events.push({
-      id: `apple:${component.uid ?? key}`,
-      title: component.summary ?? '(No title)',
-      start: allDay ? toLocalDateKey(start) : new Date(start).toISOString(),
-      end: allDay ? toLocalDateKey(end) : new Date(end).toISOString(),
-      allDay,
-      provider: 'apple',
-      location: component.location || undefined,
-    })
+
+    if (component.rrule && rangeStart && rangeEnd) {
+      const durationMs = end.getTime() - start.getTime()
+      for (const occ of component.rrule.between(rangeStart, rangeEnd, true)) {
+        if (isExcluded(component.exdate, occ)) continue
+        const override = findOverride(component.recurrences, occ)
+        const id = `apple:${baseId}:${occ.toISOString()}`
+        if (override?.start) {
+          events.push(buildEvent(override, override.start, override.end ?? override.start, id))
+        } else {
+          events.push(buildEvent(component, occ, new Date(occ.getTime() + durationMs), id))
+        }
+      }
+      continue
+    }
+
+    events.push(buildEvent(component, start, end, `apple:${baseId}`))
   }
   return events
 }
@@ -73,7 +134,7 @@ export async function fetchEvents(
     })
     for (const object of objects) {
       if (object.data) {
-        events.push(...parseAppleIcs(object.data))
+        events.push(...parseAppleIcs(object.data, rangeStart, rangeEnd))
       }
     }
   }
