@@ -47,6 +47,10 @@ type ProviderStatus = {
   status: string | null
   updatedAt: string | null
 }
+type DraggedNote = {
+  id: string
+  title: string
+}
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const VISIBLE_START_HOUR = 6
@@ -57,6 +61,8 @@ const SLOT_HOURS = Array.from(
 )
 const STORAGE_KEY = 'sync-calendar-events'
 const HIDDEN_CALENDARS_KEY = 'sync-calendar-hidden-calendars'
+const CALENDAR_EVENT_DRAG_TYPE = 'application/x-sync-calendar-event'
+const NOTE_DRAG_TYPE = 'application/x-sync-note'
 const HOUR_HEIGHT = 30
 
 const providerMeta: Record<CalendarProvider, { label: string; button: string; description: string }> = {
@@ -166,6 +172,16 @@ function calendarErrorMessage(code: string | null, detail: string | null) {
   if (code.includes('token_failed')) return `Calendar token exchange failed.${suffix}`
   if (code.includes('save_failed')) return `Calendar connection could not be saved.${suffix}`
   return `Calendar connection failed.${suffix}`
+}
+
+function acceptsCalendarDrop(event: DragEvent<HTMLElement>) {
+  return event.dataTransfer.types.includes(CALENDAR_EVENT_DRAG_TYPE) || event.dataTransfer.types.includes(NOTE_DRAG_TYPE)
+}
+
+function setCalendarDropEffect(event: DragEvent<HTMLElement>) {
+  if (!acceptsCalendarDrop(event)) return
+  event.preventDefault()
+  event.dataTransfer.dropEffect = event.dataTransfer.types.includes(NOTE_DRAG_TYPE) ? 'copy' : 'move'
 }
 
 export default function CalendarPage() {
@@ -372,10 +388,10 @@ export default function CalendarPage() {
     })
   }
 
-  function openCreateModal(day: Date, time = '09:00') {
+  function openCreateModal(day: Date, time = '09:00', title = '') {
     setEditingId(null)
     setConfirmDelete(false)
-    setEventTitle('')
+    setEventTitle(title)
     setEventStart(time)
     setEventEnd(endTimeFor(time))
     setEventKind('meeting')
@@ -471,7 +487,19 @@ export default function CalendarPage() {
     if (calendarEvent.external) return
     event.stopPropagation()
     event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('application/x-sync-calendar-event', calendarEvent.id)
+    event.dataTransfer.setData(CALENDAR_EVENT_DRAG_TYPE, calendarEvent.id)
+  }
+
+  function draggedNoteFrom(event: DragEvent<HTMLElement>): DraggedNote | null {
+    const raw = event.dataTransfer.getData(NOTE_DRAG_TYPE)
+    if (!raw) return null
+    try {
+      const parsed = JSON.parse(raw) as Partial<DraggedNote>
+      if (typeof parsed.id !== 'string' || typeof parsed.title !== 'string') return null
+      return { id: parsed.id, title: parsed.title }
+    } catch {
+      return null
+    }
   }
 
   function moveEventToDay(eventId: string, day: Date, hour?: number) {
@@ -497,9 +525,14 @@ export default function CalendarPage() {
 
   function handleCalendarDrop(event: DragEvent<HTMLElement>, day: Date, preferredHour: number) {
     event.preventDefault()
-    const eventId = event.dataTransfer.getData('application/x-sync-calendar-event')
+    const eventId = event.dataTransfer.getData(CALENDAR_EVENT_DRAG_TYPE)
     if (eventId) {
       moveEventToDay(eventId, day, preferredHour)
+      return
+    }
+    const note = draggedNoteFrom(event)
+    if (note) {
+      openCreateModal(day, `${pad(preferredHour)}:00`, note.title)
     }
   }
 
@@ -682,7 +715,7 @@ export default function CalendarPage() {
                         <div
                           key={key}
                           onClick={() => openCreateModal(day)}
-                          onDragOver={(event) => event.preventDefault()}
+                          onDragOver={setCalendarDropEffect}
                           onDrop={(event) => handleCalendarDrop(event, day, 9)}
                           className={`min-h-0 cursor-pointer rounded-lg border p-2 text-left transition hover:border-purple-300 hover:bg-purple-50/40 dark:hover:border-purple-700 dark:hover:bg-purple-950/20 ${
                             isCurrentMonth
@@ -830,7 +863,7 @@ export default function CalendarPage() {
               )}
             </section>
 
-            <NotesPanel variant="embedded" />
+            <NotesPanel variant="embedded" draggableNotes />
           </aside>
         </div>
       </div>
@@ -1014,7 +1047,7 @@ function TimelineColumn({
           key={hour}
           type="button"
           onClick={() => onCreate(day, `${pad(hour)}:00`)}
-          onDragOver={(event) => event.preventDefault()}
+          onDragOver={setCalendarDropEffect}
           onDrop={(event) => onDropTask(event, day, hour)}
           className="block w-full border-b border-gray-100 text-left transition hover:bg-purple-50/50 dark:border-gray-800 dark:hover:bg-purple-950/20"
           style={{ height: HOUR_HEIGHT }}

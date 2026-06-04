@@ -12,9 +12,10 @@ type Variant = 'embedded' | 'standalone'
 
 type Props = {
   variant: Variant
+  draggableNotes?: boolean
 }
 
-export default function NotesPanel({ variant }: Props) {
+export default function NotesPanel({ variant, draggableNotes = false }: Props) {
   const user = useUser()
   const { notes, loading, error, add, complete, remove } = useNotes(user?.id)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -75,7 +76,13 @@ export default function NotesPanel({ variant }: Props) {
           </p>
         )}
         {notes.map((note) => (
-          <NoteRow key={note.id} note={note} onComplete={complete} onRemove={remove} />
+          <NoteRow
+            key={note.id}
+            note={note}
+            onComplete={complete}
+            onRemove={remove}
+            draggable={draggableNotes}
+          />
         ))}
       </div>
 

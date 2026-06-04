@@ -7,6 +7,7 @@ type Props = {
   note: Note
   onComplete: (id: string) => void
   onRemove: (id: string) => void
+  draggable?: boolean
 }
 
 function formatTimestamp(iso: string): string {
@@ -20,9 +21,23 @@ function formatTimestamp(iso: string): string {
   }).format(date)
 }
 
-export default function NoteRow({ note, onComplete, onRemove }: Props) {
+export default function NoteRow({ note, onComplete, onRemove, draggable = false }: Props) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-gray-100 p-2 dark:border-gray-800">
+    <div
+      draggable={draggable}
+      onDragStart={(event) => {
+        if (!draggable) return
+        event.dataTransfer.effectAllowed = 'copy'
+        event.dataTransfer.setData(
+          'application/x-sync-note',
+          JSON.stringify({ id: note.id, title: note.title }),
+        )
+        event.dataTransfer.setData('text/plain', note.title)
+      }}
+      className={`flex items-start gap-3 rounded-lg border border-gray-100 p-2 dark:border-gray-800 ${
+        draggable ? 'cursor-grab transition hover:border-purple-200 active:cursor-grabbing dark:hover:border-purple-800' : ''
+      }`}
+    >
       <input
         type="checkbox"
         checked={false}
