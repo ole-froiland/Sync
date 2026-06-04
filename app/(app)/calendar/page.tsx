@@ -717,11 +717,11 @@ export default function CalendarPage() {
                           onClick={() => openCreateModal(day)}
                           onDragOver={setCalendarDropEffect}
                           onDrop={(event) => handleCalendarDrop(event, day, 9)}
-                          className={`min-h-0 cursor-pointer rounded-lg border p-2 text-left transition hover:border-purple-300 hover:bg-purple-50/40 dark:hover:border-purple-700 dark:hover:bg-purple-950/20 ${
+                          className={`min-h-0 cursor-pointer rounded-lg border p-2 text-left transition hover:border-purple-300 hover:bg-purple-50/40 dark:hover:border-purple-600 dark:hover:bg-purple-950/20 ${
                             isCurrentMonth
-                              ? 'border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900'
-                              : 'border-transparent bg-gray-50/70 dark:bg-gray-900/30'
-                          } ${isToday ? 'ring-1 ring-purple-400/70' : ''}`}
+                              ? 'border-gray-200 bg-white dark:border-gray-700/80 dark:bg-gray-900'
+                              : 'border-gray-100 bg-gray-50/70 dark:border-gray-800/70 dark:bg-gray-900/30'
+                          } ${isToday ? 'ring-2 ring-purple-400/80 dark:ring-purple-500/90' : ''}`}
                         >
                           <div className="flex items-center justify-between">
                             <span
