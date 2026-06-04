@@ -230,19 +230,6 @@ export default function RepositoryDetailPage({
         <div className="mx-auto w-full max-w-5xl px-6 py-8">
           {projectPath && (
             <div className="mb-5 flex flex-wrap items-center gap-2 text-sm">
-              <button
-                type="button"
-                onClick={() => {
-                  if (window.history.length > 1) window.history.back()
-                  else window.location.href = '/projects'
-                }}
-                data-no-translate
-                className="inline-flex items-center gap-1.5 font-medium text-gray-500 transition hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300"
-              >
-                <ArrowLeft size={14} />
-                Tilbake til Prosjekter
-              </button>
-              <span className="text-gray-400 dark:text-gray-600">/</span>
               <span className="min-w-0 truncate font-semibold text-gray-950 dark:text-gray-100">
                 {projectPath}
               </span>
