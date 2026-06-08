@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getSiteUrl } from '@/lib/site-url'
 import { cookies } from 'next/headers'
 
 const GITHUB_CONNECT_CLIENT_ID = process.env.GITHUB_CONNECT_CLIENT_ID
 const GITHUB_CONNECT_CLIENT_SECRET = process.env.GITHUB_CONNECT_CLIENT_SECRET
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+const SITE_URL = getSiteUrl()
 
 type GitHubUser = {
   id?: number

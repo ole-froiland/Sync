@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getSiteUrl } from '@/lib/site-url'
 import { cookies } from 'next/headers'
 
 const GITHUB_CONNECT_CLIENT_ID = process.env.GITHUB_CONNECT_CLIENT_ID
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+const SITE_URL = getSiteUrl()
 
 export async function GET() {
   if (!GITHUB_CONNECT_CLIENT_ID) {
@@ -35,7 +36,7 @@ export async function GET() {
 
   const params = new URLSearchParams({
     client_id: GITHUB_CONNECT_CLIENT_ID,
-    redirect_uri: `https://froiland.netlify.app/api/github/callback`,
+    redirect_uri: `${SITE_URL}/api/github/callback`,
     scope: 'repo',
     state,
   })

@@ -39,15 +39,18 @@ Go to [supabase.com](https://supabase.com) → New project.
 
 In the Supabase SQL editor, paste and run the contents of `supabase/schema.sql`.
 
-### 3. Enable Google OAuth
+### 3. Enable GitHub OAuth
 
-Supabase dashboard → Authentication → Providers → Google.  
-Add your Google OAuth client ID and secret.  
+Supabase dashboard → Authentication → Providers → GitHub.
+Add your GitHub OAuth client ID and secret.
 Set the redirect URL to: `https://your-project.supabase.co/auth/v1/callback`
 
-In Google Cloud Console, add these authorized redirect URIs:
+In Supabase Authentication → URL Configuration, add these redirect URLs:
+- `https://sync-co-op.netlify.app/auth/callback` (production)
+- `http://localhost:3000/auth/callback` (local dev)
+
+In GitHub Developer Settings, set the OAuth app callback URL to:
 - `https://your-project.supabase.co/auth/v1/callback`
-- `http://localhost:3000/auth/callback` (for local dev)
 
 ### 4. Configure environment variables
 
@@ -58,6 +61,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
+# Production: NEXT_PUBLIC_SITE_URL=https://sync-co-op.netlify.app
 ```
 
 ### 5. Run
