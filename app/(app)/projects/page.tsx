@@ -104,6 +104,13 @@ type ProjectClipboard = { mode: 'copy' | 'cut'; itemIds: string[] } | null
 type ProjectItemOpenTarget = { href: string; external: boolean; label: string }
 type SendStatus = 'idle' | 'sending' | 'sent' | 'error'
 type ProjectPathSegment = { id: string; label: string }
+type LegacyProjectCollection = {
+  id?: string
+  name?: string
+  label?: string
+  color?: string
+  createdAt?: string
+}
 
 type AcceptedSharePayload = {
   kind?: string
@@ -120,6 +127,7 @@ type AcceptedSharePayload = {
 }
 
 const STORAGE_KEY = 'sync-project-folders-v1'
+const LEGACY_COLLECTION_KEYS = ['sync-project-folder-collections-v1', 'project-folder-collections-v1']
 const PROJECT_CHAT_TARGET_KEY = 'sync-open-project-chat'
 const LOCAL_PROJECT_PREFIX = 'project-folder:'
 
@@ -159,6 +167,54 @@ const itemTypeMeta: Record<ItemType, { label: string; icon: React.ElementType }>
 
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function parseStoredFolders(raw: string | null): ProjectFolder[] {
+  if (!raw) return []
+  const parsed = JSON.parse(raw) as unknown
+  return Array.isArray(parsed) ? (parsed as ProjectFolder[]) : []
+}
+
+function folderFromLegacyCollection(collection: LegacyProjectCollection): ProjectFolder | null {
+  const name = collection.name ?? collection.label
+  if (!name?.trim()) return null
+
+  return {
+    id: collection.id ? `legacy-${collection.id}` : makeId('legacy-folder'),
+    name: name.trim(),
+    description: '',
+    color: collection.color ?? folderColors[0].value,
+    logo: { type: 'icon', value: 'folder' },
+    createdAt: collection.createdAt ?? new Date().toISOString(),
+    items: [],
+  }
+}
+
+function readLegacyCollections(): ProjectFolder[] {
+  const folders: ProjectFolder[] = []
+  for (const key of LEGACY_COLLECTION_KEYS) {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) continue
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (!Array.isArray(parsed)) continue
+      for (const collection of parsed) {
+        const folder = folderFromLegacyCollection(collection as LegacyProjectCollection)
+        if (folder) folders.push(folder)
+      }
+    } catch {
+      // Ignore malformed legacy cache keys; current storage remains authoritative.
+    }
+  }
+  return folders
+}
+
+function mergeProjectFolders(...sources: ProjectFolder[][]): ProjectFolder[] {
+  const byId = new Map<string, ProjectFolder>()
+  for (const folders of sources) {
+    for (const folder of folders) byId.set(folder.id, folder)
+  }
+  return migrateLocalFolderItems([...byId.values()])
 }
 
 function localProjectChatId(folderId: string) {
@@ -445,25 +501,71 @@ export default function ProjectsPage() {
   const loadedRef = useRef(false)
 
   useEffect(() => {
-    window.setTimeout(() => {
-      const saved = window.localStorage.getItem(STORAGE_KEY)
-      if (saved) {
+    let cancelled = false
+
+    async function loadFolders() {
+      let localFolders: ProjectFolder[] = []
+      try {
+        localFolders = parseStoredFolders(window.localStorage.getItem(STORAGE_KEY))
+      } catch {
+        window.localStorage.removeItem(STORAGE_KEY)
+      }
+
+      const legacyFolders = readLegacyCollections()
+      let serverFolders: ProjectFolder[] = []
+      if (currentProfile) {
         try {
-          const parsed = JSON.parse(saved) as ProjectFolder[]
-          setFolders(migrateLocalFolderItems(parsed))
-          setSelectedFolderId(null)
+          const response = await fetch('/api/project-folders')
+          if (response.ok) {
+            const body = (await response.json()) as { folders?: ProjectFolder[] }
+            serverFolders = Array.isArray(body.folders) ? body.folders : []
+          }
         } catch {
-          window.localStorage.removeItem(STORAGE_KEY)
+          // Local cache keeps the page usable while server sync is unavailable.
         }
       }
+
+      if (cancelled) return
+
+      setFolders(mergeProjectFolders(serverFolders, localFolders, legacyFolders))
+      setSelectedFolderId(null)
       loadedRef.current = true
       setStorageReady(true)
+    }
+
+    const id = window.setTimeout(() => {
+      void loadFolders()
     }, 0)
-  }, [])
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(id)
+    }
+  }, [currentProfile])
 
   useEffect(() => {
-    if (loadedRef.current && storageReady) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(folders))
-  }, [folders, storageReady])
+    if (!loadedRef.current || !storageReady) return
+
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(folders))
+    if (!currentProfile) return
+
+    const controller = new AbortController()
+    const id = window.setTimeout(() => {
+      void fetch('/api/project-folders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folders }),
+        signal: controller.signal,
+      }).catch(() => {
+        // Keep the local cache; the next change or reload can retry.
+      })
+    }, 500)
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(id)
+    }
+  }, [folders, storageReady, currentProfile])
 
   useEffect(() => {
     if (!currentProfile || !storageReady) return
