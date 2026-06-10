@@ -24,7 +24,6 @@ import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Modal from '@/components/ui/Modal'
-import { useUser } from '@/context/UserContext'
 import NotesPanel from '@/components/notes/NotesPanel'
 
 type CalendarEvent = RenderableEvent
@@ -175,7 +174,6 @@ function setCalendarDropEffect(event: DragEvent<HTMLElement>) {
 }
 
 export default function CalendarPage() {
-  const profile = useUser()
   const [viewDate, setViewDate] = useState(() => new Date())
   const [view, setView] = useState<CalendarView>('month')
   const [events, setEvents] = useState<CalendarEvent[]>(seedEvents)
@@ -468,17 +466,7 @@ export default function CalendarPage() {
   }
 
   function addQuickEvent() {
-    const base = new Date(viewDate.getFullYear(), viewDate.getMonth(), viewDate.getDate(), 11, 0, 0)
-    const newEvent: CalendarEvent = {
-      id: `cal-${Date.now()}`,
-      title: `${profile?.first_name ?? profile?.name ?? 'Team'} review block`,
-      start: localDateTimeString(base),
-      end: localDateTimeString(new Date(base.getTime() + 60 * 60 * 1000)),
-      tone: 'violet',
-      kind: 'meeting',
-      note: 'Quick placeholder event. Replace later with real calendar data.',
-    }
-    setEvents((prev) => upsertEvent(prev, newEvent))
+    openCreateModal(viewDate, '11:00')
   }
 
   function handleEventDragStart(event: DragEvent<HTMLDivElement>, calendarEvent: CalendarEvent) {
@@ -638,15 +626,15 @@ export default function CalendarPage() {
       <div className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col overflow-hidden bg-gray-50 px-4 py-4 dark:bg-gray-950">
         <div className="flex min-h-0 flex-1 gap-4">
           <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-              <div className="min-w-0">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+              <div className="shrink-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
                   Schedule
                 </p>
-                <h2 className="truncate text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <div className="relative w-64">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative w-44 xl:w-64">
                   <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <Input
                     value={searchQuery}
@@ -692,7 +680,7 @@ export default function CalendarPage() {
                 {providerError}
               </p>
             )}
-            <div className="min-h-0 flex-1 p-3">
+            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto p-3">
               {view === 'month' && (
                 <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] gap-2">
                   <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
@@ -800,7 +788,7 @@ export default function CalendarPage() {
 
           </section>
 
-          <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-hidden">
+          <aside className="hidden w-80 shrink-0 flex-col gap-3 overflow-hidden lg:flex">
             <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Calendars</h3>

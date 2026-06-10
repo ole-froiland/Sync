@@ -25,6 +25,7 @@ export default function DashboardPage() {
 
   const [posts, setPosts] = useState<Post[]>([])
   const [postsLoading, setPostsLoading] = useState(true)
+  const [postsError, setPostsError] = useState(false)
 
   const [news, setNews] = useState<FeedItem[]>([])
   const [newsLoading, setNewsLoading] = useState(true)
@@ -47,6 +48,19 @@ export default function DashboardPage() {
     localStorage.setItem('dashboard-tab', tab)
   }
 
+  const fetchPosts = useCallback(() => {
+    setPostsLoading(true)
+    setPostsError(false)
+    fetch('/api/posts')
+      .then((r) => {
+        if (!r.ok) throw new Error('Failed to load posts')
+        return r.json()
+      })
+      .then((data) => setPosts(Array.isArray(data) ? data : []))
+      .catch(() => setPostsError(true))
+      .finally(() => setPostsLoading(false))
+  }, [])
+
   // Fetch posts
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) {
@@ -56,12 +70,8 @@ export default function DashboardPage() {
       })
       return
     }
-    fetch('/api/posts')
-      .then((r) => r.json())
-      .then((data) => setPosts(Array.isArray(data) ? data : []))
-      .catch(() => setPosts([]))
-      .finally(() => setPostsLoading(false))
-  }, [])
+    queueMicrotask(fetchPosts)
+  }, [fetchPosts])
 
   const fetchNews = useCallback(() => {
     fetch('/api/news')
@@ -158,6 +168,8 @@ export default function DashboardPage() {
             <FeedView
               posts={posts}
               postsLoading={postsLoading}
+              postsError={postsError}
+              onRetry={fetchPosts}
               onPostClick={setSelectedPost}
             />
           )}

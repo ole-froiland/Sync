@@ -26,11 +26,6 @@ const GITHUB_ERROR_MESSAGES: Record<string, string> = {
   save_failed: 'Token was received but could not be saved. Check Supabase table and RLS policies.',
 }
 
-function avatarDisplaySrc(src: string | null | undefined) {
-  if (!src || src.startsWith('data:image/svg+xml')) return null
-  return src
-}
-
 export default function SettingsPage() {
   const router = useRouter()
   const profile = useUser()
@@ -175,7 +170,7 @@ export default function SettingsPage() {
                 }}
                 onDragOver={(event) => event.preventDefault()}
               >
-                <Avatar name={name || 'User'} src={avatarDisplaySrc(avatarUrl)} size="lg" className="h-16 w-16" />
+                <Avatar name={name || 'User'} src={avatarUrl} size="lg" className="h-16 w-16" />
                 <input
                   ref={avatarInputRef}
                   type="file"
@@ -220,7 +215,7 @@ export default function SettingsPage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
-                  Norsk/Engelsk
+                  Language
                 </h2>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
                   Choose the language used across Sync on this device.
@@ -229,7 +224,7 @@ export default function SettingsPage() {
               <div className="flex flex-col items-start gap-2 sm:items-end">
                 <div
                   className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-900"
-                  aria-label="Norsk/Engelsk"
+                  aria-label="Language"
                   data-no-translate
                 >
                   <button

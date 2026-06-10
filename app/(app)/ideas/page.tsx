@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowUp, ChevronDown, ChevronLeft, ChevronRight, Search, Send, X } from 'lucide-react'
+import { ArrowUp, ChevronDown, ChevronLeft, ChevronRight, Lightbulb, Search, Send, X } from 'lucide-react'
 import Image from 'next/image'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
@@ -474,7 +474,22 @@ export default function IdeasPage() {
               })
             ) : (
               <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-12 text-center dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-sm text-gray-500 dark:text-gray-400">No ideas match this view.</p>
+                {ideas.length === 0 ? (
+                  <>
+                    <Lightbulb size={26} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+                    <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">No ideas yet</h2>
+                    <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+                      Capture a thought before it disappears. Write it in the field above and press Post.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">No ideas match this view.</p>
+                    <p className="mt-2 text-sm text-gray-400 dark:text-gray-500">
+                      Try a different search or time range.
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </section>

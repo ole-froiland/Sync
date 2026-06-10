@@ -13,6 +13,7 @@ import {
   Send,
   Book,
   Check,
+  ChevronLeft,
   X as XIcon,
   ExternalLink,
   Inbox,
@@ -854,7 +855,12 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      <div className="w-60 flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex flex-col">
+      <div
+        className={cn(
+          'w-full sm:w-60 flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex-col',
+          active ? 'hidden sm:flex' : 'flex'
+        )}
+      >
         <div className="px-4 py-4 border-b border-gray-100 dark:border-gray-800">
           <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
             Channels
@@ -946,9 +952,17 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className={cn('flex-1 flex-col overflow-hidden', active ? 'flex' : 'hidden sm:flex')}>
         {active && (
           <div className="h-14 border-b border-gray-100 dark:border-gray-800 px-5 flex items-center gap-2 flex-shrink-0 bg-white dark:bg-gray-900">
+            <button
+              type="button"
+              onClick={() => setActive(null)}
+              aria-label="Back to conversations"
+              className="sm:hidden -ml-2 mr-1 inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+            >
+              <ChevronLeft size={18} />
+            </button>
             {active.kind === 'project' ? (
               <Hash size={16} className="text-gray-400 dark:text-gray-500" />
             ) : (

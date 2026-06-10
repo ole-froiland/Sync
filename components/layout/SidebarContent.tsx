@@ -12,9 +12,9 @@ import {
   Settings,
   LogOut,
   GitBranch,
-  Handshake,
   CalendarDays,
   Lightbulb,
+  NotebookPen,
   UserCircle,
   HelpCircle,
 } from 'lucide-react'
@@ -24,15 +24,33 @@ import Modal from '@/components/ui/Modal'
 import type { Profile } from '@/types'
 import { CHAT_META_EVENT, readChatReadMap, readMutedUserIds } from '@/lib/chat-meta'
 
-const nav = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/projects', label: 'Projects', icon: FolderKanban },
-  { href: '/repositories', label: 'Repositories', icon: GitBranch },
-  { href: '/calendar', label: 'Calendar', icon: CalendarDays },
-  { href: '/chat', label: 'Chat', icon: MessageSquare },
-  { href: '/people', label: 'People', icon: Users },
-  { href: '/ideas', label: 'Ideas', icon: Lightbulb },
-  { href: '/how-to-sync', label: 'How to Sync', icon: Handshake },
+const navSections: { label: string | null; items: { href: string; label: string; icon: typeof LayoutDashboard }[] }[] = [
+  {
+    label: null,
+    items: [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard }],
+  },
+  {
+    label: 'Workspace',
+    items: [
+      { href: '/projects', label: 'Projects', icon: FolderKanban },
+      { href: '/repositories', label: 'Repositories', icon: GitBranch },
+      { href: '/calendar', label: 'Calendar', icon: CalendarDays },
+    ],
+  },
+  {
+    label: 'Collaborate',
+    items: [
+      { href: '/chat', label: 'Chat', icon: MessageSquare },
+      { href: '/people', label: 'People', icon: Users },
+    ],
+  },
+  {
+    label: 'Capture',
+    items: [
+      { href: '/notes', label: 'Notes', icon: NotebookPen },
+      { href: '/ideas', label: 'Ideas', icon: Lightbulb },
+    ],
+  },
 ]
 
 interface SidebarContentProps {
@@ -202,43 +220,57 @@ export default function SidebarContent({ profile, onSignOut, signingOut }: Sideb
   return (
     <div className="flex h-full flex-col">
       {/* Logo */}
-      <div className="h-14 px-5 border-b border-gray-100 dark:border-gray-800 flex items-center">
-        <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-purple-500 to-fuchsia-500 bg-clip-text text-transparent">Sync</span>
+      <div className="h-14 px-5 border-b border-gray-100 dark:border-gray-800 flex items-center gap-2">
+        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-purple-600 text-[13px] font-bold text-white shadow-sm" aria-hidden="true">
+          S
+        </span>
+        <span className="text-lg font-bold tracking-tight text-gray-950 dark:text-white" data-no-translate>
+          Sync
+        </span>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5 overflow-y-auto">
-        {nav.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + '/')
-          const isChat = href === '/chat'
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200',
-                active
-                  ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-400'
-                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-              )}
-            >
-              <Icon size={17} />
-              <span className="flex-1">{label}</span>
-              {isChat && profileId && chatBadgeCount > 0 && (
-                <span
+      <nav className="flex-1 px-3 py-4 flex flex-col overflow-y-auto">
+        {navSections.map((section, sectionIndex) => (
+          <div key={section.label ?? sectionIndex} className={cn('flex flex-col gap-0.5', sectionIndex > 0 && 'mt-5')}>
+            {section.label && (
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-600">
+                {section.label}
+              </p>
+            )}
+            {section.items.map(({ href, label, icon: Icon }) => {
+              const active = pathname === href || pathname.startsWith(href + '/')
+              const isChat = href === '/chat'
+              return (
+                <Link
+                  key={href}
+                  href={href}
                   className={cn(
-                    'min-w-5 rounded-full px-1.5 py-0.5 text-center text-[11px] font-semibold',
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
                     active
-                      ? 'bg-purple-600 text-white dark:bg-purple-500'
-                      : 'bg-red-500 text-white'
+                      ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
                   )}
                 >
-                  {chatBadgeCount > 99 ? '99+' : chatBadgeCount}
-                </span>
-              )}
-            </Link>
-          )
-        })}
+                  <Icon size={17} className={cn(active ? 'text-purple-600 dark:text-purple-300' : 'text-gray-400 dark:text-gray-500')} />
+                  <span className="flex-1">{label}</span>
+                  {isChat && profileId && chatBadgeCount > 0 && (
+                    <span
+                      className={cn(
+                        'min-w-5 rounded-full px-1.5 py-0.5 text-center text-[11px] font-semibold',
+                        active
+                          ? 'bg-purple-600 text-white dark:bg-purple-500'
+                          : 'bg-red-500 text-white'
+                      )}
+                    >
+                      {chatBadgeCount > 99 ? '99+' : chatBadgeCount}
+                    </span>
+                  )}
+                </Link>
+              )
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* Bottom: profile */}

@@ -24,10 +24,13 @@ export default function Modal({ open, onClose, title, children, className }: Mod
 
   return createPortal(
     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="modal-backdrop absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className={cn(
-          'relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 w-full max-w-lg max-h-[90vh] overflow-y-auto',
+          'modal-panel relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 w-full max-w-lg max-h-[90vh] overflow-y-auto',
           className
         )}
       >
@@ -35,6 +38,7 @@ export default function Modal({ open, onClose, title, children, className }: Mod
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             <X size={18} />

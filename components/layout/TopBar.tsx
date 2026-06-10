@@ -1,10 +1,8 @@
 'use client'
 
-import Image from 'next/image'
-import { Bell, GitBranch, Menu, Plus } from 'lucide-react'
+import { GitBranch, Menu, Plus } from 'lucide-react'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 import Button from '@/components/ui/Button'
-import { cn } from '@/lib/utils'
 
 interface TopBarProps {
   title: string
@@ -27,9 +25,6 @@ export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
     window.dispatchEvent(new Event('sync:open-drawer'))
   }
 
-  const aiButtonClass =
-    'inline-flex h-8 w-8 items-center justify-center text-gray-700 transition-all duration-200 hover:scale-[1.04] hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 dark:text-gray-200'
-
   return (
     <header
       className="h-14 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 lg:px-6 flex items-center justify-between flex-shrink-0 gap-3"
@@ -51,33 +46,6 @@ export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
         </h1>
       </div>
       <div className="flex items-center gap-2">
-        <a
-          href="https://claude.ai"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Open Claude"
-          title="Claude"
-          className={cn(aiButtonClass, 'hidden sm:inline-flex')}
-        >
-          <Image src="/brand/claude-logo.svg" alt="" width={18} height={18} aria-hidden="true" />
-        </a>
-        <a
-          href="https://chatgpt.com"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Open ChatGPT"
-          title="ChatGPT"
-          className={cn(aiButtonClass, 'hidden sm:inline-flex')}
-        >
-          <Image
-            src="/brand/chatgpt-logo.png"
-            alt=""
-            width={24}
-            height={24}
-            aria-hidden="true"
-            className="rounded-sm"
-          />
-        </a>
         <Button
           size="sm"
           variant="secondary"
@@ -98,9 +66,6 @@ export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
           <span className="hidden sm:inline">New post</span>
         </Button>
         <ThemeToggle />
-        <button className="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300 transition-colors relative">
-          <Bell size={17} />
-        </button>
       </div>
     </header>
   )

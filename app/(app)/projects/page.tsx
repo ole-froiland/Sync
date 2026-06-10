@@ -989,7 +989,6 @@ export default function ProjectsPage() {
       <>
         <TopBar
           title="Prosjekter"
-          noTranslateTitle
           actions={
             <div className="flex items-center gap-2">
               <Button size="sm" variant="secondary" onClick={() => openProjectChat(selectedFolder)}>
@@ -998,7 +997,7 @@ export default function ProjectsPage() {
               </Button>
               <Button size="sm" variant="secondary" onClick={() => setFolderOpen(true)}>
                 <FolderOpen size={16} />
-                <span data-no-translate>Ny mappe</span>
+                <span>Ny mappe</span>
               </Button>
               <Button size="sm" variant="secondary" onClick={() => setShareOpen(true)}>
                 <Share2 size={16} />
@@ -1030,7 +1029,6 @@ export default function ProjectsPage() {
                 setPreviewFolderId(selectedFolder.id)
                 setActiveItemFolderId(null)
               }}
-              data-no-translate
               className="font-medium text-gray-500 transition hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300"
             >
               Prosjekter
@@ -1141,7 +1139,6 @@ export default function ProjectsPage() {
     <>
       <TopBar
         title="Prosjekter"
-        noTranslateTitle
         actions={
           <Button size="sm" onClick={() => setFolderOpen(true)} className="h-10 w-10 px-0" aria-label="Lag mappe">
             <Plus size={20} />
@@ -1176,7 +1173,7 @@ export default function ProjectsPage() {
                 </Button>
                 <Button onClick={() => setFolderOpen(true)} className="h-10 whitespace-nowrap">
                   <Plus size={16} />
-                  <span data-no-translate>Ny mappe</span>
+                  <span>Ny mappe</span>
                 </Button>
                 <Button
                   type="button"
@@ -1204,7 +1201,6 @@ export default function ProjectsPage() {
                       const folderId = draggedFolderId ?? event.dataTransfer.getData('text/plain')
                       if (folderId) moveFolderIntoFolder(folderId, null)
                     }}
-                    data-no-translate
                     className="font-medium text-gray-500 transition hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300"
                   >
                     Prosjekter
@@ -2150,7 +2146,7 @@ function ProjectDetailContent({
           </Button>
           <Button size="sm" variant="secondary" onClick={onAddLocalFolder}>
             <FolderOpen size={16} />
-            <span data-no-translate>Ny mappe</span>
+            <span>Ny mappe</span>
           </Button>
           <Button size="sm" variant="secondary" onClick={onShare}>
             <Share2 size={16} />
@@ -2200,7 +2196,7 @@ function ProjectDetailContent({
             </Button>
             <Button className="mt-2" variant="secondary" onClick={onAddLocalFolder}>
               <FolderOpen size={16} />
-              <span data-no-translate>Ny mappe</span>
+              <span>Ny mappe</span>
             </Button>
           </div>
         ) : (

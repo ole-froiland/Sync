@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Schibsted_Grotesk } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 
-const geist = Geist({ subsets: ["latin"] });
+const schibsted = Schibsted_Grotesk({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Sync – Co-op made easy",
@@ -38,7 +38,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <script dangerouslySetInnerHTML={{ __html: languageScript }} />
       </head>
-      <body className={`${geist.className} antialiased h-full`}>
+      <body className={`${schibsted.className} antialiased h-full`}>
         <ThemeProvider>
           <LanguageProvider>{children}</LanguageProvider>
         </ThemeProvider>
