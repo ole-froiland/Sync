@@ -2,39 +2,6 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/*
-  Design tokens — Sync accent system.
-  The whole app references Tailwind's purple/fuchsia scales, so the brand is
-  retuned here at the token level: a calmer iris ramp replaces the neon
-  purple/fuchsia pair. Legacy `from-purple-* to-fuchsia-*` gradients resolve
-  to a quiet monochromatic blend instead of a pink flare.
-*/
-@theme {
-  --color-purple-50: #f6f5fc;
-  --color-purple-100: #edebf9;
-  --color-purple-200: #ddd9f3;
-  --color-purple-300: #c2bbe9;
-  --color-purple-400: #a094da;
-  --color-purple-500: #7f6fc9;
-  --color-purple-600: #6a58b8;
-  --color-purple-700: #594a9b;
-  --color-purple-800: #4a3e7e;
-  --color-purple-900: #3e3566;
-  --color-purple-950: #272040;
-
-  --color-fuchsia-50: #f8f6fd;
-  --color-fuchsia-100: #f0edfa;
-  --color-fuchsia-200: #e2dcf5;
-  --color-fuchsia-300: #cbc1ec;
-  --color-fuchsia-400: #ab9de0;
-  --color-fuchsia-500: #8d7bd2;
-  --color-fuchsia-600: #7663c2;
-  --color-fuchsia-700: #6353a5;
-  --color-fuchsia-800: #524586;
-  --color-fuchsia-900: #443a6d;
-  --color-fuchsia-950: #2b2347;
-}
-
 body {
   @apply bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100;
 }

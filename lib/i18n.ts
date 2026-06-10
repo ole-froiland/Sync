@@ -391,6 +391,7 @@ const pairs = [
   ['Open Claude', 'Åpne Claude'],
   ['Open ChatGPT', 'Åpne ChatGPT'],
   ['Toggle theme', 'Bytt tema'],
+  ['Toggle sidebar', 'Vis eller skjul sidemeny'],
   ['Norsk/Engelsk', 'Norsk/Engelsk'],
   ['English', 'Engelsk'],
   ['Norwegian', 'Norsk'],

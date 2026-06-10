@@ -1,6 +1,6 @@
 'use client'
 
-import { GitBranch, Menu, Plus } from 'lucide-react'
+import { GitBranch, Menu, PanelLeft, Plus } from 'lucide-react'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 import Button from '@/components/ui/Button'
 
@@ -25,9 +25,13 @@ export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
     window.dispatchEvent(new Event('sync:open-drawer'))
   }
 
+  function toggleSidebar() {
+    window.dispatchEvent(new Event('sync:toggle-sidebar'))
+  }
+
   return (
     <header
-      className="h-14 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 lg:px-6 flex items-center justify-between flex-shrink-0 gap-3"
+      className="h-14 border-b border-gray-100/80 dark:border-gray-800/80 bg-white/70 dark:bg-gray-900/60 backdrop-blur-2xl backdrop-saturate-150 px-4 lg:px-6 flex items-center justify-between flex-shrink-0 gap-3"
     >
       <div className="flex items-center gap-2 min-w-0">
         <button
@@ -37,6 +41,14 @@ export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
           className="lg:hidden inline-flex h-10 w-10 items-center justify-center -ml-2 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >
           <Menu size={20} />
+        </button>
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          aria-label="Toggle sidebar"
+          className="hidden lg:inline-flex h-9 w-9 items-center justify-center -ml-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+        >
+          <PanelLeft size={17} />
         </button>
         <h1
           className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate"
