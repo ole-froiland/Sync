@@ -11,10 +11,15 @@ import {
   Search,
   Settings,
 } from 'lucide-react'
-import { visibleRange, externalToCalendarEvent } from '@/lib/calendar/range'
+import {
+  visibleRange,
+  externalToCalendarEvent,
+  type RenderableEvent,
+  type CalendarView,
+} from '@/lib/calendar/range'
 import { buildCalendarList, filterByCalendars } from '@/lib/calendar/calendar-filter'
 import { upsertEvent, removeEvent } from '@/lib/calendar/event-mutations'
-import type { ExternalEvent } from '@/lib/calendar/providers/types'
+import type { CalendarProvider, ExternalEvent } from '@/lib/calendar/providers/types'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -22,23 +27,8 @@ import Modal from '@/components/ui/Modal'
 import { useUser } from '@/context/UserContext'
 import NotesPanel from '@/components/notes/NotesPanel'
 
-type CalendarEvent = {
-  id: string
-  title: string
-  start: string
-  end: string
-  tone: 'violet' | 'emerald' | 'amber' | 'sky'
-  kind: 'focus' | 'meeting' | 'launch' | 'deadline'
-  note?: string
-  external?: boolean
-  allDay?: boolean
-  provider?: CalendarProvider
-  calendarId?: string
-  calendarName?: string
-}
+type CalendarEvent = RenderableEvent
 
-type CalendarView = 'month' | 'week' | 'day'
-type CalendarProvider = 'apple' | 'microsoft' | 'google'
 type ProviderStatus = {
   provider: CalendarProvider
   configured: boolean
@@ -210,6 +200,10 @@ export default function CalendarPage() {
   const [appleServerUrl, setAppleServerUrl] = useState('https://caldav.icloud.com')
   const [appleSaving, setAppleSaving] = useState(false)
   const fetchSeqRef = useRef(0)
+  // Guards the persist effects below: without it they would run on mount with
+  // the initial empty state and overwrite localStorage before the deferred
+  // load callback gets a chance to read it.
+  const storageLoadedRef = useRef(false)
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -239,14 +233,18 @@ export default function CalendarPage() {
       if (params.get('calendar_error') || params.get('calendar_connected')) {
         window.history.replaceState({}, '', '/calendar')
       }
+
+      storageLoadedRef.current = true
     })
   }, [])
 
   useEffect(() => {
+    if (!storageLoadedRef.current) return
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(events))
   }, [events])
 
   useEffect(() => {
+    if (!storageLoadedRef.current) return
     window.localStorage.setItem(HIDDEN_CALENDARS_KEY, JSON.stringify([...hiddenCalendarIds]))
   }, [hiddenCalendarIds])
 
@@ -480,7 +478,7 @@ export default function CalendarPage() {
       kind: 'meeting',
       note: 'Quick placeholder event. Replace later with real calendar data.',
     }
-    setEvents((prev) => [...prev, newEvent].sort((a, b) => +new Date(a.start) - +new Date(b.start)))
+    setEvents((prev) => upsertEvent(prev, newEvent))
   }
 
   function handleEventDragStart(event: DragEvent<HTMLDivElement>, calendarEvent: CalendarEvent) {

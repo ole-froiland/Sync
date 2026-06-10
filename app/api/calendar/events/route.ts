@@ -60,12 +60,25 @@ export async function GET(request: Request) {
     rangeEnd,
   )
 
-  if (failedConnectionIds.length > 0) {
-    await supabase
-      .from('calendar_connections')
-      .update({ status: 'error' })
-      .in('id', failedConnectionIds)
-  }
+  const failed = new Set(failedConnectionIds)
+  const recoveredIds = (connections ?? [])
+    .filter((c) => c.status === 'error' && !failed.has(c.id))
+    .map((c) => c.id)
+
+  await Promise.all([
+    failedConnectionIds.length > 0
+      ? supabase
+          .from('calendar_connections')
+          .update({ status: 'error' })
+          .in('id', failedConnectionIds)
+      : null,
+    recoveredIds.length > 0
+      ? supabase
+          .from('calendar_connections')
+          .update({ status: 'connected' })
+          .in('id', recoveredIds)
+      : null,
+  ])
 
   return NextResponse.json({ events, providerErrors })
 }

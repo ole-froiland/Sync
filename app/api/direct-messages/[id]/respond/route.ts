@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { isUuid } from '@/lib/uuid'
 
 type RespondBody = { action?: 'accept' | 'reject' }
 
@@ -33,6 +34,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  if (!isUuid(id)) return NextResponse.json({ error: 'Invalid message id' }, { status: 400 })
   const supabase = await createClient()
   const {
     data: { user },

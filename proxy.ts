@@ -2,7 +2,18 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // Paths that require an authenticated Supabase session
-const PROTECTED_PATHS = ['/dashboard', '/projects', '/calendar', '/chat', '/people', '/ideas', '/settings']
+const PROTECTED_PATHS = [
+  '/dashboard',
+  '/projects',
+  '/calendar',
+  '/chat',
+  '/people',
+  '/ideas',
+  '/settings',
+  '/notes',
+  '/repositories',
+  '/how-to-sync',
+]
 
 const SUPABASE_CONFIGURED =
   (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http') &&

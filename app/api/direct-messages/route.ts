@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { isUuid } from '@/lib/uuid'
 
 const MAX_LIMIT = 200
 
@@ -60,8 +61,8 @@ async function ensureSynced(
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const otherId = searchParams.get('with')
-  if (!otherId) {
-    return NextResponse.json({ error: 'with required' }, { status: 400 })
+  if (!otherId || !isUuid(otherId)) {
+    return NextResponse.json({ error: 'with must be a valid user id' }, { status: 400 })
   }
 
   const supabase = await createClient()
@@ -98,8 +99,8 @@ export async function POST(request: Request) {
   }
 
   const receiverId = body.receiver_id
-  if (!receiverId) {
-    return NextResponse.json({ error: 'receiver_id required' }, { status: 400 })
+  if (!receiverId || !isUuid(receiverId)) {
+    return NextResponse.json({ error: 'receiver_id must be a valid user id' }, { status: 400 })
   }
   if (receiverId === user.id) {
     return NextResponse.json({ error: 'Cannot message yourself' }, { status: 400 })
