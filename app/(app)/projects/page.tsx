@@ -31,6 +31,7 @@ import {
   Trash2,
   Upload,
   Users,
+  Workflow,
   X,
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
@@ -39,6 +40,7 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Modal from '@/components/ui/Modal'
 import Textarea from '@/components/ui/Textarea'
+import { FolderTreeOverlay } from '@/components/projects/folder-tree'
 import { useUser } from '@/context/UserContext'
 import type { GitHubUserRepo, Profile, ProjectFolder, ProjectFolderMember, ProjectItem, ProjectLogo } from '@/types'
 
@@ -645,6 +647,52 @@ export default function ProjectsPage() {
     setSelectedFolderId(nextFolder.id)
   }
 
+  const [treeOpen, setTreeOpen] = useState(false)
+  const [treeSubfolderParentId, setTreeSubfolderParentId] = useState<string | null>(null)
+  const [treeItemFolderId, setTreeItemFolderId] = useState<string | null>(null)
+  const [treeItemMode, setTreeItemMode] = useState<ResourceMode>('github')
+
+  function addSubfolder(parentId: string, data: Pick<ProjectFolder, 'name' | 'description' | 'color' | 'logo'>) {
+    const creator = folderMemberFromProfile(currentProfile)
+    const nextFolder: ProjectFolder = {
+      ...data,
+      id: makeId('folder'),
+      parentId,
+      createdAt: new Date().toISOString(),
+      members: creator ? [creator] : [],
+      items: [],
+    }
+    setFolders((current) => [nextFolder, ...current])
+  }
+
+  function addFolderItem(folderId: string, item: Omit<ProjectItem, 'id' | 'createdAt' | 'updatedAt'>) {
+    const nextItem: ProjectItem = {
+      ...item,
+      id: makeId('item'),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    setFolders((current) =>
+      current.map((folder) => (folder.id === folderId ? { ...folder, items: [nextItem, ...folder.items] } : folder))
+    )
+  }
+
+  function openFolderFromTree(folderId: string) {
+    const folder = folders.find((f) => f.id === folderId)
+    if (folder) openFolderFromOverview(folder)
+    setTreeOpen(false)
+  }
+
+  function handleTreeAdd(folderId: string, kind: 'subfolder' | 'repo' | 'link' | 'app' | 'file') {
+    if (kind === 'subfolder') {
+      setTreeSubfolderParentId(folderId)
+      return
+    }
+    const mode: ResourceMode = kind === 'repo' ? 'github' : kind === 'link' ? 'url' : kind === 'file' ? 'document' : 'app'
+    setTreeItemMode(mode)
+    setTreeItemFolderId(folderId)
+  }
+
   function updateFolder(folderId: string, updates: Partial<Pick<ProjectFolder, 'name' | 'description' | 'logo' | 'color'>>) {
     setFolders((current) =>
       current.map((folder) => (folder.id === folderId ? { ...folder, ...updates } : folder))
@@ -1126,6 +1174,15 @@ export default function ProjectsPage() {
                   <Eye size={16} />
                   Preview
                 </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setTreeOpen(true)}
+                  className="h-10 whitespace-nowrap"
+                >
+                  <Workflow size={16} />
+                  Vis som tre
+                </Button>
                 <Button onClick={() => setFolderOpen(true)} className="h-10 whitespace-nowrap">
                   <Plus size={16} />
                   <span>Ny mappe</span>
@@ -1422,6 +1479,33 @@ export default function ProjectsPage() {
             )}
       </div>
 
+      <FolderTreeOverlay
+        open={treeOpen}
+        folders={folders}
+        currentFolderId={activeParentFolderId}
+        onClose={() => setTreeOpen(false)}
+        onOpenFolder={openFolderFromTree}
+        onRenameFolder={(folderId, name) => updateFolder(folderId, { name })}
+        onDeleteFolder={(folderId) => requestDeleteFolder(folderId)}
+        onAdd={handleTreeAdd}
+      />
+      <CreateFolderModal
+        open={treeSubfolderParentId !== null}
+        onClose={() => setTreeSubfolderParentId(null)}
+        onCreate={(data) => {
+          if (treeSubfolderParentId) addSubfolder(treeSubfolderParentId, data)
+          setTreeSubfolderParentId(null)
+        }}
+      />
+      <CreateItemModal
+        open={treeItemFolderId !== null}
+        initialMode={treeItemMode}
+        onClose={() => setTreeItemFolderId(null)}
+        onCreate={(item) => {
+          if (treeItemFolderId) addFolderItem(treeItemFolderId, item)
+          setTreeItemFolderId(null)
+        }}
+      />
       <CreateFolderModal open={folderOpen} onClose={() => setFolderOpen(false)} onCreate={createFolder} />
       <CreateItemModal open={itemOpen} onClose={() => setItemOpen(false)} onCreate={createItem} />
       {menuFolder && folderMenu && (
@@ -2997,12 +3081,14 @@ function CreateItemModal({
   open,
   onClose,
   onCreate,
+  initialMode,
 }: {
   open: boolean
   onClose: () => void
   onCreate: (item: Omit<ProjectItem, 'id' | 'createdAt' | 'updatedAt'>) => void
+  initialMode?: ResourceMode
 }) {
-  const [mode, setMode] = useState<ResourceMode>('github')
+  const [mode, setMode] = useState<ResourceMode>(initialMode ?? 'github')
   const [appType, setAppType] = useState<AppResourceType>('docs')
   const [title, setTitle] = useState('')
   const [url, setUrl] = useState('')
@@ -3056,6 +3142,11 @@ function CreateItemModal({
       })
       .finally(() => setReposLoading(false))
   }, [open])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (open && initialMode) setMode(initialMode)
+  }, [open, initialMode])
 
   function reset() {
     setMode('github')
