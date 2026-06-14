@@ -220,11 +220,11 @@ export default function SidebarContent({ profile, onSignOut, signingOut }: Sideb
   return (
     <div className="flex h-full flex-col">
       {/* Logo */}
-      <div className="h-14 px-5 border-b border-gray-100/80 dark:border-gray-800/80 flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-purple-500 to-fuchsia-500 text-[13px] font-bold text-white shadow-sm" aria-hidden="true">
+      <div className="h-14 px-5 border-b border-gray-100 dark:border-gray-800 flex items-center gap-2">
+        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-fuchsia-600 text-[13px] font-bold text-white shadow-sm" aria-hidden="true">
           S
         </span>
-        <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-purple-500 to-fuchsia-500 bg-clip-text text-transparent" data-no-translate>
+        <span className="text-lg font-bold tracking-tight text-fuchsia-500" data-no-translate>
           Sync
         </span>
       </div>
@@ -248,18 +248,18 @@ export default function SidebarContent({ profile, onSignOut, signingOut }: Sideb
                   className={cn(
                     'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
                     active
-                      ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300'
+                      ? 'bg-fuchsia-600 text-white'
                       : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
                   )}
                 >
-                  <Icon size={17} className={cn(active ? 'text-purple-600 dark:text-purple-300' : 'text-gray-400 dark:text-gray-500')} />
+                  <Icon size={17} className={cn(active ? 'text-white' : 'text-gray-400 dark:text-gray-500')} />
                   <span className="flex-1">{label}</span>
                   {isChat && profileId && chatBadgeCount > 0 && (
                     <span
                       className={cn(
                         'min-w-5 rounded-full px-1.5 py-0.5 text-center text-[11px] font-semibold',
                         active
-                          ? 'bg-purple-600 text-white dark:bg-purple-500'
+                          ? 'bg-fuchsia-800 text-white'
                           : 'bg-red-500 text-white'
                       )}
                     >

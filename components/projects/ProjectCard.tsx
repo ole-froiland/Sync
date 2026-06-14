@@ -127,7 +127,7 @@ export default function ProjectCard({ project }: { project: Project }) {
                 status === 'live'
                   ? 'bg-emerald-500'
                   : status === 'building'
-                  ? 'bg-gradient-to-r from-purple-500 to-fuchsia-500'
+                  ? 'bg-fuchsia-600'
                   : 'bg-gray-300 dark:bg-gray-700'
               )}
               style={{ width: `${progress.pct}%` }}

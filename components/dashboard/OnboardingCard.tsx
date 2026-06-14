@@ -16,7 +16,7 @@ export default function OnboardingCard() {
   if (dismissed) return null
 
   return (
-    <Card className="border-purple-100 dark:border-purple-900/50 bg-gradient-to-br from-purple-50/80 dark:from-purple-950/40 to-white dark:to-gray-900 relative">
+    <Card className="border-fuchsia-100 bg-fuchsia-50 dark:border-fuchsia-900 dark:bg-gray-900 relative">
       <button
         onClick={() => setDismissed(true)}
         className="absolute top-4 right-4 p-1 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-colors"

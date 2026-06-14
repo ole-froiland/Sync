@@ -263,7 +263,7 @@ export default function ShareRepoModal({
                           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
                           : sending
                             ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-                            : 'bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white shadow-sm hover:from-purple-600 hover:to-fuchsia-600'
+                            : 'bg-fuchsia-600 text-white shadow-sm hover:bg-fuchsia-700'
                       )}
                     >
                       {sent ? (

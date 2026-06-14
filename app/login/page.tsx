@@ -18,7 +18,7 @@ const inputCls =
 const labelCls = 'block text-sm font-medium text-gray-700 mb-1.5'
 
 const primaryBtn =
-  'w-full flex items-center justify-center rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 hover:from-purple-600 hover:to-fuchsia-600 active:from-purple-700 active:to-fuchsia-700 text-white text-sm font-medium px-4 py-2.5 transition-all disabled:opacity-60'
+  'w-full flex items-center justify-center rounded-xl bg-fuchsia-600 hover:bg-fuchsia-700 active:bg-fuchsia-800 text-white text-sm font-medium px-4 py-2.5 transition-colors disabled:opacity-60'
 
 export default function LoginPage() {
   const [tab, setTab] = useState<'signup' | 'login'>('signup')
@@ -105,18 +105,14 @@ export default function LoginPage() {
 
   return (
     <div className="relative min-h-screen bg-[#fafafa] flex items-center justify-center p-4 overflow-hidden">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-[-30%] h-[60%] bg-[radial-gradient(ellipse_at_center,_rgba(217,70,239,0.10),_transparent_65%)]"
-      />
       <div className="relative w-full max-w-sm">
 
         {/* Logo */}
         <div className="flex flex-col items-center mb-10 gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-fuchsia-500 text-lg font-bold text-white shadow-md shadow-fuchsia-500/25" aria-hidden="true">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-fuchsia-600 text-lg font-bold text-white shadow-md" aria-hidden="true">
             S
           </span>
-          <span className="text-2xl font-bold tracking-tight bg-gradient-to-r from-purple-500 to-fuchsia-500 bg-clip-text text-transparent" data-no-translate>Sync</span>
+          <span className="text-2xl font-bold tracking-tight text-fuchsia-500" data-no-translate>Sync</span>
           <span className="text-sm text-gray-400 -mt-1.5">Co-op made easy</span>
         </div>
 

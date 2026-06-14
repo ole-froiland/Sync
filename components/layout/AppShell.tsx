@@ -54,12 +54,6 @@ export default function AppShell({ profile, githubStatus, children }: AppShellPr
     <UserProvider profile={profile}>
       <GitHubProvider status={githubStatus}>
         <div className="flex h-[100dvh] overflow-hidden bg-gray-50 dark:bg-gray-950">
-          {/* Ambient backdrop — gives the liquid-glass chrome something to refract */}
-          <div aria-hidden="true" className="pointer-events-none fixed inset-0">
-            <div className="absolute -top-32 -left-32 h-[28rem] w-[28rem] rounded-full bg-purple-400/25 blur-3xl dark:bg-purple-600/15" />
-            <div className="absolute top-1/4 right-[-10rem] h-[24rem] w-[24rem] rounded-full bg-fuchsia-400/20 blur-3xl dark:bg-fuchsia-600/10" />
-            <div className="absolute bottom-[-8rem] left-1/3 h-[22rem] w-[22rem] rounded-full bg-purple-300/20 blur-3xl dark:bg-purple-500/10" />
-          </div>
           <Sidebar profile={profile} onSignOut={handleSignOut} signingOut={signingOut} hidden={sidebarHidden} />
           <MobileDrawer
             open={drawerOpen}

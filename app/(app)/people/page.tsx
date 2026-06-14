@@ -473,7 +473,7 @@ function PersonCard({
           loading={busy === 'sync'}
           disabled={busy !== null}
           onClick={onSync}
-          className="bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white"
+          className="bg-fuchsia-600 text-white"
         >
           Synced
         </Button>
@@ -792,7 +792,7 @@ function ProfileModal({
                   </div>
                   <div className="mt-4 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-purple-500 to-fuchsia-400"
+                      className="h-full rounded-full bg-fuchsia-600"
                       style={{ width: `${limit.percentLeft ?? 100}%` }}
                     />
                   </div>
@@ -961,7 +961,7 @@ function UsageMetricCard({
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-purple-500/20 to-fuchsia-500/20">
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-fuchsia-100 dark:bg-fuchsia-900">
         <svg
           className="h-7 w-7 text-purple-500"
           fill="none"
@@ -1104,7 +1104,7 @@ function usageStatusLabel(status: UsageStats['dailyCodex'][number]['status']) {
 function usageStatusBarClass(status: UsageStats['dailyCodex'][number]['status']) {
   if (status === 'used_up') return 'bg-red-500'
   if (status === 'heavy') return 'bg-amber-400'
-  return 'bg-gradient-to-t from-purple-600 to-fuchsia-400'
+  return 'bg-fuchsia-600'
 }
 
 function usageStatusPillClass(status: UsageStats['dailyCodex'][number]['status']) {

@@ -264,7 +264,7 @@ function importSharedProjectFolder(payload: ProjectFolderSharePayload, sender?: 
     id: makeProjectFolderId('folder'),
     name: payload.name ? `${payload.name} copy` : 'Shared project folder',
     description: payload.description ?? '',
-    color: payload.color ?? 'from-purple-500 to-fuchsia-500',
+    color: payload.color ?? 'bg-fuchsia-600',
     logo: payload.logo ?? { type: 'icon', value: 'folder' },
     createdAt: now,
     members: [...memberMap.values()],
@@ -1074,7 +1074,7 @@ export default function ChatPage() {
                           className={cn(
                             'rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm',
                             isMine
-                              ? 'rounded-br-md bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white'
+                              ? 'rounded-br-md bg-fuchsia-600 text-white'
                               : 'rounded-bl-md border border-gray-200 bg-white text-gray-800 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200'
                           )}
                         >
@@ -1152,7 +1152,7 @@ export default function ChatPage() {
                           className={cn(
                             'rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm',
                             isMine
-                              ? 'rounded-br-md bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white'
+                              ? 'rounded-br-md bg-fuchsia-600 text-white'
                               : 'rounded-bl-md border border-gray-200 bg-white text-gray-800 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200'
                           )}
                         >
@@ -1459,7 +1459,7 @@ function RepoShareCard({
               <button
                 disabled={responding}
                 onClick={onAccept}
-                className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-purple-500 to-fuchsia-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition-all hover:from-purple-600 hover:to-fuchsia-600 disabled:opacity-60"
+                className="inline-flex items-center gap-1 rounded-lg bg-fuchsia-600 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition-all hover:bg-fuchsia-700 disabled:opacity-60"
               >
                 <Check size={11} />
                 Accept
@@ -1539,7 +1539,7 @@ function RepoShareCard({
             <button
               disabled={responding}
               onClick={onAccept}
-              className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-purple-500 to-fuchsia-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition-all hover:from-purple-600 hover:to-fuchsia-600 disabled:opacity-60"
+              className="inline-flex items-center gap-1 rounded-lg bg-fuchsia-600 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition-all hover:bg-fuchsia-700 disabled:opacity-60"
             >
               <Check size={11} />
               Accept
@@ -1637,7 +1637,7 @@ function ProjectFolderShareCard({
             <button
               disabled={responding}
               onClick={onAccept}
-              className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-purple-500 to-fuchsia-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition-all hover:from-purple-600 hover:to-fuchsia-600 disabled:opacity-60"
+              className="inline-flex items-center gap-1 rounded-lg bg-fuchsia-600 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition-all hover:bg-fuchsia-700 disabled:opacity-60"
             >
               <Check size={11} />
               Accept

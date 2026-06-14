@@ -186,7 +186,7 @@ function SourceFilter({ activeSources, onChange }: SourceFilterProps) {
             className={cn(
               'h-8 shrink-0 rounded-full border px-3.5 text-sm font-medium transition-colors',
               active
-                ? 'border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900 dark:bg-purple-950/50 dark:text-purple-300'
+                ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 dark:border-fuchsia-900 dark:bg-fuchsia-900 dark:text-fuchsia-100'
                 : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400 dark:hover:bg-gray-900'
             )}
           >
@@ -338,7 +338,7 @@ function HeroArticle({
           className={cn(
             'ml-auto inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors',
             saved
-              ? 'border-purple-200 bg-purple-50 text-purple-600 dark:border-purple-900 dark:bg-purple-950/50 dark:text-purple-300'
+              ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-600 dark:border-fuchsia-900 dark:bg-fuchsia-900 dark:text-fuchsia-100'
               : 'border-gray-200 text-gray-400 hover:text-gray-700 dark:border-gray-800 dark:hover:text-gray-200'
           )}
           aria-label={saved ? 'Remove bookmark' : 'Save article'}
@@ -349,7 +349,7 @@ function HeroArticle({
 
       {/* Inline summary */}
       {(summary?.text || summary?.error) && (
-        <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 dark:border-gray-800 dark:bg-gray-900/40">
+        <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 dark:border-gray-800 dark:bg-gray-900">
           {summary.error ? (
             <p className="text-sm text-red-600 dark:text-red-400">{summary.error}</p>
           ) : (
@@ -466,7 +466,7 @@ interface ArticleRowProps {
 
 function ArticleRow({ article, summary, saved, onOpen, onSummarize, onToggleSaved }: ArticleRowProps) {
   return (
-    <article className="group flex cursor-pointer items-start gap-4 border-b border-gray-100 py-4 last:border-b-0 transition-colors hover:bg-gray-50/60 dark:border-gray-900 dark:hover:bg-gray-900/30">
+    <article className="group flex cursor-pointer items-start gap-4 border-b border-gray-100 py-4 last:border-b-0 transition-colors hover:bg-gray-50 dark:border-gray-900 dark:hover:bg-gray-900">
       <div className="min-w-0 flex-1" onClick={() => onOpen(article)}>
         <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-gray-900 transition-colors group-hover:text-purple-700 dark:text-gray-100 dark:group-hover:text-purple-300">
           {article.title}
@@ -713,8 +713,8 @@ export default function DiscoverView({ news, newsLoading }: DiscoverViewProps) {
           className={cn(
             'mt-4 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm',
             podcast.status === 'error'
-              ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'
-              : 'border-purple-100 bg-purple-50 text-purple-700 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-300'
+              ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300'
+              : 'border-fuchsia-100 bg-fuchsia-50 text-fuchsia-700 dark:border-fuchsia-900 dark:bg-fuchsia-900 dark:text-fuchsia-100'
           )}
         >
           {podcast.status === 'loading' ? (

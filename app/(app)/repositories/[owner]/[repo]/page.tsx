@@ -401,7 +401,7 @@ export default function RepositoryDetailPage({
               </div>
 
               {summary.status !== 'idle' && (
-                <div className="mt-4 rounded-2xl border border-purple-200/70 bg-gradient-to-br from-purple-50 to-fuchsia-50/40 p-5 dark:border-purple-900/50 dark:from-purple-950/30 dark:to-fuchsia-950/20">
+                <div className="mt-4 rounded-2xl border border-fuchsia-200 bg-fuchsia-50 p-5 dark:border-fuchsia-900 dark:bg-gray-900">
                   <div className="mb-2 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-purple-700 dark:text-purple-300">
                       <Sparkles size={12} />

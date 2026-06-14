@@ -179,7 +179,7 @@ export default function TrendingView() {
   return (
     <div className="mx-auto max-w-[1012px] px-4 pb-10 pt-7 sm:px-6">
       <section className="overflow-hidden rounded-md border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
-        <div className="flex flex-col gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-900/40 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-900 lg:flex-row lg:items-center lg:justify-between">
           <div className="inline-flex w-full rounded-md border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950 lg:w-auto">
             {(['repositories', 'developers'] as TrendingKind[]).map((item) => {
               const active = kind === item
@@ -468,7 +468,7 @@ export default function TrendingView() {
           </div>
         )}
 
-        <div className="border-t border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500 dark:border-gray-800 dark:bg-gray-900/40 dark:text-gray-400">
+        <div className="border-t border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
           Ranked in the same order as{' '}
           <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="underline">
             GitHub Trending

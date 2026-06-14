@@ -31,7 +31,7 @@ export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
 
   return (
     <header
-      className="h-14 border-b border-gray-100/80 dark:border-gray-800/80 bg-white/70 dark:bg-gray-900/60 backdrop-blur-2xl backdrop-saturate-150 px-4 lg:px-6 flex items-center justify-between flex-shrink-0 gap-3"
+      className="h-14 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 lg:px-6 flex items-center justify-between flex-shrink-0 gap-3"
     >
       <div className="flex items-center gap-2 min-w-0">
         <button

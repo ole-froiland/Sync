@@ -149,13 +149,13 @@ export default function DashboardPage() {
                 onClick={() => handleTabChange(tab.id)}
                 className={`relative px-4 py-3.5 text-sm font-medium transition-colors ${
                   tabReady && activeTab === tab.id
-                    ? 'text-gray-900 dark:text-gray-100'
+                    ? 'text-fuchsia-600 dark:text-fuchsia-400'
                     : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400'
                 }`}
               >
                 {tab.label}
                 {tabReady && activeTab === tab.id && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 dark:bg-gray-100 rounded-t" />
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-fuchsia-600 dark:bg-fuchsia-400 rounded-t" />
                 )}
               </button>
             ))}

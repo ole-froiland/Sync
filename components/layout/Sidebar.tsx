@@ -16,8 +16,8 @@ export default function Sidebar({ profile, onSignOut, signingOut, className, hid
   return (
     <aside
       className={cn(
-        'flex-shrink-0 h-screen sticky top-0 bg-white/70 dark:bg-gray-900/60 backdrop-blur-2xl backdrop-saturate-150 hidden lg:flex flex-col overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]',
-        hidden ? 'w-0 border-r-0' : 'w-60 border-r border-gray-100/80 dark:border-gray-800/80',
+        'flex-shrink-0 h-screen sticky top-0 bg-white dark:bg-gray-900 hidden lg:flex flex-col overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]',
+        hidden ? 'w-0 border-r-0' : 'w-60 border-r border-gray-100 dark:border-gray-800',
         className
       )}
       aria-hidden={hidden || undefined}

@@ -18,7 +18,7 @@ export default function BottomNav() {
   return (
     <nav
       aria-label="Primary"
-      className="fixed bottom-0 left-0 right-0 z-50 lg:hidden border-t border-gray-100 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 supports-[backdrop-filter]:dark:bg-gray-900/80 pb-[env(safe-area-inset-bottom)]"
+      className="fixed bottom-0 left-0 right-0 z-50 lg:hidden border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 pb-[env(safe-area-inset-bottom)]"
     >
       <ul className="grid grid-cols-4">
         {tabs.map(({ href, label, icon: Icon }) => {
@@ -31,14 +31,14 @@ export default function BottomNav() {
                 className={cn(
                   'flex w-full flex-col items-center justify-center gap-1 py-2 text-[11px] font-medium transition-colors',
                   active
-                    ? 'text-purple-700 dark:text-purple-400'
+                    ? 'text-fuchsia-600 dark:text-fuchsia-400'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
                 )}
               >
                 <span
                   className={cn(
                     'flex h-9 w-9 items-center justify-center rounded-lg transition-colors',
-                    active && 'bg-purple-50 dark:bg-purple-950/60'
+                    active && 'bg-fuchsia-50 dark:bg-fuchsia-900'
                   )}
                 >
                   <Icon size={20} />
