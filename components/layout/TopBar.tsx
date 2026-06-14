@@ -2,6 +2,7 @@
 
 import { GitBranch, Menu, PanelLeft, Plus } from 'lucide-react'
 import ThemeToggle from '@/components/ui/ThemeToggle'
+import FullscreenToggle from '@/components/ui/FullscreenToggle'
 import Button from '@/components/ui/Button'
 
 interface TopBarProps {
@@ -77,6 +78,7 @@ export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
           <Plus size={14} />
           <span className="hidden sm:inline">New post</span>
         </Button>
+        <FullscreenToggle />
         <ThemeToggle />
       </div>
     </header>
