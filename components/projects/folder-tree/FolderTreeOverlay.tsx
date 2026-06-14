@@ -2,11 +2,11 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import type { ProjectFolder, ProjectItem } from '@/types'
 import type { AddKind } from './constants'
-import { ROOT_ID } from './constants'
+import { NODE_H, NODE_W, ROOT_ID } from './constants'
 import { buildTreeLayout, type TreeNodeModel } from './buildTreeLayout'
 import { usePanZoom } from './usePanZoom'
 import TreeConnectors from './TreeConnectors'
@@ -194,23 +194,33 @@ function TreeStage({
           }}
         >
           <TreeConnectors nodes={layout.nodes} edges={layout.edges} width={layout.width} height={layout.height} />
-          {layout.nodes.map((node) => (
-            <TreeNode
-              key={node.id}
-              node={node}
-              renaming={renamingId === node.id}
-              onToggle={toggle}
-              onOpen={openNode}
-              onAdd={(id) => setMenuFolderId((cur) => (cur === id ? null : id))}
-              onStartRename={setRenamingId}
-              onSubmitRename={(id, name) => {
-                onRenameFolder(id, name)
-                setRenamingId(null)
-              }}
-              onCancelRename={() => setRenamingId(null)}
-              onDelete={onDeleteFolder}
-            />
-          ))}
+          <AnimatePresence>
+            {layout.nodes.map((node) => (
+              <motion.div
+                key={node.id}
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.16, ease: 'easeOut' }}
+                style={{ position: 'absolute', left: node.x - NODE_W / 2, top: node.y, width: NODE_W, height: NODE_H }}
+              >
+                <TreeNode
+                  node={node}
+                  renaming={renamingId === node.id}
+                  onToggle={toggle}
+                  onOpen={openNode}
+                  onAdd={(id) => setMenuFolderId((cur) => (cur === id ? null : id))}
+                  onStartRename={setRenamingId}
+                  onSubmitRename={(id, name) => {
+                    onRenameFolder(id, name)
+                    setRenamingId(null)
+                  }}
+                  onCancelRename={() => setRenamingId(null)}
+                  onDelete={onDeleteFolder}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
 
           {menuFolder && menuNode && (
             <div

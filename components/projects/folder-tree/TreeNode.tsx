@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { motion } from 'framer-motion'
 import {
   ChevronDown,
-  ChevronUp,
   Folder,
   FolderOpen,
   GitBranch,
@@ -20,7 +20,6 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ProjectItem } from '@/types'
-import { NODE_H, NODE_W } from './constants'
 import type { TreeNodeModel } from './buildTreeLayout'
 
 const ITEM_ICONS: Record<ProjectItem['type'], React.ElementType> = {
@@ -75,10 +74,7 @@ export default function TreeNode({
   }, [renaming])
 
   return (
-    <div
-      className="group absolute"
-      style={{ left: node.x, top: node.y, width: NODE_W, height: NODE_H, transform: 'translateX(-50%)' }}
-    >
+    <div className="group relative h-full w-full">
       {/* hover toolbar (folders only) */}
       {!isItem && !renaming && (
         <div className="absolute bottom-full left-1/2 z-10 mb-2.5 hidden -translate-x-1/2 items-center gap-0.5 rounded-[10px] border border-white/10 bg-[#15171d] p-1 shadow-[0_10px_30px_-12px_rgba(0,0,0,0.9)] group-hover:flex group-focus-within:flex">
@@ -134,7 +130,14 @@ export default function TreeNode({
           aria-label={node.expanded ? 'Skjul undermapper' : 'Vis undermapper'}
           className="absolute left-1/2 top-full z-[4] mt-1 flex h-[21px] -translate-x-1/2 items-center gap-1 rounded-full border border-white/10 bg-[#13151b] px-1.5 text-[11px] font-semibold text-gray-400 transition hover:text-gray-100"
         >
-          {node.expanded ? <ChevronUp size={12} /> : (<><span>{node.childCount}</span><ChevronDown size={12} /></>)}
+          {!node.expanded && <span>{node.childCount}</span>}
+          <motion.span
+            className="inline-flex"
+            animate={{ rotate: node.expanded ? 180 : 0 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+          >
+            <ChevronDown size={12} />
+          </motion.span>
         </button>
       )}
     </div>
