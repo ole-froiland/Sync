@@ -1498,6 +1498,7 @@ export default function ProjectsPage() {
         }}
       />
       <CreateItemModal
+        key={`tree-item-${treeItemFolderId ?? 'none'}-${treeItemMode}`}
         open={treeItemFolderId !== null}
         initialMode={treeItemMode}
         onClose={() => setTreeItemFolderId(null)}
@@ -3142,11 +3143,6 @@ function CreateItemModal({
       })
       .finally(() => setReposLoading(false))
   }, [open])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (open && initialMode) setMode(initialMode)
-  }, [open, initialMode])
 
   function reset() {
     setMode('github')

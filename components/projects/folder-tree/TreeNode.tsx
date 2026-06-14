@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import {
   ChevronDown,
   ChevronUp,
@@ -65,16 +65,14 @@ export default function TreeNode({
 }: Props) {
   const isItem = node.kind === 'item'
   const Icon = isItem && node.itemType ? ITEM_ICONS[node.itemType] : node.onPath ? FolderOpen : Folder
-  const [draft, setDraft] = useState(node.label)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (renaming) {
-      setDraft(node.label)
       inputRef.current?.focus()
       inputRef.current?.select()
     }
-  }, [renaming, node.label])
+  }, [renaming])
 
   return (
     <div
@@ -111,14 +109,13 @@ export default function TreeNode({
         {renaming ? (
           <input
             ref={inputRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            defaultValue={node.label}
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') onSubmitRename(node.id, draft.trim() || node.label)
+              if (e.key === 'Enter') onSubmitRename(node.id, e.currentTarget.value.trim() || node.label)
               if (e.key === 'Escape') onCancelRename()
             }}
-            onBlur={() => onSubmitRename(node.id, draft.trim() || node.label)}
+            onBlur={(e) => onSubmitRename(node.id, e.currentTarget.value.trim() || node.label)}
             className="min-w-0 flex-1 bg-transparent text-center text-gray-100 outline-none"
           />
         ) : (
