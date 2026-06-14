@@ -189,3 +189,58 @@ export type ModelCost = {
   input: number
   output: number
 }
+
+export type ProjectLogo = {
+  type: 'icon' | 'emoji' | 'image'
+  value: string
+}
+
+export type ProjectFolderMember = {
+  id: string
+  name: string
+  avatar_url: string | null
+  role?: 'creator' | 'member'
+}
+
+export type ProjectItem = {
+  id: string
+  type:
+    | 'note'
+    | 'link'
+    | 'file'
+    | 'task'
+    | 'docs'
+    | 'sheets'
+    | 'word'
+    | 'excel'
+    | 'folder'
+    | 'github'
+    | 'local_folder'
+    | 'notion'
+    | 'url'
+    | 'document'
+  title: string
+  body: string
+  url?: string
+  path?: string
+  fileName?: string
+  fileSize?: number
+  parentId?: string
+  done?: boolean
+  status?: string
+  createdAt: string
+  updatedAt?: string
+}
+
+export type ProjectFolder = {
+  id: string
+  name: string
+  description: string
+  color: string
+  logo?: ProjectLogo
+  parentId?: string
+  createdAt: string
+  members?: ProjectFolderMember[]
+  sharedFrom?: ProjectFolderMember
+  items: ProjectItem[]
+}

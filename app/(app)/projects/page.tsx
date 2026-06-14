@@ -40,62 +40,7 @@ import Input from '@/components/ui/Input'
 import Modal from '@/components/ui/Modal'
 import Textarea from '@/components/ui/Textarea'
 import { useUser } from '@/context/UserContext'
-import type { GitHubUserRepo, Profile } from '@/types'
-
-type ProjectFolder = {
-  id: string
-  name: string
-  description: string
-  color: string
-  logo?: ProjectLogo
-  parentId?: string
-  createdAt: string
-  members?: ProjectFolderMember[]
-  sharedFrom?: ProjectFolderMember
-  items: ProjectItem[]
-}
-
-type ProjectFolderMember = {
-  id: string
-  name: string
-  avatar_url: string | null
-  role?: 'creator' | 'member'
-}
-
-type ProjectLogo = {
-  type: 'icon' | 'emoji' | 'image'
-  value: string
-}
-
-type ProjectItem = {
-  id: string
-  type:
-    | 'note'
-    | 'link'
-    | 'file'
-    | 'task'
-    | 'docs'
-    | 'sheets'
-    | 'word'
-    | 'excel'
-    | 'folder'
-    | 'github'
-    | 'local_folder'
-    | 'notion'
-    | 'url'
-    | 'document'
-  title: string
-  body: string
-  url?: string
-  path?: string
-  fileName?: string
-  fileSize?: number
-  parentId?: string
-  done?: boolean
-  status?: string
-  createdAt: string
-  updatedAt?: string
-}
+import type { GitHubUserRepo, Profile, ProjectFolder, ProjectFolderMember, ProjectItem, ProjectLogo } from '@/types'
 
 type ItemType = ProjectItem['type']
 type ResourceMode = 'github' | 'url' | 'document' | 'app'
@@ -132,12 +77,22 @@ const PROJECT_CHAT_TARGET_KEY = 'sync-open-project-chat'
 const LOCAL_PROJECT_PREFIX = 'project-folder:'
 
 const folderColors = [
-  { label: 'Purple', value: 'from-purple-500 to-fuchsia-500' },
-  { label: 'Blue', value: 'from-blue-500 to-cyan-400' },
-  { label: 'Green', value: 'from-emerald-500 to-lime-400' },
-  { label: 'Orange', value: 'from-orange-500 to-amber-300' },
-  { label: 'Red', value: 'from-rose-500 to-red-400' },
+  { label: 'Pink', value: 'bg-fuchsia-600' },
+  { label: 'Blue', value: 'bg-sky-600' },
+  { label: 'Green', value: 'bg-emerald-600' },
+  { label: 'Orange', value: 'bg-amber-600' },
+  { label: 'Red', value: 'bg-rose-600' },
 ]
+
+function solidFolderColor(color?: string | null) {
+  if (!color) return 'bg-fuchsia-600'
+  if (color.startsWith('bg-')) return color
+  if (color.includes('blue') || color.includes('cyan')) return 'bg-sky-600'
+  if (color.includes('emerald') || color.includes('lime') || color.includes('green')) return 'bg-emerald-600'
+  if (color.includes('orange') || color.includes('amber')) return 'bg-amber-600'
+  if (color.includes('rose') || color.includes('red')) return 'bg-rose-600'
+  return 'bg-fuchsia-600'
+}
 
 const logoPresets: ProjectLogo[] = [
   { type: 'icon', value: 'folder' },
@@ -391,7 +346,7 @@ function sharedFolderFromAcceptedMessage({
     id: sharedFolderId(id),
     name,
     description: payload.description ?? '',
-    color: 'from-purple-500 to-fuchsia-500',
+    color: 'bg-fuchsia-600',
     logo: { type: 'icon', value: 'folder' },
     createdAt: now,
     members: [member],
@@ -1750,7 +1705,7 @@ function ProjectItemCard({
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-fuchsia-500 text-white shadow-sm">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-fuchsia-600 text-white shadow-sm">
               <Folder size={19} />
             </span>
             <div className="min-w-0">
@@ -1828,14 +1783,14 @@ function ProjectLogoThumbnail({
 
   if (logo.type === 'emoji') {
     return (
-      <span className={`flex shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${folder.color} text-xl shadow-sm ${className}`}>
+      <span className={`flex shrink-0 items-center justify-center rounded-lg ${solidFolderColor(folder.color)} text-xl shadow-sm ${className}`}>
         {logo.value}
       </span>
     )
   }
 
   return (
-    <span className={`flex shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${folder.color} text-white shadow-sm ${className}`}>
+    <span className={`flex shrink-0 items-center justify-center rounded-lg ${solidFolderColor(folder.color)} text-white shadow-sm ${className}`}>
       <Icon size={iconSize} />
     </span>
   )
@@ -2411,7 +2366,7 @@ function LogoEditorModal({
                 key={option.value}
                 type="button"
                 onClick={() => setColor(option.value)}
-                className={`h-9 w-9 rounded-lg bg-gradient-to-br ${option.value} ring-offset-2 transition ${
+                className={`h-9 w-9 rounded-lg ${option.value} ring-offset-2 transition ${
                   color === option.value ? 'ring-2 ring-purple-500 dark:ring-offset-gray-900' : ''
                 }`}
                 aria-label={option.label}
@@ -2799,7 +2754,7 @@ function CreateFolderModal({
                 key={option.value}
                 type="button"
                 onClick={() => setColor(option.value)}
-                className={`h-9 w-9 rounded-lg bg-gradient-to-br ${option.value} ring-offset-2 transition ${
+                className={`h-9 w-9 rounded-lg ${option.value} ring-offset-2 transition ${
                   color === option.value ? 'ring-2 ring-purple-500 dark:ring-offset-gray-900' : ''
                 }`}
                 aria-label={option.label}
@@ -3022,7 +2977,7 @@ function ShareProjectFolderModal({
                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
                         : sending
                           ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-                          : 'bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white hover:from-purple-600 hover:to-fuchsia-600'
+                          : 'bg-fuchsia-600 text-white hover:bg-fuchsia-700'
                     }`}
                   >
                     {sent ? <Check size={12} /> : <Send size={12} />}
