@@ -101,14 +101,17 @@ function TreeStage({
     fit(layout.width, layout.height, clientWidth, clientHeight)
   }, [layout.width, layout.height, fit])
 
-  // Escape closes the overlay.
+  // Escape backs out one layer at a time: rename → create-menu → close overlay.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape') return
+      if (renamingId) setRenamingId(null)
+      else if (menuFolderId) setMenuFolderId(null)
+      else onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, renamingId, menuFolderId])
 
   function toggle(id: string) {
     setCollapsed((prev) => {

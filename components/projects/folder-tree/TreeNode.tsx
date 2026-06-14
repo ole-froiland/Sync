@@ -112,6 +112,9 @@ export default function TreeNode({
             defaultValue={node.label}
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
+              // Keep Enter/Escape inside the rename field — don't let them reach
+              // the overlay's window-level Escape handler (which would close it).
+              e.stopPropagation()
               if (e.key === 'Enter') onSubmitRename(node.id, e.currentTarget.value.trim() || node.label)
               if (e.key === 'Escape') onCancelRename()
             }}
