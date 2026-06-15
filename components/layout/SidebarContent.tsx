@@ -17,6 +17,7 @@ import {
   NotebookPen,
   UserCircle,
   HelpCircle,
+  Gauge,
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
@@ -50,6 +51,10 @@ const navSections: { label: string | null; items: { href: string; label: string;
       { href: '/notes', label: 'Notes', icon: NotebookPen },
       { href: '/ideas', label: 'Ideas', icon: Lightbulb },
     ],
+  },
+  {
+    label: 'Account',
+    items: [{ href: '/usage', label: 'Usage', icon: Gauge }],
   },
 ]
 
