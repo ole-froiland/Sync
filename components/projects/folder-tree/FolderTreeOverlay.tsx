@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { X } from 'lucide-react'
+import { Folder, X } from 'lucide-react'
 import type { ProjectFolder, ProjectItem } from '@/types'
 import type { AddKind } from './constants'
 import { NODE_H, NODE_W, ROOT_ID } from './constants'
@@ -22,7 +22,11 @@ interface Props {
   onOpenFolder: (folderId: string) => void
   onRenameFolder: (folderId: string, name: string) => void
   onDeleteFolder: (folderId: string) => void
+  onDeleteItem: (itemId: string, folderId: string) => void
   onAdd: (folderId: string, kind: AddKind) => void
+  onMoveFolder: (folderId: string, targetParentId: string | null) => void
+  onMoveItem: (itemId: string, targetFolderId: string) => void
+  canMoveFolder: (folderId: string, targetParentId: string | null) => boolean
 }
 
 type StageProps = Omit<Props, 'open'>
@@ -70,6 +74,8 @@ export default function FolderTreeOverlay({ open, ...stage }: Props) {
   )
 }
 
+type PressState = { x: number; y: number; nodeId: string | null; active: boolean }
+
 /**
  * The interactive stage. Mounted fresh each time the overlay opens, so the
  * default collapsed set is computed once via useState (no effect needed).
@@ -81,12 +87,20 @@ function TreeStage({
   onOpenFolder,
   onRenameFolder,
   onDeleteFolder,
+  onDeleteItem,
   onAdd,
+  onMoveFolder,
+  onMoveItem,
+  canMoveFolder,
 }: StageProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => defaultCollapsed(folders, currentFolderId))
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [menuFolderId, setMenuFolderId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [ghost, setGhost] = useState<{ nodeId: string; x: number; y: number } | null>(null)
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
+  const pressRef = useRef<PressState | null>(null)
   const { transform, bind, zoomIn, zoomOut, fit } = usePanZoom()
 
   const layout = useMemo(
@@ -101,17 +115,18 @@ function TreeStage({
     fit(layout.width, layout.height, clientWidth, clientHeight)
   }, [layout.width, layout.height, fit])
 
-  // Escape backs out one layer at a time: rename → create-menu → close overlay.
+  // Escape backs out one layer at a time: rename → menu → selection → close.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       if (renamingId) setRenamingId(null)
       else if (menuFolderId) setMenuFolderId(null)
+      else if (selectedId) setSelectedId(null)
       else onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, renamingId, menuFolderId])
+  }, [onClose, renamingId, menuFolderId, selectedId])
 
   function toggle(id: string) {
     setCollapsed((prev) => {
@@ -132,6 +147,98 @@ function TreeStage({
     if (node.id !== ROOT_ID) onOpenFolder(node.id)
   }
 
+  /** Screen point → which folder/root box is under it, if a valid drop target. */
+  function computeDrop(clientX: number, clientY: number, dragNodeId: string): string | null {
+    const vp = viewportRef.current
+    if (!vp) return null
+    const r = vp.getBoundingClientRect()
+    const cx = (clientX - r.left - transform.tx) / transform.scale
+    const cy = (clientY - r.top - transform.ty) / transform.scale
+    const dragNode = layout.nodes.find((n) => n.id === dragNodeId)
+    if (!dragNode || dragNode.kind === 'root') return null
+    for (const n of layout.nodes) {
+      if (n.kind === 'item') continue
+      if (n.id === dragNodeId) continue
+      if (cx < n.x - NODE_W / 2 || cx > n.x + NODE_W / 2 || cy < n.y || cy > n.y + NODE_H) continue
+      if (dragNode.kind === 'item') {
+        if (n.kind === 'root') return null
+        if (n.id === dragNode.parentId) return null
+        return n.id
+      }
+      // dragging a folder
+      if (n.id === dragNode.parentId) return null
+      const targetParent = n.kind === 'root' ? null : n.id
+      if (!canMoveFolder(dragNode.id, targetParent)) return null
+      return n.id
+    }
+    return null
+  }
+
+  function applyMove(dragNodeId: string, targetId: string) {
+    const dragNode = layout.nodes.find((n) => n.id === dragNodeId)
+    if (!dragNode) return
+    if (dragNode.kind === 'folder') {
+      onMoveFolder(dragNodeId, targetId === ROOT_ID ? null : targetId)
+    } else if (dragNode.kind === 'item' && targetId !== ROOT_ID) {
+      onMoveItem(dragNodeId, targetId)
+    }
+    // reveal the destination folder so the moved box is visible
+    if (targetId !== ROOT_ID) {
+      setCollapsed((prev) => {
+        if (!prev.has(targetId)) return prev
+        const next = new Set(prev)
+        next.delete(targetId)
+        return next
+      })
+    }
+  }
+
+  function onStagePointerDown(e: React.PointerEvent) {
+    const target = e.target as HTMLElement
+    if (target.closest('[data-no-drag]')) return
+    const nodeEl = target.closest('[data-node-id]') as HTMLElement | null
+    const nodeId = nodeEl?.getAttribute('data-node-id') ?? null
+    pressRef.current = { x: e.clientX, y: e.clientY, nodeId, active: false }
+    if (!nodeId) bind.onPointerDown(e)
+  }
+
+  function onStagePointerMove(e: React.PointerEvent) {
+    const pr = pressRef.current
+    if (!pr) return
+    const moved = Math.hypot(e.clientX - pr.x, e.clientY - pr.y) >= 5
+    if (pr.nodeId) {
+      if (!pr.active && !moved) return
+      pr.active = true
+      setGhost({ nodeId: pr.nodeId, x: e.clientX, y: e.clientY })
+      setDropTargetId(computeDrop(e.clientX, e.clientY, pr.nodeId))
+    } else {
+      if (moved) pr.active = true
+      bind.onPointerMove(e)
+    }
+  }
+
+  function onStagePointerUp(e: React.PointerEvent) {
+    const pr = pressRef.current
+    pressRef.current = null
+    if (pr?.nodeId) {
+      if (pr.active) {
+        const target = computeDrop(e.clientX, e.clientY, pr.nodeId)
+        if (target) applyMove(pr.nodeId, target)
+      } else {
+        setSelectedId(pr.nodeId === ROOT_ID ? null : pr.nodeId)
+        setMenuFolderId(null)
+      }
+      setGhost(null)
+      setDropTargetId(null)
+    } else {
+      bind.onPointerUp(e)
+      if (pr && !pr.active) {
+        setSelectedId(null)
+        setMenuFolderId(null)
+      }
+    }
+  }
+
   const breadcrumb = useMemo(() => {
     const byId = new Map(folders.map((f) => [f.id, f]))
     const names: string[] = []
@@ -147,6 +254,7 @@ function TreeStage({
 
   const menuFolder = menuFolderId ? folders.find((f) => f.id === menuFolderId) : null
   const menuNode = menuFolderId ? layout.nodes.find((n) => n.id === menuFolderId) : null
+  const ghostNode = ghost ? layout.nodes.find((n) => n.id === ghost.nodeId) : null
 
   return (
     <>
@@ -179,11 +287,14 @@ function TreeStage({
         ref={viewportRef}
         className="relative flex-1 cursor-grab touch-none overflow-hidden active:cursor-grabbing"
         style={{
-          backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.045) 1px, transparent 1px)',
+          backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.05) 1px, transparent 1px)',
           backgroundSize: '22px 22px',
         }}
-        onClick={() => setMenuFolderId(null)}
-        {...bind}
+        onPointerDown={onStagePointerDown}
+        onPointerMove={onStagePointerMove}
+        onPointerUp={onStagePointerUp}
+        onPointerCancel={onStagePointerUp}
+        onWheel={bind.onWheel}
       >
         <div
           className="absolute left-0 top-0 origin-top-left"
@@ -198,6 +309,7 @@ function TreeStage({
             {layout.nodes.map((node) => (
               <motion.div
                 key={node.id}
+                data-node-id={node.id}
                 initial={{ opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.96 }}
@@ -207,16 +319,24 @@ function TreeStage({
                 <TreeNode
                   node={node}
                   renaming={renamingId === node.id}
-                  onToggle={toggle}
-                  onOpen={openNode}
-                  onAdd={(id) => setMenuFolderId((cur) => (cur === id ? null : id))}
-                  onStartRename={setRenamingId}
-                  onSubmitRename={(id, name) => {
-                    onRenameFolder(id, name)
+                  selected={selectedId === node.id}
+                  isDropTarget={dropTargetId === node.id}
+                  onToggle={() => toggle(node.id)}
+                  onOpen={() => openNode(node)}
+                  onAdd={() => setMenuFolderId((cur) => (cur === node.id ? null : node.id))}
+                  onStartRename={() => setRenamingId(node.id)}
+                  onSubmitRename={(name) => {
+                    onRenameFolder(node.id, name)
                     setRenamingId(null)
                   }}
                   onCancelRename={() => setRenamingId(null)}
-                  onDelete={onDeleteFolder}
+                  onDelete={() => {
+                    if (node.kind === 'item') {
+                      if (node.parentId) onDeleteItem(node.id, node.parentId)
+                    } else {
+                      onDeleteFolder(node.id)
+                    }
+                  }}
                 />
               </motion.div>
             ))}
@@ -224,9 +344,9 @@ function TreeStage({
 
           {menuFolder && menuNode && (
             <div
+              data-no-drag
               className="absolute z-20"
               style={{ left: menuNode.x, top: menuNode.y + 52, transform: 'translateX(-50%)' }}
-              onClick={(e) => e.stopPropagation()}
             >
               <CreateMenu
                 folderLabel={menuFolder.name}
@@ -238,6 +358,16 @@ function TreeStage({
             </div>
           )}
         </div>
+
+        {ghost && ghostNode && (
+          <div
+            className="pointer-events-none fixed z-[100] flex items-center gap-2 rounded-[11px] border border-violet-400/60 bg-[#1f1a30]/95 px-3 py-2 text-[13px] font-medium text-violet-100 shadow-[0_14px_34px_-10px_rgba(0,0,0,0.85)]"
+            style={{ left: ghost.x + 14, top: ghost.y + 12 }}
+          >
+            <Folder size={15} className="text-violet-300" />
+            <span className="max-w-[160px] truncate">{ghostNode.label}</span>
+          </div>
+        )}
 
         <TreeControls
           scalePercent={Math.round(transform.scale * 100)}

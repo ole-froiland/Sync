@@ -677,6 +677,28 @@ export default function ProjectsPage() {
     )
   }
 
+  function moveItemToFolder(itemId: string, targetFolderId: string) {
+    setFolders((current) => {
+      const source = current.find((folder) => folder.items.some((item) => item.id === itemId))
+      const moved = source?.items.find((item) => item.id === itemId)
+      if (!source || !moved || source.id === targetFolderId) return current
+      const relocated: ProjectItem = { ...moved, parentId: undefined, updatedAt: new Date().toISOString() }
+      return current.map((folder) => {
+        if (folder.id === source.id) return { ...folder, items: folder.items.filter((item) => item.id !== itemId) }
+        if (folder.id === targetFolderId) return { ...folder, items: [relocated, ...folder.items] }
+        return folder
+      })
+    })
+  }
+
+  function removeFolderItem(folderId: string, itemId: string) {
+    setFolders((current) =>
+      current.map((folder) =>
+        folder.id === folderId ? { ...folder, items: folder.items.filter((item) => item.id !== itemId) } : folder
+      )
+    )
+  }
+
   function openFolderFromTree(folderId: string) {
     const folder = folders.find((f) => f.id === folderId)
     if (folder) openFolderFromOverview(folder)
@@ -1487,7 +1509,11 @@ export default function ProjectsPage() {
         onOpenFolder={openFolderFromTree}
         onRenameFolder={(folderId, name) => updateFolder(folderId, { name })}
         onDeleteFolder={(folderId) => requestDeleteFolder(folderId)}
+        onDeleteItem={(itemId, folderId) => removeFolderItem(folderId, itemId)}
         onAdd={handleTreeAdd}
+        onMoveFolder={(folderId, targetParentId) => moveFolderIntoFolder(folderId, targetParentId)}
+        onMoveItem={(itemId, targetFolderId) => moveItemToFolder(itemId, targetFolderId)}
+        canMoveFolder={(folderId, targetParentId) => canMoveFolderIntoFolder(folderId, targetParentId)}
       />
       <CreateFolderModal
         open={treeSubfolderParentId !== null}
