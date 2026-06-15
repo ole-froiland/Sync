@@ -32,8 +32,9 @@ function inputTokensOf(result: UsageResult): number {
   )
 }
 
-export async function GET() {
-  const apiKey = process.env.ANTHROPIC_ADMIN_KEY
+export async function GET(request: Request) {
+  // Prefer a per-user key supplied by the client (BYOK); fall back to server env.
+  const apiKey = request.headers.get('x-anthropic-key') || process.env.ANTHROPIC_ADMIN_KEY
 
   if (!apiKey) {
     return NextResponse.json({ error: 'Anthropic admin key is not configured' }, { status: 501 })

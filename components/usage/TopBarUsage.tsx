@@ -30,12 +30,14 @@ export default function TopBarUsage() {
 
       const openaiBudget = Number(window.localStorage.getItem('sync-usage-budget-openai')) || 1_000_000
       const anthropicBudget = Number(window.localStorage.getItem('sync-usage-budget-anthropic')) || 1_000_000
+      const openaiKey = window.localStorage.getItem('sync-usage-key-openai')
+      const anthropicKey = window.localStorage.getItem('sync-usage-key-anthropic')
 
       const [openai, anthropic] = await Promise.all([
-        fetch('/api/openai/usage', { cache: 'no-store' })
+        fetch('/api/openai/usage', { cache: 'no-store', headers: openaiKey ? { 'x-openai-key': openaiKey } : undefined })
           .then((r) => (r.ok ? (r.json() as Promise<{ codex?: { totalTokens?: number } }>) : null))
           .catch(() => null),
-        fetch('/api/anthropic/usage', { cache: 'no-store' })
+        fetch('/api/anthropic/usage', { cache: 'no-store', headers: anthropicKey ? { 'x-anthropic-key': anthropicKey } : undefined })
           .then((r) => (r.ok ? (r.json() as Promise<{ totalTokens?: number }>) : null))
           .catch(() => null),
       ])

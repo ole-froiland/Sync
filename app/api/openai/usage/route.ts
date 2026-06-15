@@ -19,8 +19,10 @@ type UsageResponse = {
   data?: UsageBucket[]
 }
 
-export async function GET() {
-  const apiKey = process.env.OPENAI_ADMIN_KEY ?? process.env.OPENAI_API_KEY
+export async function GET(request: Request) {
+  // Prefer a per-user key supplied by the client (BYOK); fall back to server env.
+  const apiKey =
+    request.headers.get('x-openai-key') || process.env.OPENAI_ADMIN_KEY || process.env.OPENAI_API_KEY
 
   if (!apiKey) {
     return NextResponse.json(

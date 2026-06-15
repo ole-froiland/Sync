@@ -6,10 +6,12 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Cpu,
+  ExternalLink,
+  Lock,
   Pencil,
+  Plug,
   RefreshCw,
   Sparkles,
-  TriangleAlert,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -17,6 +19,26 @@ const DEFAULT_BUDGET = 1_000_000
 
 type UsageStatus = 'normal' | 'heavy' | 'used_up'
 type ProviderState = 'ok' | 'not_configured' | 'error'
+type ProviderId = 'openai' | 'anthropic'
+
+const META: Record<ProviderId, { name: string; budgetKey: string; keyStorageKey: string; keyLabel: string; placeholder: string; helpUrl: string }> = {
+  openai: {
+    name: 'OpenAI',
+    budgetKey: 'sync-usage-budget-openai',
+    keyStorageKey: 'sync-usage-key-openai',
+    keyLabel: 'OpenAI Admin-nøkkel',
+    placeholder: 'sk-admin-…',
+    helpUrl: 'https://platform.openai.com/settings/organization/admin-keys',
+  },
+  anthropic: {
+    name: 'Claude',
+    budgetKey: 'sync-usage-budget-anthropic',
+    keyStorageKey: 'sync-usage-key-anthropic',
+    keyLabel: 'Anthropic Admin-nøkkel',
+    placeholder: 'sk-ant-admin…',
+    helpUrl: 'https://console.anthropic.com/settings/admin-keys',
+  },
+}
 
 interface DailyPoint {
   label: string
@@ -26,10 +48,7 @@ interface DailyPoint {
 }
 
 interface ProviderUsage {
-  id: 'openai' | 'anthropic'
-  name: string
-  budgetKey: string
-  envHint: string
+  id: ProviderId
   state: ProviderState
   errorMessage?: string
   totalTokens: number
@@ -55,7 +74,7 @@ interface AnthropicResponse {
   error?: string
 }
 
-const EMPTY = { totalTokens: 0, inputTokens: 0, outputTokens: 0, requests: null, mostUsedModel: '—', daily: [] as DailyPoint[] }
+const EMPTY = { totalTokens: 0, inputTokens: 0, outputTokens: 0, requests: null as number | null, mostUsedModel: '—', daily: [] as DailyPoint[] }
 
 function fmt(n: number): string {
   if (!Number.isFinite(n)) return '0'
@@ -70,16 +89,20 @@ function tone(usedPct: number) {
   return { stroke: '#8b5cf6', text: 'text-violet-500', bg: 'bg-violet-500' }
 }
 
-async function fetchOpenAI(): Promise<ProviderUsage> {
-  const base = { id: 'openai' as const, name: 'OpenAI', budgetKey: 'sync-usage-budget-openai', envHint: 'OPENAI_ADMIN_KEY' }
+function errorFor(status: number, fallback?: string): string {
+  if (status === 401 || status === 403) return 'Nøkkelen ble avvist. Sjekk at det er en gyldig Admin-nøkkel.'
+  return fallback ?? 'Kunne ikke hente forbruk akkurat nå.'
+}
+
+async function fetchOpenAI(key: string | null): Promise<ProviderUsage> {
   try {
-    const res = await fetch('/api/openai/usage', { cache: 'no-store' })
+    const res = await fetch('/api/openai/usage', { cache: 'no-store', headers: key ? { 'x-openai-key': key } : undefined })
     const body = (await res.json().catch(() => ({}))) as OpenAiResponse
-    if (res.status === 501) return { ...base, ...EMPTY, state: 'not_configured', errorMessage: body.error }
-    if (!res.ok) return { ...base, ...EMPTY, state: 'error', errorMessage: body.error ?? 'Kunne ikke hente bruk.' }
+    if (res.status === 501) return { id: 'openai', ...EMPTY, state: 'not_configured' }
+    if (!res.ok) return { id: 'openai', ...EMPTY, state: 'error', errorMessage: errorFor(res.status, body.error) }
     const c = body.codex ?? {}
     return {
-      ...base,
+      id: 'openai',
       state: 'ok',
       totalTokens: c.totalTokens ?? 0,
       inputTokens: c.inputTokens ?? 0,
@@ -89,19 +112,18 @@ async function fetchOpenAI(): Promise<ProviderUsage> {
       daily: body.dailyCodex ?? [],
     }
   } catch {
-    return { ...base, ...EMPTY, state: 'error', errorMessage: 'Nettverksfeil.' }
+    return { id: 'openai', ...EMPTY, state: 'error', errorMessage: 'Nettverksfeil.' }
   }
 }
 
-async function fetchAnthropic(): Promise<ProviderUsage> {
-  const base = { id: 'anthropic' as const, name: 'Claude', budgetKey: 'sync-usage-budget-anthropic', envHint: 'ANTHROPIC_ADMIN_KEY' }
+async function fetchAnthropic(key: string | null): Promise<ProviderUsage> {
   try {
-    const res = await fetch('/api/anthropic/usage', { cache: 'no-store' })
+    const res = await fetch('/api/anthropic/usage', { cache: 'no-store', headers: key ? { 'x-anthropic-key': key } : undefined })
     const body = (await res.json().catch(() => ({}))) as AnthropicResponse
-    if (res.status === 501) return { ...base, ...EMPTY, state: 'not_configured', errorMessage: body.error }
-    if (!res.ok) return { ...base, ...EMPTY, state: 'error', errorMessage: body.error ?? 'Kunne ikke hente bruk.' }
+    if (res.status === 501) return { id: 'anthropic', ...EMPTY, state: 'not_configured' }
+    if (!res.ok) return { id: 'anthropic', ...EMPTY, state: 'error', errorMessage: errorFor(res.status, body.error) }
     return {
-      ...base,
+      id: 'anthropic',
       state: 'ok',
       totalTokens: body.totalTokens ?? 0,
       inputTokens: body.inputTokens ?? 0,
@@ -111,24 +133,32 @@ async function fetchAnthropic(): Promise<ProviderUsage> {
       daily: body.daily ?? [],
     }
   } catch {
-    return { ...base, ...EMPTY, state: 'error', errorMessage: 'Nettverksfeil.' }
+    return { id: 'anthropic', ...EMPTY, state: 'error', errorMessage: 'Nettverksfeil.' }
   }
 }
 
 export default function UsageView() {
   const [providers, setProviders] = useState<ProviderUsage[] | null>(null)
   const [budgets, setBudgets] = useState<Record<string, number>>({})
+  const [keys, setKeys] = useState<Record<ProviderId, string | null>>({ openai: null, anthropic: null })
   const [nonce, setNonce] = useState(0)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const loadedBudgets: Record<string, number> = {
-        'sync-usage-budget-openai': Number(window.localStorage.getItem('sync-usage-budget-openai')) || DEFAULT_BUDGET,
-        'sync-usage-budget-anthropic': Number(window.localStorage.getItem('sync-usage-budget-anthropic')) || DEFAULT_BUDGET,
+      const storedKeys: Record<ProviderId, string | null> = {
+        openai: window.localStorage.getItem(META.openai.keyStorageKey),
+        anthropic: window.localStorage.getItem(META.anthropic.keyStorageKey),
       }
-      if (!cancelled) setBudgets(loadedBudgets)
-      const result = await Promise.all([fetchOpenAI(), fetchAnthropic()])
+      const loadedBudgets: Record<string, number> = {
+        [META.openai.budgetKey]: Number(window.localStorage.getItem(META.openai.budgetKey)) || DEFAULT_BUDGET,
+        [META.anthropic.budgetKey]: Number(window.localStorage.getItem(META.anthropic.budgetKey)) || DEFAULT_BUDGET,
+      }
+      if (!cancelled) {
+        setKeys(storedKeys)
+        setBudgets(loadedBudgets)
+      }
+      const result = await Promise.all([fetchOpenAI(storedKeys.openai), fetchAnthropic(storedKeys.anthropic)])
       if (!cancelled) setProviders(result)
     }
     void load()
@@ -141,6 +171,16 @@ export default function UsageView() {
     const safe = Math.max(1, Math.round(value))
     setBudgets((prev) => ({ ...prev, [key]: safe }))
     window.localStorage.setItem(key, String(safe))
+  }
+
+  function connect(id: ProviderId, key: string) {
+    window.localStorage.setItem(META[id].keyStorageKey, key)
+    setNonce((n) => n + 1)
+  }
+
+  function disconnect(id: ProviderId) {
+    window.localStorage.removeItem(META[id].keyStorageKey)
+    setNonce((n) => n + 1)
   }
 
   if (!providers) {
@@ -172,8 +212,11 @@ export default function UsageView() {
         <ProviderSection
           key={provider.id}
           provider={provider}
-          budget={budgets[provider.budgetKey] ?? DEFAULT_BUDGET}
-          onSaveBudget={(value) => saveBudget(provider.budgetKey, value)}
+          budget={budgets[META[provider.id].budgetKey] ?? DEFAULT_BUDGET}
+          hasStoredKey={Boolean(keys[provider.id])}
+          onSaveBudget={(value) => saveBudget(META[provider.id].budgetKey, value)}
+          onConnect={(key) => connect(provider.id, key)}
+          onDisconnect={() => disconnect(provider.id)}
         />
       ))}
     </div>
@@ -183,34 +226,27 @@ export default function UsageView() {
 function ProviderSection({
   provider,
   budget,
+  hasStoredKey,
   onSaveBudget,
+  onConnect,
+  onDisconnect,
 }: {
   provider: ProviderUsage
   budget: number
+  hasStoredKey: boolean
   onSaveBudget: (value: number) => void
+  onConnect: (key: string) => void
+  onDisconnect: () => void
 }) {
+  const meta = META[provider.id]
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(() => String(budget))
 
   if (provider.state !== 'ok') {
-    const notConfigured = provider.state === 'not_configured'
     return (
       <section className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
-        <SectionHeader provider={provider} />
-        <div className="mt-4 flex items-start gap-3 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/40">
-          <TriangleAlert size={18} className="mt-0.5 shrink-0 text-amber-500" />
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            {notConfigured ? (
-              <>
-                {provider.name}-forbruk er ikke koblet til ennå. Sett miljøvariabelen{' '}
-                <code className="rounded bg-gray-200 px-1.5 py-0.5 text-xs dark:bg-gray-800">{provider.envHint}</code> for å vise
-                forbruket her.
-              </>
-            ) : (
-              provider.errorMessage ?? 'Kunne ikke hente forbruk akkurat nå.'
-            )}
-          </p>
-        </div>
+        <SectionHeader name={meta.name} />
+        <ConnectCard provider={provider} meta={meta} onConnect={onConnect} />
       </section>
     )
   }
@@ -233,10 +269,20 @@ function ProviderSection({
 
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
-      <SectionHeader provider={provider} />
+      <div className="flex items-center justify-between">
+        <SectionHeader name={meta.name} />
+        {hasStoredKey && (
+          <button
+            onClick={onDisconnect}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+          >
+            <Plug size={13} />
+            Koble fra
+          </button>
+        )}
+      </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[230px_1fr]">
-        {/* gauge */}
         <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-gray-50/60 p-5 dark:border-gray-800 dark:bg-gray-950/40">
           <div className="relative h-[156px] w-[156px]">
             <svg className="h-full w-full -rotate-90" viewBox="0 0 156 156">
@@ -263,7 +309,6 @@ function ProviderSection({
           </p>
         </div>
 
-        {/* budget + stats */}
         <div className="flex flex-col gap-4">
           <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-800 dark:bg-gray-950/40">
             <div className="flex items-center justify-between">
@@ -297,10 +342,7 @@ function ProviderSection({
                   }}
                   className="h-9 w-40 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-violet-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
                 />
-                <button
-                  onClick={commit}
-                  className="h-9 rounded-lg bg-violet-600 px-4 text-sm font-medium text-white transition hover:bg-violet-700"
-                >
+                <button onClick={commit} className="h-9 rounded-lg bg-violet-600 px-4 text-sm font-medium text-white transition hover:bg-violet-700">
                   Lagre
                 </button>
               </div>
@@ -308,10 +350,7 @@ function ProviderSection({
               <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-gray-100">{fmt(budget)}</p>
             )}
             <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
-              <div
-                className={cn('h-full rounded-full transition-all duration-500', t.bg)}
-                style={{ width: `${Math.min(100, usedPct * 100)}%` }}
-              />
+              <div className={cn('h-full rounded-full transition-all duration-500', t.bg)} style={{ width: `${Math.min(100, usedPct * 100)}%` }} />
             </div>
             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
               Brukt {fmt(used)} ({Math.round(usedPct * 100)}%){usedPct >= 1 && <span className="text-rose-500"> · over budsjett</span>}
@@ -329,7 +368,6 @@ function ProviderSection({
         </div>
       </div>
 
-      {/* 7-day chart */}
       <div className="mt-5">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Per dag</span>
@@ -358,13 +396,68 @@ function ProviderSection({
   )
 }
 
-function SectionHeader({ provider }: { provider: ProviderUsage }) {
+function ConnectCard({
+  provider,
+  meta,
+  onConnect,
+}: {
+  provider: ProviderUsage
+  meta: (typeof META)[ProviderId]
+  onConnect: (key: string) => void
+}) {
+  const [key, setKey] = useState('')
+  const isError = provider.state === 'error'
+
+  return (
+    <div className="mt-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/40">
+      {isError ? (
+        <p className="text-sm font-medium text-rose-500">{provider.errorMessage}</p>
+      ) : (
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          Lim inn din <span className="font-medium text-gray-900 dark:text-gray-100">{meta.keyLabel}</span> for å se forbruket ditt her.{' '}
+          <a href={meta.helpUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-violet-600 hover:underline dark:text-violet-400">
+            Hvor finner jeg den? <ExternalLink size={12} />
+          </a>
+        </p>
+      )}
+
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <input
+          type="password"
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && key.trim()) onConnect(key.trim())
+          }}
+          placeholder={meta.placeholder}
+          autoComplete="off"
+          className="h-10 flex-1 rounded-lg border border-gray-200 bg-white px-3 font-mono text-sm text-gray-900 outline-none focus:ring-2 focus:ring-violet-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+        />
+        <button
+          onClick={() => key.trim() && onConnect(key.trim())}
+          disabled={!key.trim()}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-violet-600 px-5 text-sm font-medium text-white transition hover:bg-violet-700 disabled:opacity-40"
+        >
+          <Plug size={15} />
+          Koble til
+        </button>
+      </div>
+
+      <p className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
+        <Lock size={12} />
+        Lagres kun lokalt i nettleseren din, og sendes kun videre til {meta.name} for å hente forbruket.
+      </p>
+    </div>
+  )
+}
+
+function SectionHeader({ name }: { name: string }) {
   return (
     <div className="flex items-center gap-2.5">
       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 text-violet-600 dark:bg-violet-950/50 dark:text-violet-300">
         <Sparkles size={16} />
       </div>
-      <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{provider.name}</h2>
+      <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{name}</h2>
     </div>
   )
 }
