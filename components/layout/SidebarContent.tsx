@@ -139,7 +139,7 @@ export default function SidebarContent({ profile, onSignOut, signingOut }: Sideb
     }
 
     void loadInboxBadge()
-    const interval = window.setInterval(loadInboxBadge, 30000)
+    const interval = window.setInterval(loadInboxBadge, 180000)
     const onMetaChanged = () => void loadInboxBadge()
     const onFocus = () => void loadInboxBadge()
     window.addEventListener(CHAT_META_EVENT, onMetaChanged)
