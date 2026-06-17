@@ -40,7 +40,7 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Modal from '@/components/ui/Modal'
 import Textarea from '@/components/ui/Textarea'
-import { FolderTreeOverlay } from '@/components/projects/folder-tree'
+import { FolderTreeOverlay, ROOT_ID } from '@/components/projects/folder-tree'
 import { useUser } from '@/context/UserContext'
 import type { GitHubUserRepo, Profile, ProjectFolder, ProjectFolderMember, ProjectItem, ProjectLogo } from '@/types'
 
@@ -657,7 +657,7 @@ export default function ProjectsPage() {
     const nextFolder: ProjectFolder = {
       ...data,
       id: makeId('folder'),
-      parentId,
+      parentId: parentId === ROOT_ID ? undefined : parentId,
       createdAt: new Date().toISOString(),
       members: creator ? [creator] : [],
       items: [],

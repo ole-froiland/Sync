@@ -85,33 +85,41 @@ export default function TreeNode({
 
   return (
     <div className="group relative h-full w-full">
-      {/* folder toolbar */}
-      {!isItem && !isRoot && !renaming && (
+      {/* action toolbar — shows on hover / when selected. The hidden ::before
+          bridge spans the gap so the cursor can reach it without losing hover. */}
+      {!renaming && (
         <div
           data-no-drag
           className={cn(
-            'absolute bottom-full left-1/2 z-10 mb-2.5 -translate-x-1/2 items-center gap-0.5 rounded-[10px] border border-white/12 bg-[#1b1e26] p-1 shadow-[0_12px_30px_-10px_rgba(0,0,0,0.9)]',
+            "absolute bottom-full left-1/2 z-10 mb-2 -translate-x-1/2 items-center gap-1 rounded-xl border border-white/15 bg-[#272d3a] p-1.5 shadow-[0_16px_36px_-10px_rgba(0,0,0,0.95)] before:absolute before:left-0 before:right-0 before:top-full before:h-3 before:content-['']",
             toolbarVisibility
           )}
         >
-          <ToolbarBtn label="Åpne" onClick={onOpen}><FolderOpen size={15} /></ToolbarBtn>
-          <ToolbarBtn label="Legg til" accent onClick={onAdd}><Plus size={15} /></ToolbarBtn>
-          <ToolbarBtn label="Gi nytt navn" onClick={onStartRename}><Pencil size={15} /></ToolbarBtn>
-          <ToolbarBtn label="Slett" danger onClick={onDelete}><Trash2 size={15} /></ToolbarBtn>
-        </div>
-      )}
-
-      {/* item toolbar */}
-      {isItem && (
-        <div
-          data-no-drag
-          className={cn(
-            'absolute bottom-full left-1/2 z-10 mb-2.5 -translate-x-1/2 items-center gap-0.5 rounded-[10px] border border-white/12 bg-[#1b1e26] p-1 shadow-[0_12px_30px_-10px_rgba(0,0,0,0.9)]',
-            toolbarVisibility
+          {node.kind === 'folder' && (
+            <ToolbarBtn label="Åpne" onClick={onOpen}>
+              <FolderOpen size={16} />
+            </ToolbarBtn>
           )}
-        >
-          <ToolbarBtn label="Åpne" onClick={onOpen}><ExternalLink size={15} /></ToolbarBtn>
-          <ToolbarBtn label="Slett" danger onClick={onDelete}><Trash2 size={15} /></ToolbarBtn>
+          {isItem && (
+            <ToolbarBtn label="Åpne" onClick={onOpen}>
+              <ExternalLink size={16} />
+            </ToolbarBtn>
+          )}
+          {!isItem && (
+            <ToolbarBtn label={isRoot ? 'Ny topp-mappe' : 'Legg til'} accent onClick={onAdd}>
+              <Plus size={16} />
+            </ToolbarBtn>
+          )}
+          {node.kind === 'folder' && (
+            <ToolbarBtn label="Gi nytt navn" onClick={onStartRename}>
+              <Pencil size={16} />
+            </ToolbarBtn>
+          )}
+          {(node.kind === 'folder' || isItem) && (
+            <ToolbarBtn label="Slett" danger onClick={onDelete}>
+              <Trash2 size={16} />
+            </ToolbarBtn>
+          )}
         </div>
       )}
 
@@ -119,16 +127,16 @@ export default function TreeNode({
       <div
         title={node.label}
         className={cn(
-          'flex h-full w-full cursor-grab select-none items-center justify-center gap-2 rounded-[11px] border px-3.5 text-[13px] font-medium shadow-[0_2px_10px_-3px_rgba(0,0,0,0.75)] transition active:cursor-grabbing',
+          'flex h-full w-full cursor-grab select-none items-center justify-center gap-2 rounded-[11px] border px-3.5 text-[13px] font-medium shadow-[0_4px_14px_-3px_rgba(0,0,0,0.6)] transition active:cursor-grabbing',
           isDropTarget
-            ? 'border-emerald-400/70 bg-[#15241d] text-emerald-50 ring-2 ring-emerald-400/50'
+            ? 'border-emerald-400 bg-[#1c3128] text-emerald-50 ring-2 ring-emerald-400/60'
             : selected
-            ? 'border-violet-400 bg-[#1f1a30] text-violet-100 ring-2 ring-violet-400/40'
+            ? 'border-violet-400 bg-[#2c2647] text-white ring-2 ring-violet-400/50'
             : node.isCurrent
-            ? 'border-violet-400/70 bg-[#1f1a30] text-violet-100'
+            ? 'border-violet-400/70 bg-[#2a2442] text-violet-50'
             : node.onPath
-            ? 'border-violet-400/30 bg-[#181b23] text-gray-100'
-            : 'border-white/12 bg-[#171a22] text-gray-300 hover:border-white/25 hover:bg-[#1c2029]'
+            ? 'border-violet-400/40 bg-[#262433] text-gray-100'
+            : 'border-white/15 bg-[#242a35] text-gray-200 hover:border-white/30 hover:bg-[#2b323f]'
         )}
       >
         <Icon
@@ -172,7 +180,7 @@ export default function TreeNode({
           onClick={onToggle}
           aria-label={node.expanded ? 'Skjul undermapper' : 'Vis undermapper'}
           className={cn(
-            'absolute z-[4] flex h-[21px] items-center gap-1 rounded-full border border-white/15 bg-[#1b1e26] px-1.5 text-[11px] font-semibold text-gray-300 transition hover:text-gray-100',
+            'absolute z-[4] flex h-[22px] items-center gap-1 rounded-full border border-white/20 bg-[#242a35] px-1.5 text-[11px] font-semibold text-gray-200 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.7)] transition hover:bg-[#2b323f] hover:text-gray-100',
             orientation === 'horizontal' ? 'left-full top-1/2 ml-1 -translate-y-1/2' : 'left-1/2 top-full mt-1 -translate-x-1/2'
           )}
         >
@@ -211,8 +219,8 @@ function ToolbarBtn({
       aria-label={label}
       title={label}
       className={cn(
-        'flex h-7 w-7 items-center justify-center rounded-md transition hover:bg-white/10',
-        danger ? 'text-red-400' : accent ? 'text-violet-300' : 'text-gray-300'
+        'flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/15',
+        danger ? 'text-red-400 hover:text-red-300' : accent ? 'text-violet-300 hover:text-violet-200' : 'text-gray-200 hover:text-white'
       )}
     >
       {children}

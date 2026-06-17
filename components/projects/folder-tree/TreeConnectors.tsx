@@ -11,10 +11,10 @@ interface Props {
 
 /** Dimmed structural line. Semi-transparent, but all dim edges share ONE path
  *  element so overlapping trunks are painted once (no alpha build-up). */
-const DIM_STROKE = 'rgba(255,255,255,0.13)'
-/** Active path. Opaque (the 0.6 violet pre-blended on the dark canvas) so it
+const DIM_STROKE = 'rgba(255,255,255,0.2)'
+/** Active path. Opaque (a brighter violet pre-blended on the dark canvas) so it
  *  stays crisp and uniform wherever it overlaps the dim layer. */
-const ACTIVE_STROKE = '#68589c'
+const ACTIVE_STROKE = '#8170c4'
 
 export default function TreeConnectors({ nodes, edges, width, height, orientation }: Props) {
   const byId = new Map(nodes.map((n) => [n.id, n]))
