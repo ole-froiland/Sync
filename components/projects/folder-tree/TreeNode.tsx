@@ -91,7 +91,7 @@ export default function TreeNode({
         <div
           data-no-drag
           className={cn(
-            "absolute bottom-full left-1/2 z-10 mb-2 -translate-x-1/2 items-center gap-1 rounded-xl border border-white/15 bg-[#272d3a] p-1.5 shadow-[0_16px_36px_-10px_rgba(0,0,0,0.95)] before:absolute before:left-0 before:right-0 before:top-full before:h-3 before:content-['']",
+            "absolute bottom-full left-1/2 z-10 mb-2 -translate-x-1/2 items-center gap-1 rounded-xl border border-white/20 bg-[#2e3543] p-1.5 shadow-[0_18px_40px_-12px_rgba(0,0,0,0.95)] before:absolute before:left-0 before:right-0 before:top-full before:h-3 before:content-['']",
             toolbarVisibility
           )}
         >
@@ -127,16 +127,16 @@ export default function TreeNode({
       <div
         title={node.label}
         className={cn(
-          'flex h-full w-full cursor-grab select-none items-center justify-center gap-2 rounded-[11px] border px-3.5 text-[13px] font-medium shadow-[0_4px_14px_-3px_rgba(0,0,0,0.6)] transition active:cursor-grabbing',
+          'flex h-full w-full cursor-grab select-none items-center justify-center gap-2 rounded-[11px] border px-3.5 text-[13px] font-medium shadow-[0_10px_26px_-10px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.07)] transition active:cursor-grabbing',
           isDropTarget
-            ? 'border-emerald-400 bg-[#1c3128] text-emerald-50 ring-2 ring-emerald-400/60'
+            ? 'border-emerald-400 bg-[#22402f] text-emerald-50 ring-2 ring-emerald-400/60'
             : selected
-            ? 'border-violet-400 bg-[#2c2647] text-white ring-2 ring-violet-400/50'
+            ? 'border-violet-400 bg-[#352d5c] text-white ring-2 ring-violet-400/50'
             : node.isCurrent
-            ? 'border-violet-400/70 bg-[#2a2442] text-violet-50'
+            ? 'border-violet-400/70 bg-[#302a4f] text-violet-50'
             : node.onPath
-            ? 'border-violet-400/40 bg-[#262433] text-gray-100'
-            : 'border-white/15 bg-[#242a35] text-gray-200 hover:border-white/30 hover:bg-[#2b323f]'
+            ? 'border-violet-300/45 bg-[#2d2c3e] text-gray-50'
+            : 'border-white/[0.16] bg-[#2a313f] text-gray-100 hover:border-white/30 hover:bg-[#323a4a]'
         )}
       >
         <Icon
@@ -180,7 +180,7 @@ export default function TreeNode({
           onClick={onToggle}
           aria-label={node.expanded ? 'Skjul undermapper' : 'Vis undermapper'}
           className={cn(
-            'absolute z-[4] flex h-[22px] items-center gap-1 rounded-full border border-white/20 bg-[#242a35] px-1.5 text-[11px] font-semibold text-gray-200 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.7)] transition hover:bg-[#2b323f] hover:text-gray-100',
+            'absolute z-[4] flex h-[22px] items-center gap-1 rounded-full border border-white/20 bg-[#2a313f] px-1.5 text-[11px] font-semibold text-gray-100 shadow-[0_3px_10px_-2px_rgba(0,0,0,0.8)] transition hover:bg-[#323a4a]',
             orientation === 'horizontal' ? 'left-full top-1/2 ml-1 -translate-y-1/2' : 'left-1/2 top-full mt-1 -translate-x-1/2'
           )}
         >

@@ -277,7 +277,7 @@ export default function FolderTreeOverlay({
         ref={viewportRef}
         className="relative flex-1 cursor-grab touch-none overflow-hidden active:cursor-grabbing"
         style={{
-          backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.08) 1px, transparent 1px)',
+          backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.045) 1px, transparent 1px)',
           backgroundSize: '22px 22px',
         }}
         onPointerDown={onStagePointerDown}
@@ -391,7 +391,7 @@ export default function FolderTreeOverlay({
   if (fullscreen && typeof document !== 'undefined') {
     return createPortal(
       <motion.div
-        className="fixed inset-0 z-[900] flex flex-col bg-[#0e1016]"
+        className="fixed inset-0 z-[900] flex flex-col bg-[#0a0b10]"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.18 }}
@@ -404,7 +404,7 @@ export default function FolderTreeOverlay({
 
   return (
     <motion.div
-      className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0e1016]"
+      className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0a0b10]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.18 }}
