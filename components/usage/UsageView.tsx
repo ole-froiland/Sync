@@ -36,7 +36,7 @@ const META: Record<ProviderId, { name: string; budgetKey: string; keyStorageKey:
     keyStorageKey: 'sync-usage-key-anthropic',
     keyLabel: 'Anthropic Admin-nøkkel',
     placeholder: 'sk-ant-admin…',
-    helpUrl: 'https://console.anthropic.com/settings/admin-keys',
+    helpUrl: 'https://platform.claude.com/docs/en/manage-claude/usage-cost-api',
   },
 }
 
@@ -206,6 +206,12 @@ export default function UsageView() {
           <RefreshCw size={14} />
           Oppdater
         </button>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3.5 text-xs leading-relaxed text-gray-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
+        Viser <span className="font-medium text-gray-700 dark:text-gray-300">API-forbruk</span> (betal-per-token via API-nøkkel) — ikke
+        abonnement som ChatGPT Plus/Pro eller Claude Pro/Max, som har egne grenser uten offentlig API. Krever en{' '}
+        <span className="font-medium text-gray-700 dark:text-gray-300">Admin-nøkkel</span> fra en organisasjons-konto (ikke en personlig konto).
       </div>
 
       {providers.map((provider) => (
@@ -416,7 +422,7 @@ function ConnectCard({
         <p className="text-sm text-gray-600 dark:text-gray-300">
           Lim inn din <span className="font-medium text-gray-900 dark:text-gray-100">{meta.keyLabel}</span> for å se forbruket ditt her.{' '}
           <a href={meta.helpUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-violet-600 hover:underline dark:text-violet-400">
-            Hvor finner jeg den? <ExternalLink size={12} />
+            Slik lager du en Admin-nøkkel <ExternalLink size={12} />
           </a>
         </p>
       )}
