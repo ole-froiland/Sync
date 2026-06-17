@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ProjectItem } from '@/types'
-import type { TreeNodeModel } from './buildTreeLayout'
+import type { TreeNodeModel, TreeOrientation } from './buildTreeLayout'
 
 const ITEM_ICONS: Record<ProjectItem['type'], React.ElementType> = {
   note: StickyNote,
@@ -42,6 +42,7 @@ const ITEM_ICONS: Record<ProjectItem['type'], React.ElementType> = {
 
 interface Props {
   node: TreeNodeModel
+  orientation: TreeOrientation
   renaming: boolean
   selected: boolean
   isDropTarget: boolean
@@ -56,6 +57,7 @@ interface Props {
 
 export default function TreeNode({
   node,
+  orientation,
   renaming,
   selected,
   isDropTarget,
@@ -162,19 +164,22 @@ export default function TreeNode({
         )}
       </div>
 
-      {/* expand/collapse control */}
+      {/* expand/collapse control (under the node when vertical, to its right when horizontal) */}
       {!isItem && node.hasChildren && (
         <button
           type="button"
           data-no-drag
           onClick={onToggle}
           aria-label={node.expanded ? 'Skjul undermapper' : 'Vis undermapper'}
-          className="absolute left-1/2 top-full z-[4] mt-1 flex h-[21px] -translate-x-1/2 items-center gap-1 rounded-full border border-white/15 bg-[#1b1e26] px-1.5 text-[11px] font-semibold text-gray-300 transition hover:text-gray-100"
+          className={cn(
+            'absolute z-[4] flex h-[21px] items-center gap-1 rounded-full border border-white/15 bg-[#1b1e26] px-1.5 text-[11px] font-semibold text-gray-300 transition hover:text-gray-100',
+            orientation === 'horizontal' ? 'left-full top-1/2 ml-1 -translate-y-1/2' : 'left-1/2 top-full mt-1 -translate-x-1/2'
+          )}
         >
           {!node.expanded && <span>{node.childCount}</span>}
           <motion.span
             className="inline-flex"
-            animate={{ rotate: node.expanded ? 180 : 0 }}
+            animate={{ rotate: node.expanded ? (orientation === 'horizontal' ? 90 : 180) : orientation === 'horizontal' ? -90 : 0 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
           >
             <ChevronDown size={12} />

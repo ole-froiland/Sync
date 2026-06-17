@@ -1,5 +1,7 @@
 import type { ProjectFolder, ProjectItem } from '@/types'
-import { H_GAP, NODE_H, NODE_W, ROOT_ID, ROOT_LABEL, ROW_V } from './constants'
+import { COL_H, H_GAP, NODE_H, NODE_W, ROOT_ID, ROOT_LABEL, ROW_V, V_GAP } from './constants'
+
+export type TreeOrientation = 'vertical' | 'horizontal'
 
 export type TreeNodeKind = 'root' | 'folder' | 'item'
 
@@ -11,7 +13,7 @@ export interface TreeNodeModel {
   parentId: string | null
   depth: number
   x: number // center x
-  y: number // top y
+  y: number // center y
   hasChildren: boolean
   childCount: number
   expanded: boolean
@@ -35,6 +37,7 @@ export interface TreeLayout {
 export interface BuildOpts {
   collapsed: ReadonlySet<string>
   currentId: string | null
+  orientation?: TreeOrientation
 }
 
 interface WorkNode {
@@ -79,7 +82,7 @@ export function buildTreeLayout(folders: ProjectFolder[], opts: BuildOpts): Tree
         parentId: folder.parentId ?? ROOT_ID,
         depth,
         x: 0,
-        y: depth * ROW_V,
+        y: 0,
         hasChildren: subfolders.length + items.length > 0,
         childCount: subfolders.length + items.length,
         expanded,
@@ -100,7 +103,7 @@ export function buildTreeLayout(folders: ProjectFolder[], opts: BuildOpts): Tree
         parentId,
         depth,
         x: 0,
-        y: depth * ROW_V,
+        y: 0,
         hasChildren: false,
         childCount: 0,
         expanded: false,
@@ -130,18 +133,33 @@ export function buildTreeLayout(folders: ProjectFolder[], opts: BuildOpts): Tree
     children: topLevel.map((f) => makeFolderNode(f, 1)),
   }
 
-  // assign center x via post-order leaf packing
+  // assign centers: the depth axis is fixed per level, the sibling axis is packed.
+  // vertical → depth runs down (y), siblings across (x); horizontal → swapped.
+  const horizontal = opts.orientation === 'horizontal'
   let cursor = 0
   function place(node: WorkNode): void {
+    const depth = node.model.depth
+    if (horizontal) node.model.x = depth * COL_H + NODE_W / 2
+    else node.model.y = depth * ROW_V + NODE_H / 2
+
     if (node.children.length === 0) {
-      node.model.x = cursor + NODE_W / 2
-      cursor += NODE_W + H_GAP
+      if (horizontal) {
+        node.model.y = cursor + NODE_H / 2
+        cursor += NODE_H + V_GAP
+      } else {
+        node.model.x = cursor + NODE_W / 2
+        cursor += NODE_W + H_GAP
+      }
       return
     }
+
     node.children.forEach(place)
-    const first = node.children[0].model.x
-    const last = node.children[node.children.length - 1].model.x
-    node.model.x = (first + last) / 2
+    const kids = node.children
+    const first = horizontal ? kids[0].model.y : kids[0].model.x
+    const last = horizontal ? kids[kids.length - 1].model.y : kids[kids.length - 1].model.x
+    const center = (first + last) / 2
+    if (horizontal) node.model.y = center
+    else node.model.x = center
   }
   place(root)
 
@@ -162,6 +180,6 @@ export function buildTreeLayout(folders: ProjectFolder[], opts: BuildOpts): Tree
   flatten(root)
 
   const width = nodes.reduce((m, n) => Math.max(m, n.x + NODE_W / 2), 0)
-  const height = nodes.reduce((m, n) => Math.max(m, n.y + NODE_H), 0)
+  const height = nodes.reduce((m, n) => Math.max(m, n.y + NODE_H / 2), 0)
   return { nodes, edges, width, height }
 }

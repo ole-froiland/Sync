@@ -3,11 +3,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Folder, X } from 'lucide-react'
+import { Folder, Maximize, Minimize, Network, X } from 'lucide-react'
 import type { ProjectFolder, ProjectItem } from '@/types'
 import type { AddKind } from './constants'
 import { NODE_H, NODE_W, ROOT_ID } from './constants'
-import { buildTreeLayout, type TreeNodeModel } from './buildTreeLayout'
+import { buildTreeLayout, type TreeNodeModel, type TreeOrientation } from './buildTreeLayout'
 import { usePanZoom } from './usePanZoom'
 import TreeConnectors from './TreeConnectors'
 import TreeNode from './TreeNode'
@@ -15,7 +15,6 @@ import TreeControls from './TreeControls'
 import CreateMenu from './CreateMenu'
 
 interface Props {
-  open: boolean
   folders: ProjectFolder[]
   currentFolderId: string | null
   onClose: () => void
@@ -29,7 +28,7 @@ interface Props {
   canMoveFolder: (folderId: string, targetParentId: string | null) => boolean
 }
 
-type StageProps = Omit<Props, 'open'>
+type PressState = { x: number; y: number; nodeId: string | null; active: boolean }
 
 function ancestorsOf(folders: ProjectFolder[], id: string | null): Set<string> {
   const byId = new Map(folders.map((f) => [f.id, f]))
@@ -58,29 +57,12 @@ function findItem(folders: ProjectFolder[], itemId: string): ProjectItem | undef
   return undefined
 }
 
-export default function FolderTreeOverlay({ open, ...stage }: Props) {
-  if (typeof document === 'undefined' || !open) return null
-
-  return createPortal(
-    <motion.div
-      className="fixed inset-0 z-[900] flex flex-col bg-[#08090c]"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.18 }}
-    >
-      <TreeStage {...stage} />
-    </motion.div>,
-    document.body
-  )
-}
-
-type PressState = { x: number; y: number; nodeId: string | null; active: boolean }
-
 /**
- * The interactive stage. Mounted fresh each time the overlay opens, so the
- * default collapsed set is computed once via useState (no effect needed).
+ * Interactive folder tree. Renders embedded in its parent container by default;
+ * the fullscreen toggle re-renders it through a portal as a fixed overlay.
+ * Mount this only while open (so the default collapsed set is fresh each time).
  */
-function TreeStage({
+export default function FolderTreeOverlay({
   folders,
   currentFolderId,
   onClose,
@@ -92,8 +74,10 @@ function TreeStage({
   onMoveFolder,
   onMoveItem,
   canMoveFolder,
-}: StageProps) {
+}: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => defaultCollapsed(folders, currentFolderId))
+  const [orientation, setOrientation] = useState<TreeOrientation>('vertical')
+  const [fullscreen, setFullscreen] = useState(false)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [menuFolderId, setMenuFolderId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -104,29 +88,30 @@ function TreeStage({
   const { transform, bind, zoomIn, zoomOut, fit } = usePanZoom()
 
   const layout = useMemo(
-    () => buildTreeLayout(folders, { collapsed, currentId: currentFolderId }),
-    [folders, collapsed, currentFolderId]
+    () => buildTreeLayout(folders, { collapsed, currentId: currentFolderId, orientation }),
+    [folders, collapsed, currentFolderId, orientation]
   )
 
-  // Re-fit whenever the laid-out content size changes.
+  // Re-fit when the content size, orientation, or container (embedded↔fullscreen) changes.
   useLayoutEffect(() => {
     if (!viewportRef.current) return
     const { clientWidth, clientHeight } = viewportRef.current
     fit(layout.width, layout.height, clientWidth, clientHeight)
-  }, [layout.width, layout.height, fit])
+  }, [layout.width, layout.height, fit, fullscreen])
 
-  // Escape backs out one layer at a time: rename → menu → selection → close.
+  // Escape backs out one layer at a time: rename → menu → selection → fullscreen → close.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       if (renamingId) setRenamingId(null)
       else if (menuFolderId) setMenuFolderId(null)
       else if (selectedId) setSelectedId(null)
+      else if (fullscreen) setFullscreen(false)
       else onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, renamingId, menuFolderId, selectedId])
+  }, [onClose, renamingId, menuFolderId, selectedId, fullscreen])
 
   function toggle(id: string) {
     setCollapsed((prev) => {
@@ -159,7 +144,7 @@ function TreeStage({
     for (const n of layout.nodes) {
       if (n.kind === 'item') continue
       if (n.id === dragNodeId) continue
-      if (cx < n.x - NODE_W / 2 || cx > n.x + NODE_W / 2 || cy < n.y || cy > n.y + NODE_H) continue
+      if (cx < n.x - NODE_W / 2 || cx > n.x + NODE_W / 2 || cy < n.y - NODE_H / 2 || cy > n.y + NODE_H / 2) continue
       if (dragNode.kind === 'item') {
         if (n.kind === 'root') return null
         if (n.id === dragNode.parentId) return null
@@ -182,7 +167,6 @@ function TreeStage({
     } else if (dragNode.kind === 'item' && targetId !== ROOT_ID) {
       onMoveItem(dragNodeId, targetId)
     }
-    // reveal the destination folder so the moved box is visible
     if (targetId !== ROOT_ID) {
       setCollapsed((prev) => {
         if (!prev.has(targetId)) return prev
@@ -256,13 +240,13 @@ function TreeStage({
   const menuNode = menuFolderId ? layout.nodes.find((n) => n.id === menuFolderId) : null
   const ghostNode = ghost ? layout.nodes.find((n) => n.id === ghost.nodeId) : null
 
-  return (
+  const content = (
     <>
       {/* header */}
       <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
-        <div className="flex items-center gap-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
           <span className="text-[13px] font-semibold text-gray-200">Mappetre</span>
-          <span className="text-[12px] font-medium text-gray-500">
+          <span className="truncate text-[12px] font-medium text-gray-500">
             Prosjekter
             {breadcrumb.map((n) => (
               <span key={n}>
@@ -272,14 +256,20 @@ function TreeStage({
             ))}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Lukk"
-          className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-white/[0.07] bg-[#0f1115] text-gray-400 transition hover:text-gray-100"
-        >
-          <X size={15} />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <HeaderBtn
+            label={orientation === 'vertical' ? 'Vis vannrett' : 'Vis loddrett'}
+            onClick={() => setOrientation((o) => (o === 'vertical' ? 'horizontal' : 'vertical'))}
+          >
+            <Network size={15} className={orientation === 'horizontal' ? '-rotate-90' : ''} />
+          </HeaderBtn>
+          <HeaderBtn label={fullscreen ? 'Avslutt fullskjerm' : 'Fullskjerm'} onClick={() => setFullscreen((f) => !f)}>
+            {fullscreen ? <Minimize size={15} /> : <Maximize size={15} />}
+          </HeaderBtn>
+          <HeaderBtn label="Lukk" onClick={onClose}>
+            <X size={15} />
+          </HeaderBtn>
+        </div>
       </div>
 
       {/* stage */}
@@ -304,7 +294,13 @@ function TreeStage({
             height: layout.height,
           }}
         >
-          <TreeConnectors nodes={layout.nodes} edges={layout.edges} width={layout.width} height={layout.height} />
+          <TreeConnectors
+            nodes={layout.nodes}
+            edges={layout.edges}
+            width={layout.width}
+            height={layout.height}
+            orientation={orientation}
+          />
           <AnimatePresence>
             {layout.nodes.map((node) => (
               <motion.div
@@ -314,10 +310,11 @@ function TreeStage({
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.96 }}
                 transition={{ duration: 0.16, ease: 'easeOut' }}
-                style={{ position: 'absolute', left: node.x - NODE_W / 2, top: node.y, width: NODE_W, height: NODE_H }}
+                style={{ position: 'absolute', left: node.x - NODE_W / 2, top: node.y - NODE_H / 2, width: NODE_W, height: NODE_H }}
               >
                 <TreeNode
                   node={node}
+                  orientation={orientation}
                   renaming={renamingId === node.id}
                   selected={selectedId === node.id}
                   isDropTarget={dropTargetId === node.id}
@@ -346,7 +343,7 @@ function TreeStage({
             <div
               data-no-drag
               className="absolute z-20"
-              style={{ left: menuNode.x, top: menuNode.y + 52, transform: 'translateX(-50%)' }}
+              style={{ left: menuNode.x, top: menuNode.y + NODE_H / 2 + 10, transform: 'translateX(-50%)' }}
             >
               <CreateMenu
                 folderLabel={menuFolder.name}
@@ -386,5 +383,44 @@ function TreeStage({
         />
       </div>
     </>
+  )
+
+  if (fullscreen && typeof document !== 'undefined') {
+    return createPortal(
+      <motion.div
+        className="fixed inset-0 z-[900] flex flex-col bg-[#08090c]"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.18 }}
+      >
+        {content}
+      </motion.div>,
+      document.body
+    )
+  }
+
+  return (
+    <motion.div
+      className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#08090c]"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.18 }}
+    >
+      {content}
+    </motion.div>
+  )
+}
+
+function HeaderBtn({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-white/[0.07] bg-[#0f1115] text-gray-400 transition hover:text-gray-100"
+    >
+      {children}
+    </button>
   )
 }

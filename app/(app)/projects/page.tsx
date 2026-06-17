@@ -1171,7 +1171,7 @@ export default function ProjectsPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto px-6 py-8">
+      <div className={`flex-1 overflow-y-auto px-6 py-8 ${treeOpen ? 'hidden' : ''}`}>
             <div className="mb-7 flex flex-col gap-4">
               <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
                 <div className="relative w-full lg:w-80">
@@ -1501,20 +1501,23 @@ export default function ProjectsPage() {
             )}
       </div>
 
-      <FolderTreeOverlay
-        open={treeOpen}
-        folders={folders}
-        currentFolderId={activeParentFolderId}
-        onClose={() => setTreeOpen(false)}
-        onOpenFolder={openFolderFromTree}
-        onRenameFolder={(folderId, name) => updateFolder(folderId, { name })}
-        onDeleteFolder={(folderId) => requestDeleteFolder(folderId)}
-        onDeleteItem={(itemId, folderId) => removeFolderItem(folderId, itemId)}
-        onAdd={handleTreeAdd}
-        onMoveFolder={(folderId, targetParentId) => moveFolderIntoFolder(folderId, targetParentId)}
-        onMoveItem={(itemId, targetFolderId) => moveItemToFolder(itemId, targetFolderId)}
-        canMoveFolder={(folderId, targetParentId) => canMoveFolderIntoFolder(folderId, targetParentId)}
-      />
+      {treeOpen && (
+        <div className="flex min-h-0 flex-1 flex-col p-3">
+          <FolderTreeOverlay
+            folders={folders}
+            currentFolderId={activeParentFolderId}
+            onClose={() => setTreeOpen(false)}
+            onOpenFolder={openFolderFromTree}
+            onRenameFolder={(folderId, name) => updateFolder(folderId, { name })}
+            onDeleteFolder={(folderId) => requestDeleteFolder(folderId)}
+            onDeleteItem={(itemId, folderId) => removeFolderItem(folderId, itemId)}
+            onAdd={handleTreeAdd}
+            onMoveFolder={(folderId, targetParentId) => moveFolderIntoFolder(folderId, targetParentId)}
+            onMoveItem={(itemId, targetFolderId) => moveItemToFolder(itemId, targetFolderId)}
+            canMoveFolder={(folderId, targetParentId) => canMoveFolderIntoFolder(folderId, targetParentId)}
+          />
+        </div>
+      )}
       <CreateFolderModal
         open={treeSubfolderParentId !== null}
         onClose={() => setTreeSubfolderParentId(null)}
