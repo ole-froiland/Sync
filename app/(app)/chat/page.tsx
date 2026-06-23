@@ -545,6 +545,17 @@ export default function ChatPage() {
     selectProject(project)
   }
 
+  function handleDeleteChannel(project: Project) {
+    if (!window.confirm(`Delete #${project.name}? This removes the channel and its messages.`)) return
+    deleteChatChannel(project.id)
+    window.localStorage.removeItem(localProjectChatStorageKey(project.id))
+    setProjects((prev) => prev.filter((p) => p.id !== project.id))
+    if (active?.kind === 'project' && active.project.id === project.id) {
+      setActive(null)
+      setProjectMessages([])
+    }
+  }
+
   function selectUser(user: Profile) {
     setActive({ kind: 'dm', user })
     setPendingImage(null)
@@ -875,19 +886,29 @@ export default function ChatPage() {
             projects.map((project) => {
               const isActive = active?.kind === 'project' && active.project.id === project.id
               return (
-                <button
-                  key={project.id}
-                  onClick={() => selectProject(project)}
-                  className={cn(
-                    'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-left',
-                    isActive
-                      ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 font-medium'
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-                  )}
-                >
-                  <Hash size={14} className="flex-shrink-0" />
-                  <span className="truncate flex-1">{project.name}</span>
-                </button>
+                <div key={project.id} className="group relative">
+                  <button
+                    type="button"
+                    onClick={() => selectProject(project)}
+                    className={cn(
+                      'w-full flex items-center gap-2.5 px-3 py-2 pr-9 rounded-lg text-sm transition-colors text-left',
+                      isActive
+                        ? 'bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 font-medium'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+                    )}
+                  >
+                    <Hash size={14} className="flex-shrink-0" />
+                    <span className="truncate flex-1">{project.name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteChannel(project)}
+                    aria-label={`Delete ${project.name}`}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 opacity-0 transition-opacity hover:bg-gray-200 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100 dark:hover:bg-gray-700 dark:hover:text-red-400"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               )
             })
           )}
