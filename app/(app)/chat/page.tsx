@@ -287,6 +287,8 @@ export default function ChatPage() {
   const toastIdRef = useRef(0)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [lightboxImage, setLightboxImage] = useState<ImagePayload | null>(null)
+  const [newChannelOpen, setNewChannelOpen] = useState(false)
+  const [newChannelName, setNewChannelName] = useState('')
 
   useEffect(() => {
     if (!profileId) return
@@ -530,6 +532,17 @@ export default function ChatPage() {
     setPendingImage(null)
     setProjectMessages([])
     fetchProjectMessages(project.id)
+  }
+
+  function handleCreateChannel(e: React.FormEvent) {
+    e.preventDefault()
+    const name = newChannelName.trim()
+    if (!name) return
+    const project = channelToProject(createChatChannel(name))
+    setProjects((prev) => [project, ...prev])
+    setNewChannelName('')
+    setNewChannelOpen(false)
+    selectProject(project)
   }
 
   function selectUser(user: Profile) {
@@ -835,10 +848,18 @@ export default function ChatPage() {
           active ? 'hidden sm:flex' : 'flex'
         )}
       >
-        <div className="px-4 py-4 border-b border-gray-100 dark:border-gray-800">
+        <div className="px-4 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
           <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
             Channels
           </p>
+          <button
+            type="button"
+            onClick={() => setNewChannelOpen(true)}
+            aria-label="New channel"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+          >
+            <Plus size={16} />
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto px-2 py-2">
           {projectsLoading ? (
@@ -849,7 +870,7 @@ export default function ChatPage() {
               </div>
             ))
           ) : projects.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">No channels yet.</p>
+            <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">No channels yet — create one with +.</p>
           ) : (
             projects.map((project) => {
               const isActive = active?.kind === 'project' && active.project.id === project.id
@@ -1236,6 +1257,44 @@ export default function ChatPage() {
         ))}
       </div>
       <ImageLightbox image={lightboxImage} onClose={() => setLightboxImage(null)} />
+
+      <Modal
+        open={newChannelOpen}
+        onClose={() => {
+          setNewChannelOpen(false)
+          setNewChannelName('')
+        }}
+        title="New channel"
+        className="max-w-sm"
+      >
+        <form onSubmit={handleCreateChannel} className="space-y-4">
+          <Input
+            id="new-channel-name"
+            label="Channel name"
+            autoFocus
+            value={newChannelName}
+            onChange={(e) => setNewChannelName(e.target.value)}
+            placeholder="e.g. Marketing"
+            required
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setNewChannelOpen(false)
+                setNewChannelName('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!newChannelName.trim()}>
+              <Plus size={16} />
+              Create
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }
