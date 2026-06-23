@@ -6,7 +6,7 @@ import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useUser } from '@/context/UserContext'
-import { mockProjects, mockMessages } from '@/lib/mock-data'
+import { mockMessages } from '@/lib/mock-data'
 import { formatDate, cn } from '@/lib/utils'
 import {
   Hash,
@@ -20,6 +20,8 @@ import {
   BellOff,
   Bell,
   FolderOpen,
+  Plus,
+  Trash2,
 } from 'lucide-react'
 import type { Message, Profile, Project } from '@/types'
 import {
@@ -29,6 +31,15 @@ import {
   writeChatReadMap,
   writeMutedUserIds,
 } from '@/lib/chat-meta'
+import {
+  channelToProject,
+  createChatChannel,
+  deleteChatChannel,
+  isChatChannelId,
+  readChatChannels,
+} from '@/lib/chat-channels'
+import Modal from '@/components/ui/Modal'
+import Input from '@/components/ui/Input'
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
 const PROJECT_FOLDERS_STORAGE_KEY = 'sync-project-folders-v1'
@@ -87,12 +98,6 @@ type ProjectFolderSharePayload = {
   item_count?: number
 }
 
-type ProjectFolderSummary = {
-  id: string
-  name: string
-  description?: string
-  createdAt?: string
-}
 
 type ImagePayload = {
   data_url: string
@@ -120,42 +125,15 @@ type ActiveTarget =
 
 type Toast = { id: number; tone: 'success' | 'error'; message: string }
 
-function localProjectId(folderId: string) {
-  return `${LOCAL_PROJECT_PREFIX}${folderId}`
-}
 
 function isLocalProjectId(projectId: string) {
-  return projectId.startsWith(LOCAL_PROJECT_PREFIX)
+  return projectId.startsWith(LOCAL_PROJECT_PREFIX) || isChatChannelId(projectId)
 }
 
 function localProjectChatStorageKey(projectId: string) {
   return `sync-project-folder-chat:${projectId}`
 }
 
-function readProjectFolderChannels(): Project[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const raw = window.localStorage.getItem(PROJECT_FOLDERS_STORAGE_KEY)
-    const folders = raw ? (JSON.parse(raw) as ProjectFolderSummary[]) : []
-    if (!Array.isArray(folders)) return []
-    return folders.map((folder) => ({
-      id: localProjectId(folder.id),
-      name: folder.name,
-      description: folder.description ?? null,
-      status: 'idea' as const,
-      tech_stack: null,
-      github_url: null,
-      demo_url: null,
-      created_by: 'local',
-      created_at: folder.createdAt ?? new Date().toISOString(),
-      member_count: 0,
-      task_count: 0,
-      members: [],
-    }))
-  } catch {
-    return []
-  }
-}
 
 function readLocalProjectMessages(projectId: string): Message[] {
   if (typeof window === 'undefined') return []
@@ -399,8 +377,7 @@ export default function ChatPage() {
       try {
         if (!SUPABASE_CONFIGURED) {
           if (cancelled) return
-          const localProjects = readProjectFolderChannels()
-          const projectList = [...mockProjects, ...localProjects]
+          const projectList = readChatChannels().map(channelToProject)
           const target = window.localStorage.getItem(PROJECT_CHAT_TARGET_KEY)
           if (target) window.localStorage.removeItem(PROJECT_CHAT_TARGET_KEY)
           const firstProject =
@@ -420,13 +397,11 @@ export default function ChatPage() {
           return
         }
 
-        const [projRes, peopleRes, connRes] = await Promise.all([
-          fetch('/api/projects'),
+        const [peopleRes, connRes] = await Promise.all([
           fetch('/api/people'),
           fetch('/api/connections'),
         ])
 
-        const projectList = projRes.ok ? ((await projRes.json()) as Project[]) : []
         const peopleList = peopleRes.ok ? ((await peopleRes.json()) as Profile[]) : []
         const connData = connRes.ok
           ? ((await connRes.json()) as {
@@ -440,8 +415,7 @@ export default function ChatPage() {
 
         const target = window.localStorage.getItem(PROJECT_CHAT_TARGET_KEY)
         if (target) window.localStorage.removeItem(PROJECT_CHAT_TARGET_KEY)
-        const localProjects = readProjectFolderChannels()
-        const list = [...(Array.isArray(projectList) ? projectList : []), ...localProjects]
+        const list = readChatChannels().map(channelToProject)
         setProjects(list)
 
         const syncMap = connData.sync ?? {}
