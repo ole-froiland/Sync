@@ -388,11 +388,7 @@ export default function ChatPage() {
           setDirectPeople([])
           if (firstProject) {
             setActive({ kind: 'project', project: firstProject })
-            if (isLocalProjectId(firstProject.id)) {
-              setProjectMessages(readLocalProjectMessages(firstProject.id))
-            } else {
-              setProjectMessages(mockMessages.filter((m) => m.project_id === firstProject.id))
-            }
+            setProjectMessages(readLocalProjectMessages(firstProject.id))
           }
           setProjectsLoading(false)
           setDirectPeopleLoading(false)
