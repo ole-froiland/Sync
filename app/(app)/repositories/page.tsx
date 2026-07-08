@@ -94,6 +94,14 @@ function lsGet<T>(key: string, fallback: T): T {
   }
 }
 
+function lsSet(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
 function makeStorageKey(userId: string | null | undefined, suffix: string): string {
   return `sync_repositories_${suffix}_${userId ?? 'anon'}`
 }
@@ -1105,19 +1113,19 @@ export default function RepositoriesPage() {
   const showNewRepoButton = loadingDone && !notConnected && !error
 
   useEffect(() => {
-    localStorage.setItem(storageKeys.folders, JSON.stringify(folders))
+    lsSet(storageKeys.folders, folders)
   }, [folders, storageKeys])
 
   useEffect(() => {
-    localStorage.setItem(storageKeys.locations, JSON.stringify(repoLocations))
+    lsSet(storageKeys.locations, repoLocations)
   }, [repoLocations, storageKeys])
 
   useEffect(() => {
-    localStorage.setItem(storageKeys.stars, JSON.stringify([...starredIds]))
+    lsSet(storageKeys.stars, [...starredIds])
   }, [starredIds, storageKeys])
 
   useEffect(() => {
-    localStorage.setItem(storageKeys.collapsed, JSON.stringify([...collapsedFolders]))
+    lsSet(storageKeys.collapsed, [...collapsedFolders])
   }, [collapsedFolders, storageKeys])
 
   useEffect(() => {
@@ -1660,9 +1668,13 @@ export default function RepositoriesPage() {
                 </a>
                 <p className="text-xs text-gray-300 dark:text-gray-600">
                   You can also connect in{' '}
-                  <a href="/settings" className="underline transition-colors hover:text-gray-400">
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new Event('sync:open-settings'))}
+                    className="underline transition-colors hover:text-gray-400"
+                  >
                     Settings → Connected accounts
-                  </a>
+                  </button>
                 </p>
               </div>
             )}

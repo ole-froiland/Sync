@@ -16,7 +16,11 @@ export function readChatReadMap(profileId: string): Record<string, string> {
 
 export function writeChatReadMap(profileId: string, value: Record<string, string>) {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(chatReadStorageKey(profileId), JSON.stringify(value))
+  try {
+    window.localStorage.setItem(chatReadStorageKey(profileId), JSON.stringify(value))
+  } catch {
+    // ignore storage quota errors
+  }
   window.dispatchEvent(new CustomEvent(CHAT_META_EVENT))
 }
 
@@ -34,6 +38,10 @@ export function readMutedUserIds(profileId: string): string[] {
 
 export function writeMutedUserIds(profileId: string, userIds: string[]) {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(chatMuteStorageKey(profileId), JSON.stringify(userIds))
+  try {
+    window.localStorage.setItem(chatMuteStorageKey(profileId), JSON.stringify(userIds))
+  } catch {
+    // ignore storage quota errors
+  }
   window.dispatchEvent(new CustomEvent(CHAT_META_EVENT))
 }

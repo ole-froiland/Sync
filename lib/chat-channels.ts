@@ -44,6 +44,22 @@ export function removeChannel(list: ChatChannel[], id: string): ChatChannel[] {
   return list.filter((channel) => channel.id !== id)
 }
 
+export function upsertChannel(
+  list: ChatChannel[],
+  id: string,
+  name: string,
+  createdAt: string
+): { list: ChatChannel[]; channel: ChatChannel } {
+  const existing = list.find((channel) => channel.id === id)
+  if (existing) {
+    if (existing.name === name) return { list, channel: existing }
+    const channel = { ...existing, name }
+    return { list: list.map((c) => (c.id === id ? channel : c)), channel }
+  }
+  const channel: ChatChannel = { id, name, createdAt }
+  return { list: addChannel(list, channel), channel }
+}
+
 export function channelToProject(channel: ChatChannel): Project {
   return {
     id: channel.id,
@@ -70,7 +86,11 @@ export function readChatChannels(): ChatChannel[] {
 
 export function writeChatChannels(channels: ChatChannel[]): void {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(CHAT_CHANNELS_STORAGE_KEY, JSON.stringify(channels))
+  try {
+    window.localStorage.setItem(CHAT_CHANNELS_STORAGE_KEY, JSON.stringify(channels))
+  } catch {
+    // ignore storage quota errors
+  }
 }
 
 export function createChatChannel(name: string): ChatChannel {
@@ -85,4 +105,12 @@ export function createChatChannel(name: string): ChatChannel {
 
 export function deleteChatChannel(id: string): void {
   writeChatChannels(removeChannel(readChatChannels(), id))
+}
+
+/** Find-or-create a channel with a caller-chosen id (e.g. a folder-chat id). */
+export function ensureChatChannel(id: string, name: string): ChatChannel {
+  const channels = readChatChannels()
+  const { list, channel } = upsertChannel(channels, id, name.trim(), new Date().toISOString())
+  if (list !== channels) writeChatChannels(list)
+  return channel
 }

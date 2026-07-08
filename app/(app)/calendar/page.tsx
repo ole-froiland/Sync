@@ -49,6 +49,7 @@ const SLOT_HOURS = Array.from(
   (_, index) => VISIBLE_START_HOUR + index
 )
 const STORAGE_KEY = 'sync-calendar-events'
+const CALENDAR_EVENT_CREATED = 'sync:calendar-event-created'
 const HIDDEN_CALENDARS_KEY = 'sync-calendar-hidden-calendars'
 const CALENDAR_EVENT_DRAG_TYPE = 'application/x-sync-calendar-event'
 const NOTE_DRAG_TYPE = 'application/x-sync-note'
@@ -238,13 +239,33 @@ export default function CalendarPage() {
 
   useEffect(() => {
     if (!storageLoadedRef.current) return
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(events))
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(events))
+    } catch {
+      // ignore storage quota errors
+    }
   }, [events])
 
   useEffect(() => {
     if (!storageLoadedRef.current) return
-    window.localStorage.setItem(HIDDEN_CALENDARS_KEY, JSON.stringify([...hiddenCalendarIds]))
+    try {
+      window.localStorage.setItem(HIDDEN_CALENDARS_KEY, JSON.stringify([...hiddenCalendarIds]))
+    } catch {
+      // ignore storage quota errors
+    }
   }, [hiddenCalendarIds])
+
+  useEffect(() => {
+    function handleAiCreatedEvent(event: Event) {
+      const calendarEvent = (event as CustomEvent<CalendarEvent>).detail
+      if (!calendarEvent?.id || !calendarEvent.title || !calendarEvent.start || !calendarEvent.end) return
+      setEvents((prev) => upsertEvent(prev, calendarEvent))
+      setViewDate(new Date(calendarEvent.start))
+    }
+
+    window.addEventListener(CALENDAR_EVENT_CREATED, handleAiCreatedEvent)
+    return () => window.removeEventListener(CALENDAR_EVENT_CREATED, handleAiCreatedEvent)
+  }, [])
 
   useEffect(() => {
     void refreshProviderStatus()

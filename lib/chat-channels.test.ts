@@ -6,6 +6,7 @@ import {
   isChatChannelId,
   parseChannels,
   removeChannel,
+  upsertChannel,
   type ChatChannel,
 } from './chat-channels'
 
@@ -64,6 +65,25 @@ describe('removeChannel', () => {
   })
   it('leaves the list unchanged when the id is absent', () => {
     expect(removeChannel([sample], 'nope')).toEqual([sample])
+  })
+})
+
+describe('upsertChannel', () => {
+  it('prepends a new channel when the id is absent', () => {
+    const { list, channel } = upsertChannel([sample], 'project-folder:f1', 'Design', '2026-06-24T12:00:00.000Z')
+    expect(channel).toEqual({ id: 'project-folder:f1', name: 'Design', createdAt: '2026-06-24T12:00:00.000Z' })
+    expect(list).toEqual([channel, sample])
+  })
+  it('returns the existing channel and the same list when nothing changed', () => {
+    const input = [sample]
+    const { list, channel } = upsertChannel(input, sample.id, 'Marketing', '2026-06-25T00:00:00.000Z')
+    expect(channel).toBe(sample)
+    expect(list).toBe(input)
+  })
+  it('renames the existing channel when the name differs', () => {
+    const { list, channel } = upsertChannel([sample], sample.id, 'Sales', '2026-06-25T00:00:00.000Z')
+    expect(channel).toEqual({ ...sample, name: 'Sales' })
+    expect(list).toEqual([{ ...sample, name: 'Sales' }])
   })
 })
 

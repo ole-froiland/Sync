@@ -6,7 +6,6 @@ import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useUser } from '@/context/UserContext'
-import { mockMessages } from '@/lib/mock-data'
 import { formatDate, cn } from '@/lib/utils'
 import {
   Hash,
@@ -146,8 +145,14 @@ function readLocalProjectMessages(projectId: string): Message[] {
   }
 }
 
-function writeLocalProjectMessages(projectId: string, messages: Message[]) {
-  window.localStorage.setItem(localProjectChatStorageKey(projectId), JSON.stringify(messages))
+function writeLocalProjectMessages(projectId: string, messages: Message[]): boolean {
+  try {
+    window.localStorage.setItem(localProjectChatStorageKey(projectId), JSON.stringify(messages))
+    return true
+  } catch {
+    // Quota exceeded — pasted images are stored as data URLs and can be large.
+    return false
+  }
 }
 
 function isProjectFolderShareMessage(message: DirectMessage) {
@@ -258,7 +263,11 @@ function importSharedProjectFolder(payload: ProjectFolderSharePayload, sender?: 
     folders = []
   }
   const nextFolders = Array.isArray(folders) ? [folder, ...folders] : [folder]
-  window.localStorage.setItem(PROJECT_FOLDERS_STORAGE_KEY, JSON.stringify(nextFolders))
+  try {
+    window.localStorage.setItem(PROJECT_FOLDERS_STORAGE_KEY, JSON.stringify(nextFolders))
+  } catch {
+    // Quota exceeded — the projects page re-hydrates accepted shares from the inbox.
+  }
 
   return folder
 }
@@ -317,15 +326,9 @@ export default function ChatPage() {
   }
 
   const fetchProjectMessages = useCallback((projectId: string) => {
-    if (isLocalProjectId(projectId)) {
+    if (isLocalProjectId(projectId) || !SUPABASE_CONFIGURED) {
       queueMicrotask(() => {
         setProjectMessages(readLocalProjectMessages(projectId))
-      })
-      return
-    }
-    if (!SUPABASE_CONFIGURED) {
-      queueMicrotask(() => {
-        setProjectMessages(mockMessages.filter((m) => m.project_id === projectId))
       })
       return
     }
@@ -582,8 +585,12 @@ export default function ChatPage() {
       }
       if (isLocalProjectId(active.project.id)) {
         const next = [...projectMessages, optimistic]
+        if (!writeLocalProjectMessages(active.project.id, next)) {
+          setInput(text)
+          showToast('Could not save the message — browser storage is full', 'error')
+          return
+        }
         setProjectMessages(next)
-        writeLocalProjectMessages(active.project.id, next)
         return
       }
       setProjectMessages((prev) => [...prev, optimistic])
@@ -658,8 +665,11 @@ export default function ChatPage() {
       }
       if (isLocalProjectId(active.project.id)) {
         const next = [...projectMessages, optimistic]
+        if (!writeLocalProjectMessages(active.project.id, next)) {
+          showToast('Could not save the image — browser storage is full', 'error')
+          return
+        }
         setProjectMessages(next)
-        writeLocalProjectMessages(active.project.id, next)
         return
       }
       setProjectMessages((prev) => [...prev, optimistic])
