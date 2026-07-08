@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Folder, Maximize, Minimize, Network, X } from 'lucide-react'
@@ -85,6 +86,7 @@ export default function FolderTreeOverlay({
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const pressRef = useRef<PressState | null>(null)
+  const router = useRouter()
   const { transform, bind, zoomIn, zoomOut, fit } = usePanZoom()
 
   const layout = useMemo(
@@ -130,6 +132,21 @@ export default function FolderTreeOverlay({
       return
     }
     if (node.id !== ROOT_ID) onOpenFolder(node.id)
+  }
+
+  /**
+   * Double-click "open". A GitHub repo opens its in-app Sync page
+   * (/repositories/owner/repo); everything else falls back to openNode.
+   */
+  function activateNode(node: TreeNodeModel) {
+    if (node.kind === 'item') {
+      const item = findItem(folders, node.id)
+      if (item?.type === 'github' && item.title?.includes('/')) {
+        router.push(`/repositories/${item.title}`)
+        return
+      }
+    }
+    openNode(node)
   }
 
   /** Screen point → which folder/root box is under it, if a valid drop target. */
@@ -320,6 +337,7 @@ export default function FolderTreeOverlay({
                   isDropTarget={dropTargetId === node.id}
                   onToggle={() => toggle(node.id)}
                   onOpen={() => openNode(node)}
+                  onActivate={() => activateNode(node)}
                   onAdd={() => {
                     if (node.kind === 'root') onAdd(node.id, 'subfolder')
                     else setMenuFolderId((cur) => (cur === node.id ? null : node.id))
@@ -368,6 +386,10 @@ export default function FolderTreeOverlay({
             <span className="max-w-[160px] truncate">{ghostNode.label}</span>
           </div>
         )}
+
+        <div className="pointer-events-none absolute bottom-4 left-4 hidden rounded-xl border border-white/10 bg-[#0f1115]/90 px-3 py-2 text-[11px] font-medium text-gray-500 sm:block">
+          Dobbeltklikk åpner · dra for å flytte
+        </div>
 
         <TreeControls
           scalePercent={Math.round(transform.scale * 100)}

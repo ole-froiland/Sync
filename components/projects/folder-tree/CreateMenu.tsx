@@ -12,7 +12,7 @@ const ITEMS: Array<{ kind: AddKind; label: string; icon: React.ElementType; acce
   { kind: 'subfolder', label: 'Undermappe', icon: Folder, accent: true },
   { kind: 'repo', label: 'Repo', icon: GitBranch },
   { kind: 'link', label: 'Lenke / URL', icon: Link2 },
-  { kind: 'app', label: 'Dokument (Docs/Sheets/Notion…)', icon: PanelsTopLeft },
+  { kind: 'app', label: 'Dokument', icon: PanelsTopLeft },
   { kind: 'file', label: 'Last opp fil', icon: Upload },
 ]
 

@@ -41,6 +41,8 @@ import Input from '@/components/ui/Input'
 import Modal from '@/components/ui/Modal'
 import Textarea from '@/components/ui/Textarea'
 import { FolderTreeOverlay, ROOT_ID } from '@/components/projects/folder-tree'
+import { ProjectCardSkeleton } from '@/components/ui/Skeleton'
+import { ensureChatChannel } from '@/lib/chat-channels'
 import { useUser } from '@/context/UserContext'
 import type { GitHubUserRepo, Profile, ProjectFolder, ProjectFolderMember, ProjectItem, ProjectLogo } from '@/types'
 
@@ -455,7 +457,9 @@ export default function ProjectsPage() {
   const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null)
   const [deleteItemId, setDeleteItemId] = useState<string | null>(null)
   const [storageReady, setStorageReady] = useState(false)
+  const [initialSyncPending, setInitialSyncPending] = useState(true)
   const loadedRef = useRef(false)
+  const serverLoadedRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -469,25 +473,38 @@ export default function ProjectsPage() {
       }
 
       const legacyFolders = readLegacyCollections()
-      let serverFolders: ProjectFolder[] = []
-      if (currentProfile) {
-        try {
-          const response = await fetch('/api/project-folders')
-          if (response.ok) {
-            const body = (await response.json()) as { folders?: ProjectFolder[] }
-            serverFolders = Array.isArray(body.folders) ? body.folders : []
-          }
-        } catch {
-          // Local cache keeps the page usable while server sync is unavailable.
-        }
-      }
-
       if (cancelled) return
 
-      setFolders(mergeProjectFolders(serverFolders, localFolders, legacyFolders))
+      // Show the local cache right away; the server copy merges in when it
+      // arrives, so a slow or cold-started API never blanks the page.
+      setFolders(mergeProjectFolders(localFolders, legacyFolders))
       setSelectedFolderId(null)
       loadedRef.current = true
       setStorageReady(true)
+
+      if (!currentProfile) {
+        setInitialSyncPending(false)
+        return
+      }
+
+      try {
+        const response = await fetch('/api/project-folders', {
+          signal: AbortSignal.timeout(10_000),
+        })
+        if (response.ok) {
+          const body = (await response.json()) as { folders?: ProjectFolder[] }
+          const serverFolders = Array.isArray(body.folders) ? body.folders : []
+          if (cancelled) return
+          // Sync-back stays disabled until the server copy has been seen —
+          // a PUT before that could overwrite it with an empty local cache.
+          serverLoadedRef.current = true
+          setFolders((current) => mergeProjectFolders(serverFolders, current))
+        }
+      } catch {
+        // Local cache keeps the page usable while server sync is unavailable.
+      } finally {
+        if (!cancelled) setInitialSyncPending(false)
+      }
     }
 
     const id = window.setTimeout(() => {
@@ -500,11 +517,32 @@ export default function ProjectsPage() {
     }
   }, [currentProfile])
 
+  // Mirror folder changes made in other tabs (localStorage is shared per origin).
+  useEffect(() => {
+    function onStorage(event: StorageEvent) {
+      if (event.key !== STORAGE_KEY || event.newValue === null || !loadedRef.current) return
+      try {
+        setFolders(mergeProjectFolders(parseStoredFolders(event.newValue)))
+      } catch {
+        // Ignore malformed writes from other tabs.
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
   useEffect(() => {
     if (!loadedRef.current || !storageReady) return
 
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(folders))
-    if (!currentProfile) return
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(folders))
+    } catch {
+      // Quota exceeded (large uploads): drop the stale cache so it cannot
+      // shadow the fresher server copy on the next load; the sync below
+      // still persists the data.
+      window.localStorage.removeItem(STORAGE_KEY)
+    }
+    if (!currentProfile || !serverLoadedRef.current) return
 
     const controller = new AbortController()
     const id = window.setTimeout(() => {
@@ -624,8 +662,6 @@ export default function ProjectsPage() {
   const renamingFolder = renamingFolderId ? folders.find((folder) => folder.id === renamingFolderId) ?? null : null
   const logoFolder = logoFolderId ? folders.find((folder) => folder.id === logoFolderId) ?? null : null
   const deleteFolderTarget = deleteFolderId ? folders.find((folder) => folder.id === deleteFolderId) ?? null : null
-  const activeOverviewFolder =
-    previewFolderId ? visibleFolders.find((folder) => folder.id === previewFolderId) ?? null : null
   const previewFolderChildren = previewFolder
     ? folders.filter((folder) => folder.parentId === previewFolder.id)
     : []
@@ -788,7 +824,11 @@ export default function ProjectsPage() {
   }
 
   function openProjectChat(folder: ProjectFolder) {
-    window.localStorage.setItem(PROJECT_CHAT_TARGET_KEY, localProjectChatId(folder.id))
+    // Channels are user-created; reuse the folder-chat id so messages sent
+    // before the manual-channels change stay attached to this channel.
+    const chatId = localProjectChatId(folder.id)
+    ensureChatChannel(chatId, folder.name)
+    window.localStorage.setItem(PROJECT_CHAT_TARGET_KEY, chatId)
     window.location.href = '/chat'
   }
 
@@ -1194,7 +1234,7 @@ export default function ProjectsPage() {
                   }`}
                 >
                   <Eye size={16} />
-                  Preview
+                  Forhåndsvis
                 </Button>
                 <Button
                   type="button"
@@ -1208,17 +1248,6 @@ export default function ProjectsPage() {
                 <Button onClick={() => setFolderOpen(true)} className="h-10 whitespace-nowrap">
                   <Plus size={16} />
                   <span>Ny mappe</span>
-                </Button>
-                <Button
-                  type="button"
-                  variant="danger"
-                  onClick={() => activeOverviewFolder && requestDeleteFolder(activeOverviewFolder.id)}
-                  disabled={!activeOverviewFolder}
-                  className="h-10 whitespace-nowrap"
-                  title={activeOverviewFolder ? `Slett ${activeOverviewFolder.name}` : 'Velg en mappe først'}
-                >
-                  <Trash2 size={16} />
-                  Slett mappe
                 </Button>
               </div>
               {folderPath.length > 0 && (
@@ -1264,7 +1293,14 @@ export default function ProjectsPage() {
               )}
             </div>
 
-            {folders.length === 0 ? (
+            {folders.length === 0 && initialSyncPending ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <ProjectCardSkeleton />
+                <ProjectCardSkeleton />
+                <ProjectCardSkeleton />
+                <ProjectCardSkeleton />
+              </div>
+            ) : folders.length === 0 ? (
               <div className="flex min-h-[52vh] flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 text-center dark:border-gray-800 dark:bg-gray-900/30">
                 <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-950/60 dark:text-purple-300">
                   <Plus size={34} />
@@ -1332,6 +1368,7 @@ export default function ProjectsPage() {
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') openFolderFromOverview(folder)
                         }}
+                        title="Dobbeltklikk for å åpne"
                         className={`group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
                           isDropTarget
                             ? 'border-cyan-400 bg-cyan-50 shadow-sm dark:border-cyan-500 dark:bg-cyan-950/30'
@@ -1466,6 +1503,7 @@ export default function ProjectsPage() {
                         }}
                         className="flex min-w-0 flex-1 items-center gap-3 text-left"
                         aria-pressed={active}
+                        title="Dobbeltklikk for å åpne"
                       >
                         <ProjectLogoThumbnail folder={folder} className="h-9 w-9" iconSize={18} />
                         <span className="min-w-0 flex-1">
@@ -2422,6 +2460,10 @@ function LogoEditorModal({
 
   function handleLogoUpload(file: File | null) {
     if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      window.alert('Filen er for stor. Maks 5 MB for nå.')
+      return
+    }
     const reader = new FileReader()
     reader.onload = () => {
       if (typeof reader.result === 'string') setLogo({ type: 'image', value: reader.result })

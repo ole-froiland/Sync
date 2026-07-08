@@ -48,6 +48,7 @@ interface Props {
   isDropTarget: boolean
   onToggle: () => void
   onOpen: () => void
+  onActivate: () => void
   onAdd: () => void
   onStartRename: () => void
   onSubmitRename: (name: string) => void
@@ -63,6 +64,7 @@ export default function TreeNode({
   isDropTarget,
   onToggle,
   onOpen,
+  onActivate,
   onAdd,
   onStartRename,
   onSubmitRename,
@@ -126,6 +128,7 @@ export default function TreeNode({
       {/* the box */}
       <div
         title={node.label}
+        onDoubleClick={renaming ? undefined : onActivate}
         className={cn(
           'flex h-full w-full cursor-grab select-none items-center justify-center gap-2 rounded-[11px] border px-3.5 text-[13px] font-medium shadow-[0_10px_26px_-10px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.08)] transition active:cursor-grabbing',
           isDropTarget

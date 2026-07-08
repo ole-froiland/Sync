@@ -10,6 +10,7 @@ export interface TreeNodeModel {
   kind: TreeNodeKind
   label: string
   itemType?: ProjectItem['type']
+  color?: string
   parentId: string | null
   depth: number
   x: number // center x
@@ -79,6 +80,7 @@ export function buildTreeLayout(folders: ProjectFolder[], opts: BuildOpts): Tree
         id: folder.id,
         kind: 'folder',
         label: folder.name,
+        color: folder.color,
         parentId: folder.parentId ?? ROOT_ID,
         depth,
         x: 0,
