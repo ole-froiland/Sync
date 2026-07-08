@@ -30,34 +30,6 @@ type SyncMap = Record<string, SyncState>
 type FollowSet = Record<string, true>
 type Toast = { id: number; tone: 'success' | 'error'; message: string }
 type SyncBusyAction = 'sync' | 'accept' | 'reject'
-type UsageStats = {
-  source: 'live' | 'snapshot'
-  codexLimits: Array<{
-    label: string
-    resetLabel: string
-    percentLeft: number | null
-  }>
-  codex: {
-    requests: number
-    totalTokens: number
-    inputTokens: number
-    outputTokens: number
-    remainingPercent: number | null
-    resetLabel: string
-    lastActiveLabel: string
-    mostUsedModel: string
-  }
-  dailyCodex: Array<{
-    label: string
-    dateLabel: string
-    requests: number
-    tokens: number
-    inputTokens?: number
-    outputTokens?: number
-    limitTokens: number
-    status: 'normal' | 'heavy' | 'used_up'
-  }>
-}
 
 async function readApiError(res: Response, fallback: string): Promise<string> {
   try {
@@ -77,7 +49,6 @@ export default function PeoplePage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [pendingByUser, setPendingByUser] = useState<Record<string, 'follow' | SyncBusyAction | null>>({})
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null)
-  const [liveUsageStats, setLiveUsageStats] = useState<UsageStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -167,40 +138,6 @@ export default function PeoplePage() {
     () => visibleProfiles.find((profile) => profile.id === selectedProfileId) ?? null,
     [visibleProfiles, selectedProfileId]
   )
-
-  const fallbackUsageStats = useMemo(
-    () => (currentProfile ? buildUsageStats(currentProfile) : null),
-    [currentProfile]
-  )
-  const usageStats = liveUsageStats ?? fallbackUsageStats
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadUsage() {
-      if (!currentProfile) {
-        setLiveUsageStats(null)
-        return
-      }
-
-      try {
-        const res = await fetch('/api/openai/usage', { cache: 'no-store' })
-        if (!res.ok) {
-          if (!cancelled) setLiveUsageStats(null)
-          return
-        }
-        const data = (await res.json()) as UsageStats
-        if (!cancelled && data.source === 'live') setLiveUsageStats(data)
-      } catch {
-        if (!cancelled) setLiveUsageStats(null)
-      }
-    }
-
-    loadUsage()
-    return () => {
-      cancelled = true
-    }
-  }, [currentProfile])
 
   function getProjectsForUser(userId: string) {
     return projects.filter((p) =>
@@ -398,7 +335,6 @@ export default function PeoplePage() {
         onClose={() => setSelectedProfileId(null)}
         projects={selectedProfile ? getProjectsForUser(selectedProfile.id) : []}
         isCurrentUser={selectedProfile?.id === currentProfile?.id}
-        usageStats={selectedProfile?.id === currentProfile?.id ? usageStats : null}
       />
 
       <div className="pointer-events-none fixed bottom-6 right-6 z-50 flex flex-col gap-2">
@@ -643,14 +579,12 @@ function ProfileModal({
   onClose,
   projects,
   isCurrentUser,
-  usageStats,
 }: {
   profile: Profile | null
   open: boolean
   onClose: () => void
   projects: Project[]
   isCurrentUser: boolean
-  usageStats: UsageStats | null
 }) {
   if (!profile) return null
 
@@ -738,162 +672,6 @@ function ProfileModal({
             </div>
           </section>
         )}
-
-        {isCurrentUser && usageStats && (
-          <section className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                    Your Codex Usage
-                  </h4>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                      usageStats.source === 'live'
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                        : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-                    }`}
-                  >
-                    {usageStats.source === 'live' ? 'Live API data' : 'Local snapshot'}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Token usage, reset windows, and daily limit pressure.
-                </p>
-              </div>
-              <a
-                href="https://chatgpt.com/codex"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-              >
-                Open in Codex
-              </a>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              {usageStats.codexLimits.map((limit) => (
-                <div
-                  key={limit.label}
-                  className="rounded-2xl border border-gray-100 bg-white p-5 dark:border-gray-800 dark:bg-gray-900"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                        {limit.label}
-                      </p>
-                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        {limit.resetLabel}
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
-                      {limit.percentLeft === null ? 'Tracked' : `${limit.percentLeft}% left`}
-                    </span>
-                  </div>
-                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                    <div
-                      className="h-full rounded-full bg-fuchsia-600"
-                      style={{ width: `${limit.percentLeft ?? 100}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <UsageMetricCard
-                label="Codex requests"
-                value={usageStats.codex.requests.toLocaleString()}
-                detail={
-                  usageStats.codex.remainingPercent === null
-                    ? 'From OpenAI Usage API'
-                    : `${usageStats.codex.remainingPercent}% usage left`
-                }
-              />
-              <UsageMetricCard
-                label="Tokens"
-                value={formatCompactNumber(usageStats.codex.totalTokens)}
-                detail={`${formatCompactNumber(usageStats.codex.inputTokens)} in / ${formatCompactNumber(usageStats.codex.outputTokens)} out`}
-              />
-              <UsageMetricCard
-                label="Last active"
-                value={usageStats.codex.lastActiveLabel}
-                detail={usageStats.codex.resetLabel}
-              />
-              <UsageMetricCard
-                label="Most used model"
-                value={usageStats.codex.mostUsedModel}
-                detail="Codex sessions"
-              />
-            </div>
-
-            <div className="rounded-2xl border border-gray-100 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
-              <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h5 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    Last 7 days
-                  </h5>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Tokens per day and whether the daily usage was close to the limit.
-                  </p>
-                </div>
-                <p className="text-xs font-medium text-purple-600 dark:text-purple-300">
-                  {formatCompactNumber(
-                    usageStats.dailyCodex.reduce((sum, day) => sum + day.tokens, 0)
-                  )}{' '}
-                  tokens
-                </p>
-              </div>
-
-              <div className="grid grid-cols-7 items-end gap-2 rounded-2xl bg-gray-50 p-3 dark:bg-gray-950/40">
-                {usageStats.dailyCodex.map((day) => {
-                  const percent = Math.min(100, Math.round((day.tokens / day.limitTokens) * 100))
-
-                  return (
-                    <div key={day.dateLabel} className="flex min-w-0 flex-col items-center gap-2">
-                      <div className="flex h-24 w-full items-end rounded-xl bg-white p-1 shadow-sm dark:bg-gray-900">
-                        <div
-                          className={`w-full rounded-lg ${usageStatusBarClass(day.status)}`}
-                          style={{ height: `${Math.max(10, percent)}%` }}
-                          title={`${day.dateLabel}: ${formatCompactNumber(day.tokens)} tokens`}
-                        />
-                      </div>
-                      <div className="min-w-0 text-center">
-                        <p className="truncate text-xs font-medium text-gray-700 dark:text-gray-300">
-                          {day.label}
-                        </p>
-                        <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                          {formatCompactNumber(day.tokens)}
-                        </p>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                {usageStats.dailyCodex.map((day) => (
-                  <div
-                    key={`${day.dateLabel}-row`}
-                    className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-950/50"
-                  >
-                    <div>
-                      <p className="text-xs font-medium text-gray-800 dark:text-gray-200">
-                        {day.dateLabel}
-                      </p>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                        {day.requests} requests · {formatCompactNumber(day.tokens)} tokens
-                      </p>
-                    </div>
-                    <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${usageStatusPillClass(day.status)}`}>
-                      {usageStatusLabel(day.status)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-        )}
       </div>
     </Modal>
   )
@@ -934,26 +712,6 @@ function ActivityBars({
           }}
         />
       ))}
-    </div>
-  )
-}
-
-function UsageMetricCard({
-  label,
-  value,
-  detail,
-}: {
-  label: string
-  value: string
-  detail: string
-}) {
-  return (
-    <div className="rounded-2xl border border-gray-100 bg-white px-4 py-4 dark:border-gray-800 dark:bg-gray-900">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-        {label}
-      </p>
-      <p className="mt-3 text-2xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
-      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{detail}</p>
     </div>
   )
 }
@@ -1029,113 +787,4 @@ function buildFallbackCurrentProfile(userId: string): Profile {
     onboarding_completed: true,
     created_at: new Date().toISOString(),
   }
-}
-
-function buildUsageStats(profile: Profile): UsageStats {
-  const seed = profile.id
-  const dailyCodex = Array.from({ length: 7 }, (_, index) => {
-    const daysAgo = 6 - index
-    const date = new Date()
-    date.setDate(date.getDate() - daysAgo)
-
-    const requests = 12 + seededNumber(seed, 10 + index, 46)
-    const inputTokens = 86_000 + seededNumber(seed, 30 + index, 420_000)
-    const outputTokens = 24_000 + seededNumber(seed, 50 + index, 160_000)
-    const tokens = inputTokens + outputTokens
-    const limitTokens = 620_000
-    const percent = tokens / limitTokens
-
-    return {
-      label: new Intl.DateTimeFormat('en', { weekday: 'short' }).format(date),
-      dateLabel: new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(date),
-      requests,
-      tokens,
-      limitTokens,
-      status: percent >= 0.96 ? 'used_up' : percent >= 0.72 ? 'heavy' : 'normal',
-    } satisfies UsageStats['dailyCodex'][number]
-  })
-  const totalTokens = dailyCodex.reduce((sum, day) => sum + day.tokens, 0)
-  const requests = dailyCodex.reduce((sum, day) => sum + day.requests, 0)
-  const inputTokens = Math.round(totalTokens * 0.72)
-  const outputTokens = totalTokens - inputTokens
-  const heaviestDay = dailyCodex.reduce((max, day) => (day.tokens > max.tokens ? day : max), dailyCodex[0])
-
-  return {
-    source: 'snapshot',
-    codexLimits: [
-      {
-        label: '5 hour usage limit',
-        resetLabel: `Resets ${formatTimeOfDayFromNow(8 + seededNumber(seed, 0, 180))}`,
-        percentLeft: Math.max(12, 100 - Math.round((heaviestDay.tokens / heaviestDay.limitTokens) * 100)),
-      },
-      {
-        label: 'Weekly usage limit',
-        resetLabel: `Resets ${formatMonthDayFromNow(2 + seededNumber(seed, 2, 6))}`,
-        percentLeft: 58 + seededNumber(seed, 7, 34),
-      },
-    ],
-    codex: {
-      requests,
-      totalTokens,
-      inputTokens,
-      outputTokens,
-      remainingPercent: Math.max(3, 100 - Math.round((heaviestDay.tokens / heaviestDay.limitTokens) * 100)),
-      resetLabel: `Daily limit resets ${formatTimeOfDayFromNow(8 + seededNumber(seed, 0, 180))}`,
-      lastActiveLabel: `${1 + seededNumber(seed, 4, 11)} hours ago`,
-      mostUsedModel: ['GPT-4.1', 'GPT-5.1 Codex', 'GPT-5.2'][seededNumber(seed, 5, 3)],
-    },
-    dailyCodex,
-  }
-}
-
-function formatCompactNumber(value: number) {
-  return new Intl.NumberFormat('en', {
-    notation: 'compact',
-    maximumFractionDigits: value >= 1_000_000 ? 1 : 0,
-  }).format(value)
-}
-
-function usageStatusLabel(status: UsageStats['dailyCodex'][number]['status']) {
-  if (status === 'used_up') return 'Used up'
-  if (status === 'heavy') return 'High usage'
-  return 'Normal'
-}
-
-function usageStatusBarClass(status: UsageStats['dailyCodex'][number]['status']) {
-  if (status === 'used_up') return 'bg-red-500'
-  if (status === 'heavy') return 'bg-amber-400'
-  return 'bg-fuchsia-600'
-}
-
-function usageStatusPillClass(status: UsageStats['dailyCodex'][number]['status']) {
-  if (status === 'used_up') return 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300'
-  if (status === 'heavy') return 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
-  return 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300'
-}
-
-function seededNumber(seed: string, index: number, max: number) {
-  let hash = 2166136261
-  const input = `${seed}:${index}`
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i)
-    hash = Math.imul(hash, 16777619)
-  }
-  return Math.abs(hash >>> 0) % max
-}
-
-function formatTimeOfDayFromNow(minutesFromNow: number) {
-  const date = new Date(Date.now() + minutesFromNow * 60 * 1000)
-  return new Intl.DateTimeFormat('en', {
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(date)
-}
-
-function formatMonthDayFromNow(daysFromNow: number) {
-  const date = new Date()
-  date.setDate(date.getDate() + daysFromNow)
-  return new Intl.DateTimeFormat('en', {
-    month: 'short',
-    day: 'numeric',
-  }).format(date)
 }
