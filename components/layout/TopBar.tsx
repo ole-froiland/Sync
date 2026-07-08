@@ -1,9 +1,8 @@
 'use client'
 
-import { GitBranch, Menu, PanelLeft, Plus } from 'lucide-react'
+import { GitBranch, Menu, PanelLeft, Plus, Sparkles } from 'lucide-react'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 import FullscreenToggle from '@/components/ui/FullscreenToggle'
-import TopBarUsage from '@/components/usage/TopBarUsage'
 import Button from '@/components/ui/Button'
 
 interface TopBarProps {
@@ -29,6 +28,10 @@ export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
 
   function toggleSidebar() {
     window.dispatchEvent(new Event('sync:toggle-sidebar'))
+  }
+
+  function openAssistant() {
+    window.dispatchEvent(new Event('sync:open-assistant'))
   }
 
   return (
@@ -60,6 +63,15 @@ export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
         </h1>
       </div>
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={openAssistant}
+          aria-label="Open Sync AI"
+          title="Sync AI"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 shadow-sm transition-colors hover:border-fuchsia-300 hover:bg-fuchsia-100 dark:border-fuchsia-900/70 dark:bg-fuchsia-950/30 dark:text-fuchsia-200 dark:hover:border-fuchsia-800 dark:hover:bg-fuchsia-950/50"
+        >
+          <Sparkles size={15} />
+        </button>
         <Button
           size="sm"
           variant="secondary"
@@ -79,7 +91,6 @@ export default function TopBar({ title, noTranslateTitle }: TopBarProps) {
           <Plus size={14} />
           <span className="hidden sm:inline">New post</span>
         </Button>
-        <TopBarUsage />
         <FullscreenToggle />
         <ThemeToggle />
       </div>
