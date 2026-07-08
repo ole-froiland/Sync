@@ -17,7 +17,6 @@ import {
   NotebookPen,
   UserCircle,
   HelpCircle,
-  Gauge,
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
@@ -51,10 +50,6 @@ const navSections: { label: string | null; items: { href: string; label: string;
       { href: '/notes', label: 'Notes', icon: NotebookPen },
       { href: '/ideas', label: 'Ideas', icon: Lightbulb },
     ],
-  },
-  {
-    label: 'Account',
-    items: [{ href: '/usage', label: 'Usage', icon: Gauge }],
   },
 ]
 
@@ -174,6 +169,11 @@ export default function SidebarContent({ profile, onSignOut, signingOut }: Sideb
     setProfileModalOpen(true)
   }
 
+  function openSettingsModal() {
+    setProfileMenuOpen(false)
+    window.dispatchEvent(new Event('sync:open-settings'))
+  }
+
   function attachProfileImage(file: File) {
     if (!file.type.startsWith('image/')) return
 
@@ -290,14 +290,14 @@ export default function SidebarContent({ profile, onSignOut, signingOut }: Sideb
               <UserCircle size={16} />
               Bruker
             </button>
-            <Link
-              href="/settings"
-              onClick={() => setProfileMenuOpen(false)}
-              className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+            <button
+              type="button"
+              onClick={openSettingsModal}
+              className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
             >
               <Settings size={16} />
               Innstillinger
-            </Link>
+            </button>
             <Link
               href="/how-to-sync"
               onClick={() => setProfileMenuOpen(false)}

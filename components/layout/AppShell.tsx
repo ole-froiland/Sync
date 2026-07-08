@@ -5,6 +5,8 @@ import Sidebar from './Sidebar'
 import MobileDrawer from './MobileDrawer'
 import BottomNav from './BottomNav'
 import GlobalPrimaryActions from './GlobalPrimaryActions'
+import SyncAssistantPanel from '@/components/assistant/SyncAssistantPanel'
+import SettingsModal from '@/components/settings/SettingsModal'
 import { UserProvider } from '@/context/UserContext'
 import { GitHubProvider, type GitHubStatus } from '@/context/GitHubContext'
 import type { Profile } from '@/types'
@@ -21,6 +23,8 @@ export default function AppShell({ profile, githubStatus, children }: AppShellPr
   const [signingOut, setSigningOut] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [sidebarHidden, setSidebarHidden] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [assistantOpen, setAssistantOpen] = useState(false)
 
   async function handleSignOut() {
     if (signingOut) return
@@ -39,14 +43,26 @@ export default function AppShell({ profile, githubStatus, children }: AppShellPr
         return !hidden
       })
     }
+    function openSettings() {
+      setDrawerOpen(false)
+      setSettingsOpen(true)
+    }
+    function openAssistant() {
+      setDrawerOpen(false)
+      setAssistantOpen(true)
+    }
     queueMicrotask(() => {
       if (localStorage.getItem(SIDEBAR_HIDDEN_KEY) === '1') setSidebarHidden(true)
     })
     window.addEventListener('sync:open-drawer', openDrawer)
     window.addEventListener('sync:toggle-sidebar', toggleSidebar)
+    window.addEventListener('sync:open-settings', openSettings)
+    window.addEventListener('sync:open-assistant', openAssistant)
     return () => {
       window.removeEventListener('sync:open-drawer', openDrawer)
       window.removeEventListener('sync:toggle-sidebar', toggleSidebar)
+      window.removeEventListener('sync:open-settings', openSettings)
+      window.removeEventListener('sync:open-assistant', openAssistant)
     }
   }, [])
 
@@ -66,6 +82,8 @@ export default function AppShell({ profile, githubStatus, children }: AppShellPr
             <GlobalPrimaryActions />
             {children}
           </main>
+          <SyncAssistantPanel open={assistantOpen} onClose={() => setAssistantOpen(false)} />
+          <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
           <BottomNav />
         </div>
       </GitHubProvider>
