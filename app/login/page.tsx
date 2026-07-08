@@ -9,7 +9,9 @@ const oauthErrors: Record<string, string> = {
   auth_failed: 'GitHub login failed. Please try again.',
 }
 
-const GITHUB_AUTH_CALLBACK_URL = 'https://sync-co-op.netlify.app/auth/callback'
+function getAuthRedirectUrl(path: string) {
+  return `${window.location.origin}${path}`
+}
 
 // Shared primitive styles — always light mode, no dark: variants
 const inputCls =
@@ -76,7 +78,7 @@ export default function LoginPage() {
     const supabase = createClient()
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'github',
-      options: { redirectTo: GITHUB_AUTH_CALLBACK_URL },
+      options: { redirectTo: getAuthRedirectUrl('/auth/callback') },
     })
     if (error) {
       setOauthError('GitHub signup failed. Please try again.')
@@ -90,8 +92,7 @@ export default function LoginPage() {
     setForgotLoading(true)
     setForgotError(null)
     const supabase = createClient()
-    const redirectTo =
-      (process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin) + '/auth/reset-password'
+    const redirectTo = getAuthRedirectUrl('/auth/reset-password')
     const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, { redirectTo })
     setForgotLoading(false)
     if (error) {
