@@ -10,6 +10,7 @@ import { languageColor } from '@/lib/github-language-colors'
 import { renderMarkdown } from '@/lib/markdown'
 import ShareRepoModal from '@/components/repositories/ShareRepoModal'
 import DeployMenu from '@/components/repositories/DeployMenu'
+import OpenInCodeAgentMenu from '@/components/repositories/OpenInCodeAgentMenu'
 import {
   ArrowLeft,
   ExternalLink,
@@ -338,6 +339,10 @@ export default function RepositoryDetailPage({
                       <Code2 size={13} />
                       VS Code
                     </button>
+                    <OpenInCodeAgentMenu
+                      cloneUrl={data.clone_url}
+                      repoFullName={data.full_name}
+                    />
                     <button
                       onClick={handleCopyClone}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
