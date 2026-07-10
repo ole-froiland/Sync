@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ChevronDown, SquareTerminal } from 'lucide-react'
-import { claudeCodeDeepLink, codexDeepLink } from './codeAgentLinks'
+import { claudeAppDeepLink, codexDeepLink } from './codeAgentLinks'
 
 const BUTTON_CLASS =
   'inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 dark:focus-visible:ring-offset-gray-900'
@@ -11,11 +11,13 @@ const BUTTON_CLASS =
 type OpenInCodeAgentMenuProps = {
   cloneUrl: string
   repoFullName: string
+  defaultBranch: string
 }
 
 export default function OpenInCodeAgentMenu({
   cloneUrl,
   repoFullName,
+  defaultBranch,
 }: OpenInCodeAgentMenuProps) {
   const [open, setOpen] = useState(false)
   const [alignment, setAlignment] = useState<'left' | 'right'>('right')
@@ -105,7 +107,7 @@ export default function OpenInCodeAgentMenu({
             ChatGPT Codex
           </a>
           <a
-            href={claudeCodeDeepLink(repoFullName)}
+            href={claudeAppDeepLink(repoFullName, defaultBranch)}
             onClick={() => setOpen(false)}
             aria-label="Open in Claude Code"
             className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500 dark:text-gray-200 dark:hover:bg-gray-800"
@@ -120,7 +122,7 @@ export default function OpenInCodeAgentMenu({
             Claude Code
           </a>
           <p className="border-t border-gray-100 px-3 pb-1 pt-1.5 text-[11px] leading-relaxed text-gray-400 dark:border-gray-800 dark:text-gray-500">
-            Requires an existing local clone recognized by the selected app.
+            Codex matches a known workspace. Claude may ask you to choose the local folder.
           </p>
         </div>
       )}

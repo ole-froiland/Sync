@@ -388,7 +388,7 @@ const pairs = [
   ['Open in a code agent', 'Åpne i et kodeagentverktøy'],
   ['Open in ChatGPT Codex', 'Åpne i ChatGPT Codex'],
   ['Open in Claude Code', 'Åpne i Claude Code'],
-  ['Requires an existing local clone recognized by the selected app.', 'Krever en eksisterende lokal klone som gjenkjennes av den valgte appen.'],
+  ['Codex matches a known workspace. Claude may ask you to choose the local folder.', 'Codex finner et kjent arbeidsområde. Claude kan be deg velge den lokale mappen.'],
   ['Open Claude', 'Åpne Claude'],
   ['Open ChatGPT', 'Åpne ChatGPT'],
   ['Toggle theme', 'Bytt tema'],

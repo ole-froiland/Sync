@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { claudeCodeDeepLink, codexDeepLink } from './codeAgentLinks'
+import { claudeAppDeepLink, codexDeepLink } from './codeAgentLinks'
 
 describe('code agent deep links', () => {
   it('opens Codex in the workspace matching the clone remote', () => {
@@ -8,9 +8,15 @@ describe('code agent deep links', () => {
     )
   })
 
-  it('opens Claude Code in a previously seen local clone', () => {
-    expect(claudeCodeDeepLink('acme/payments')).toBe(
-      'claude-cli://open?repo=acme%2Fpayments'
+  it('opens Claude Code in Claude Desktop with repository context', () => {
+    expect(claudeAppDeepLink('acme/payments', 'main')).toBe(
+      'claude://code/new?q=Work+in+the+GitHub+repository+acme%2Fpayments+on+branch+main.'
+    )
+  })
+
+  it('omits the branch phrase when no default branch is available', () => {
+    expect(claudeAppDeepLink('acme/payments', '')).toBe(
+      'claude://code/new?q=Work+in+the+GitHub+repository+acme%2Fpayments.'
     )
   })
 
@@ -18,8 +24,8 @@ describe('code agent deep links', () => {
     expect(codexDeepLink('https://github.com/acme/payments.git?x=1&prompt=unsafe')).toBe(
       'codex://threads/new?originUrl=https%3A%2F%2Fgithub.com%2Facme%2Fpayments.git%3Fx%3D1%26prompt%3Dunsafe'
     )
-    expect(claudeCodeDeepLink('acme/repo&q=unsafe')).toBe(
-      'claude-cli://open?repo=acme%2Frepo%26q%3Dunsafe'
+    expect(claudeAppDeepLink('acme/repo&q=unsafe', 'main&folder=/tmp')).toBe(
+      'claude://code/new?q=Work+in+the+GitHub+repository+acme%2Frepo%26q%3Dunsafe+on+branch+main%26folder%3D%2Ftmp.'
     )
   })
 })

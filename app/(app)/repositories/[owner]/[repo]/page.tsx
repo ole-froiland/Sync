@@ -342,6 +342,7 @@ export default function RepositoryDetailPage({
                     <OpenInCodeAgentMenu
                       cloneUrl={data.clone_url}
                       repoFullName={data.full_name}
+                      defaultBranch={data.default_branch}
                     />
                     <button
                       onClick={handleCopyClone}
