@@ -40,6 +40,23 @@ export function planLocalSyncResponse(messages: SyncAssistantMessage[], context:
     }
   }
 
+  const language = languageTarget(latest)
+  if (language) {
+    return {
+      reply: language === 'en'
+        ? 'Jeg kan endre språket i Sync til engelsk. Bekreft først, så bytter jeg språk.'
+        : 'I can change the Sync language to Norwegian. Confirm first, and I will switch it.',
+      actions: [{ kind: 'set_language', locale: language }],
+    }
+  }
+
+  if (isProjectTreeRequest(latest)) {
+    return {
+      reply: 'Jeg åpner prosjektene dine i trevisning.',
+      actions: [{ kind: 'open_projects_tree' }],
+    }
+  }
+
   const modal = modalTarget(lower)
   if (modal) {
     return {
@@ -56,15 +73,17 @@ export function planLocalSyncResponse(messages: SyncAssistantMessage[], context:
     }
   }
 
-  if (lower.includes('kalender') || lower.includes('calendar') || lower.includes('aktivitet') || lower.includes('møte') || lower.includes('meeting')) {
-    if (isBulkCalendarRequest(lower)) {
+  const calendarText = contextualCalendarRequest(messages)
+  const calendarLower = calendarText?.toLowerCase() ?? ''
+  if (calendarText) {
+    if (isBulkCalendarRequest(calendarLower)) {
       return {
         reply: 'Jeg kan legge hendelsene i Sync-kalenderen, men jeg kan ikke gjette eller hente en komplett terminliste. Send dato og tidspunkt for hendelsene du vil legge inn.',
         actions: [],
       }
     }
 
-    const parsed = parseCalendarRequest(latest, now)
+    const parsed = parseCalendarRequest(calendarText, now)
     if (!parsed.ok) {
       return {
         reply:
@@ -182,6 +201,8 @@ export async function planOpenAiSyncResponse(messages: SyncAssistantMessage[], c
             rules: [
               'Only plan actions inside Sync.',
               'For a simple request to open a page or modal, return exactly one navigate or open_modal action; the client executes that safe action automatically.',
+              'Use open_projects_tree when the user asks to see projects as a tree, hierarchy, or trevisning.',
+              'Use set_language with locale en or no when the user asks to change the Sync interface language.',
               'Use create_project_folder for the project folders shown on the current Projects page. Do not use the legacy project model.',
               'Use create_task only when currentProjectId is present, and set projectId to currentProjectId.',
               'Use open_modal for settings, new_post, and new_repo when the user asks to open those controls.',
@@ -241,6 +262,8 @@ function syncPlannerTool() {
                 enum: [
                   'navigate',
                   'open_modal',
+                  'open_projects_tree',
+                  'set_language',
                   'create_note',
                   'complete_note',
                   'create_calendar_event',
@@ -251,6 +274,7 @@ function syncPlannerTool() {
               },
               href: { type: ['string', 'null'], enum: [...SYNC_NAV_TARGETS, null] },
               modal: { type: ['string', 'null'], enum: ['settings', 'new_post', 'new_repo', null] },
+              locale: { type: ['string', 'null'], enum: ['en', 'no', null] },
               title: nullableString,
               noteId: nullableString,
               start: nullableString,
@@ -268,6 +292,7 @@ function syncPlannerTool() {
               'kind',
               'href',
               'modal',
+              'locale',
               'title',
               'noteId',
               'start',
@@ -294,26 +319,73 @@ function mentionsSyncSurface(value: string) {
 }
 
 function navigationTarget(value: string) {
+  const normalized = normalizeIntent(value)
   const targets = [
     { href: '/dashboard' as const, label: 'Dashboard', words: ['dashboard', 'feed', 'hjem'] },
     { href: '/projects' as const, label: 'Projects', words: ['projects', 'prosjekter', 'prosjekt'] },
     { href: '/repositories' as const, label: 'Repositories', words: ['repositories', 'repos', 'repo'] },
-    { href: '/calendar' as const, label: 'Calendar', words: ['calendar', 'kalender'] },
+    { href: '/calendar' as const, label: 'Calendar', words: ['calendar', 'kalender', 'kalendern', 'kalenderen'] },
     { href: '/chat' as const, label: 'Chat', words: ['chat'] },
     { href: '/people' as const, label: 'People', words: ['people', 'folk', 'personer'] },
     { href: '/notes' as const, label: 'Notes', words: ['notes', 'notater'] },
     { href: '/ideas' as const, label: 'Ideas', words: ['ideas', 'ideer'] },
     { href: '/settings' as const, label: 'Settings', words: ['settings', 'innstillinger'] },
   ]
-  if (!/\b(open|åpne|gå|go|vis|show)\b/i.test(value)) return null
-  return targets.find((target) => target.words.some((word) => value.includes(word))) ?? null
+  if (!/(?:^|\s)(?:open|apne|ga|go|vis|show|ta meg til)(?:\s|$)/.test(normalized)) return null
+  return targets.find((target) => target.words.some((word) => normalized.includes(normalizeIntent(word)))) ?? null
 }
 
 function modalTarget(value: string) {
-  if (value.includes('settings') || value.includes('innstillinger')) return { modal: 'settings' as const, label: 'innstillinger' }
-  if (value.includes('new repo') || value.includes('ny repo') || value.includes('lag repo')) return { modal: 'new_repo' as const, label: 'ny repo' }
-  if (value.includes('new post') || value.includes('ny post') || value.includes('lag post')) return { modal: 'new_post' as const, label: 'ny post' }
+  const normalized = normalizeIntent(value)
+  if (normalized.includes('settings') || normalized.includes('innstillinger')) return { modal: 'settings' as const, label: 'innstillinger' }
+  if (normalized.includes('new repo') || normalized.includes('ny repo') || normalized.includes('lag repo')) return { modal: 'new_repo' as const, label: 'ny repo' }
+  if (normalized.includes('new post') || normalized.includes('ny post') || normalized.includes('lag post')) return { modal: 'new_post' as const, label: 'ny post' }
   return null
+}
+
+function languageTarget(value: string) {
+  const normalized = normalizeIntent(value)
+  if (!/(?:sprak|language)/.test(normalized) || !/(?:endre|bytt|skift|change|switch|set)/.test(normalized)) return null
+  const explicitTarget = normalized.match(/(?:til|to)\s+(engelsk|english|norsk|norwegian)(?:\s|$)/)?.[1]
+  const target = explicitTarget ?? normalized.match(/(?:engelsk|english|norsk|norwegian)/)?.[0]
+  if (target === 'engelsk' || target === 'english') return 'en' as const
+  if (target === 'norsk' || target === 'norwegian') return 'no' as const
+  return null
+}
+
+function isProjectTreeRequest(value: string) {
+  const normalized = normalizeIntent(value)
+  return (
+    /(?:prosjekt|project)/.test(normalized) &&
+    /(?:tre form|treform|trevisning|tree|hierarki)/.test(normalized) &&
+    /(?:apne|open|vis|show|se)/.test(normalized)
+  )
+}
+
+function contextualCalendarRequest(messages: SyncAssistantMessage[]) {
+  const latestIndex = messages.findLastIndex((message) => message.role === 'user')
+  if (latestIndex === -1) return null
+  const latest = messages[latestIndex].content.trim()
+  if (mentionsCalendarIntent(latest)) return latest
+
+  const priorAssistant = [...messages.slice(0, latestIndex)].reverse().find((message) => message.role === 'assistant')
+  if (!priorAssistant || !/(?:dato|tidspunkt|date|time)/i.test(priorAssistant.content)) return null
+  const priorUser = [...messages.slice(0, latestIndex)].reverse().find((message) => message.role === 'user')
+  return priorUser && mentionsCalendarIntent(priorUser.content) ? `${priorUser.content} ${latest}` : null
+}
+
+function mentionsCalendarIntent(value: string) {
+  const normalized = normalizeIntent(value)
+  return /(?:kalender|calendar|aktivitet|hendelse|mote|meeting)/.test(normalized)
+}
+
+function normalizeIntent(value: string) {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
 }
 
 function parseNoteTitle(text: string) {
@@ -520,7 +592,7 @@ function cleanLeadingCommand(value: string) {
   return value
     .replace(/^(?:hei|hello)(?:\s+(?:sync\s+)?ai)?[,!:.\s-]*/i, '')
     .replace(/^(?:kan du|could you|please|pls|vennligst)\s+/i, '')
-    .replace(/^(?:lag|legg(?:e)?\s+(?:til|inn)|opprett|create|add)\s+/i, '')
+    .replace(/^(?:lag|legg(?:e)?(?:\s+(?:til|inn))?|opprett|create|add)\s+/i, '')
     .replace(/^[:\-–—\s]+/, '')
     .trim()
     .slice(0, 240)

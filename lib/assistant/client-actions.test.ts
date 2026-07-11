@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { automaticBrowserAction, buildAssistantProjectFolder } from './client-actions'
+import { automaticBrowserAction, buildAssistantProjectFolder, calendarEventsForAction } from './client-actions'
 import type { SyncAssistantActionEnvelope } from './types'
 
 function envelope(
@@ -20,9 +20,11 @@ describe('assistant client actions', () => {
   it('auto-runs one safe navigation or modal action', () => {
     const navigation = envelope({ kind: 'navigate', href: '/calendar' })
     const modal = envelope({ kind: 'open_modal', modal: 'settings' })
+    const projectTree = envelope({ kind: 'open_projects_tree' })
 
     expect(automaticBrowserAction([navigation])).toBe(navigation)
     expect(automaticBrowserAction([modal])).toBe(modal)
+    expect(automaticBrowserAction([projectTree])).toBe(projectTree)
   })
 
   it('does not auto-run writes or multi-action plans', () => {
@@ -49,6 +51,32 @@ describe('assistant client actions', () => {
       createdAt: '2026-07-11T08:00:00.000Z',
       members: [{ id: 'user-1', name: 'Ole', avatar_url: null, role: 'creator' }],
       items: [],
+    })
+  })
+
+  it('turns a bulk calendar action into stable local calendar events', () => {
+    const events = calendarEventsForAction({
+      kind: 'create_calendar_events',
+      sourceLabel: 'PremierLeague.com',
+      events: [
+        {
+          id: 'pl-1',
+          title: 'Hull City – Manchester United',
+          start: '2026-08-22T11:30:00.000Z',
+          end: '2026-08-22T13:30:00.000Z',
+          eventKind: 'meeting',
+          sourceUrl: 'https://www.premierleague.com/en/clubs/1/fixtures',
+        },
+      ],
+    })
+
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      id: 'cal-ai-pl-1',
+      title: 'Hull City – Manchester United',
+      kind: 'meeting',
+      tone: 'violet',
+      note: 'Kilde: https://www.premierleague.com/en/clubs/1/fixtures',
     })
   })
 })

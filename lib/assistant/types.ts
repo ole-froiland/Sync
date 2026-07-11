@@ -5,6 +5,15 @@ export type SyncAssistantMessage = {
   content: string
 }
 
+export type SyncAssistantCalendarEvent = {
+  id?: string
+  title: string
+  start: string
+  end: string
+  eventKind?: 'meeting' | 'focus' | 'launch' | 'deadline'
+  sourceUrl?: string | null
+}
+
 export type SyncAssistantAction =
   | {
       kind: 'navigate'
@@ -13,6 +22,13 @@ export type SyncAssistantAction =
   | {
       kind: 'open_modal'
       modal: 'settings' | 'new_post' | 'new_repo'
+    }
+  | {
+      kind: 'open_projects_tree'
+    }
+  | {
+      kind: 'set_language'
+      locale: 'en' | 'no'
     }
   | {
       kind: 'create_note'
@@ -29,6 +45,12 @@ export type SyncAssistantAction =
       start: string
       end: string
       eventKind?: 'meeting' | 'focus' | 'launch' | 'deadline'
+    }
+  | {
+      kind: 'create_calendar_events'
+      events: SyncAssistantCalendarEvent[]
+      sourceLabel?: string | null
+      sourceUrl?: string | null
     }
   | {
       kind: 'create_post'
@@ -115,6 +137,12 @@ export function normalizeAssistantAction(input: unknown): SyncAssistantAction | 
       : null
   }
 
+  if (kind === 'open_projects_tree') return { kind }
+
+  if (kind === 'set_language') {
+    return value.locale === 'en' || value.locale === 'no' ? { kind, locale: value.locale } : null
+  }
+
   if (kind === 'create_note') {
     const title = stringValue(value.title)
     return title ? { kind, title } : null
@@ -133,6 +161,21 @@ export function normalizeAssistantAction(input: unknown): SyncAssistantAction | 
     if (!title || !isValidDateTime(start) || !isValidDateTime(end)) return null
     const eventKind = normalizeEventKind(value.eventKind)
     return { kind, title, start, end, eventKind }
+  }
+
+  if (kind === 'create_calendar_events') {
+    if (!Array.isArray(value.events)) return null
+    const events = value.events
+      .map(normalizeCalendarEvent)
+      .filter((event): event is SyncAssistantCalendarEvent => Boolean(event))
+      .slice(0, 100)
+    if (events.length === 0) return null
+    return {
+      kind,
+      events,
+      sourceLabel: stringValue(value.sourceLabel) || null,
+      sourceUrl: safeHttpUrl(value.sourceUrl),
+    }
   }
 
   if (kind === 'create_post') {
@@ -187,15 +230,23 @@ export function normalizeAssistantAction(input: unknown): SyncAssistantAction | 
 }
 
 export function actionRequiresServer(action: SyncAssistantAction) {
-  return !['navigate', 'open_modal', 'create_calendar_event', 'create_project_folder'].includes(action.kind)
+  return ![
+    'navigate',
+    'open_modal',
+    'open_projects_tree',
+    'set_language',
+    'create_calendar_event',
+    'create_calendar_events',
+    'create_project_folder',
+  ].includes(action.kind)
 }
 
 export function actionRequiresConfirmation(action: SyncAssistantAction) {
-  return !['navigate', 'open_modal'].includes(action.kind)
+  return !['navigate', 'open_modal', 'open_projects_tree'].includes(action.kind)
 }
 
 export function actionRisk(action: SyncAssistantAction): SyncAssistantActionRisk {
-  if (action.kind === 'navigate' || action.kind === 'open_modal') return 'navigation'
+  if (action.kind === 'navigate' || action.kind === 'open_modal' || action.kind === 'open_projects_tree') return 'navigation'
   return 'write'
 }
 
@@ -209,12 +260,18 @@ export function actionLabel(action: SyncAssistantAction) {
         : action.modal === 'new_post'
           ? 'Open new post'
           : 'Open new repo'
+    case 'open_projects_tree':
+      return 'Open project tree'
+    case 'set_language':
+      return 'Change Sync language'
     case 'create_note':
       return 'Create note'
     case 'complete_note':
       return 'Complete note'
     case 'create_calendar_event':
       return 'Create calendar event'
+    case 'create_calendar_events':
+      return `Add ${action.events.length} calendar events`
     case 'create_post':
       return 'Create post'
     case 'create_project_folder':
@@ -232,12 +289,20 @@ export function actionDescription(action: SyncAssistantAction) {
       return `Go to ${action.href}.`
     case 'open_modal':
       return `Open ${action.modal.replace('_', ' ')}.`
+    case 'open_projects_tree':
+      return 'Show all project folders as a tree.'
+    case 'set_language':
+      return action.locale === 'en' ? 'Change Sync to English.' : 'Endre Sync til norsk.'
     case 'create_note':
       return action.title
     case 'complete_note':
       return action.title ? `Mark "${action.title}" as done.` : `Mark note ${action.noteId} as done.`
     case 'create_calendar_event':
       return `${action.title} from ${formatActionDate(action.start)} to ${formatActionDate(action.end)}.`
+    case 'create_calendar_events':
+      return action.sourceLabel
+        ? `${action.events.length} events from ${action.sourceLabel}.`
+        : `${action.events.length} calendar events.`
     case 'create_post':
       return action.title
     case 'create_project_folder':
@@ -251,6 +316,34 @@ export function actionDescription(action: SyncAssistantAction) {
 
 function stringValue(value: unknown) {
   return typeof value === 'string' ? value.trim().slice(0, 2000) : ''
+}
+
+function normalizeCalendarEvent(input: unknown): SyncAssistantCalendarEvent | null {
+  if (!input || typeof input !== 'object') return null
+  const value = input as Record<string, unknown>
+  const title = stringValue(value.title)
+  const start = stringValue(value.start)
+  const end = stringValue(value.end)
+  if (!title || !isValidDateTime(start) || !isValidDateTime(end) || +new Date(end) <= +new Date(start)) return null
+  return {
+    id: stringValue(value.id) || undefined,
+    title,
+    start,
+    end,
+    eventKind: normalizeEventKind(value.eventKind),
+    sourceUrl: safeHttpUrl(value.sourceUrl),
+  }
+}
+
+function safeHttpUrl(value: unknown) {
+  const url = stringValue(value)
+  if (!url) return null
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.toString() : null
+  } catch {
+    return null
+  }
 }
 
 function arrayOfStrings(value: unknown) {

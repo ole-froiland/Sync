@@ -2,16 +2,21 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bot, CalendarPlus, Check, FolderPlus, Loader2, MessageSquare, Navigation, Send, Sparkles, StickyNote, X } from 'lucide-react'
+import { Bot, CalendarPlus, Check, FolderPlus, Languages, Loader2, MessageSquare, Navigation, Send, Sparkles, StickyNote, Workflow, X } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Textarea from '@/components/ui/Textarea'
+import { useLanguage } from '@/context/LanguageContext'
 import { useUser } from '@/context/UserContext'
 import {
   automaticBrowserAction,
   buildAssistantProjectFolder,
+  calendarEventsForAction,
   PROJECT_FOLDER_CREATED_EVENT,
   PROJECT_FOLDERS_STORAGE_KEY,
+  PROJECTS_TREE_EVENT,
+  PROJECTS_VIEW_STORAGE_KEY,
   TASK_CREATED_EVENT,
+  type AssistantLocalCalendarEvent,
 } from '@/lib/assistant/client-actions'
 import { cn } from '@/lib/utils'
 import type { Post, ProjectFolder, Task } from '@/types'
@@ -32,17 +37,6 @@ type Toast = {
   message: string
 }
 
-type CalendarEventKind = 'meeting' | 'focus' | 'launch' | 'deadline'
-
-type LocalCalendarEvent = {
-  id: string
-  title: string
-  start: string
-  end: string
-  kind: CalendarEventKind
-  tone: 'violet' | 'sky' | 'emerald' | 'amber'
-}
-
 const STORAGE_KEY = 'sync-calendar-events'
 const CALENDAR_EVENT_CREATED = 'sync:calendar-event-created'
 
@@ -56,6 +50,7 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
   const router = useRouter()
   const pathname = usePathname()
   const profile = useUser()
+  const { setLocale } = useLanguage()
   const [messages, setMessages] = useState<SyncAssistantMessage[]>([starterMessage])
   const [input, setInput] = useState('')
   const [actions, setActions] = useState<SyncAssistantActionEnvelope[]>([])
@@ -184,10 +179,22 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
       case 'open_modal':
         window.dispatchEvent(new Event(modalEventName(action.modal)))
         return 'Åpnet panelet.'
+      case 'open_projects_tree':
+        window.sessionStorage.setItem(PROJECTS_VIEW_STORAGE_KEY, 'tree')
+        window.dispatchEvent(new Event(PROJECTS_TREE_EVENT))
+        router.push('/projects')
+        return 'Åpnet prosjektene som tre.'
+      case 'set_language':
+        setLocale(action.locale)
+        return action.locale === 'en' ? 'Changed Sync to English.' : 'Endret Sync til norsk.'
       case 'create_calendar_event':
-        createLocalCalendarEvent(action)
+        createLocalCalendarEvents(action)
         router.push('/calendar')
         return `La "${action.title}" i kalenderen.`
+      case 'create_calendar_events':
+        createLocalCalendarEvents(action)
+        router.push('/calendar')
+        return `La ${action.events.length} hendelser i kalenderen.`
       case 'create_project_folder':
         await createProjectFolder(action)
         router.push('/projects')
@@ -240,21 +247,16 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
     }
   }
 
-  function createLocalCalendarEvent(action: Extract<SyncAssistantAction, { kind: 'create_calendar_event' }>) {
-    const eventKind = action.eventKind ?? 'meeting'
-    const calendarEvent: LocalCalendarEvent = {
-      id: `cal-ai-${Date.now()}`,
-      title: action.title,
-      start: localDateTimeString(new Date(action.start)),
-      end: localDateTimeString(new Date(action.end)),
-      kind: eventKind,
-      tone: toneForKind(eventKind),
-    }
-
+  function createLocalCalendarEvents(
+    action: Extract<SyncAssistantAction, { kind: 'create_calendar_event' | 'create_calendar_events' }>
+  ) {
+    const calendarEvents = calendarEventsForAction(action)
     const existing = readCalendarEvents()
-    const next = upsertCalendarEvent(existing, calendarEvent)
+    const next = calendarEvents.reduce(upsertCalendarEvent, existing)
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-    window.dispatchEvent(new CustomEvent<LocalCalendarEvent>(CALENDAR_EVENT_CREATED, { detail: calendarEvent }))
+    for (const calendarEvent of calendarEvents) {
+      window.dispatchEvent(new CustomEvent<AssistantLocalCalendarEvent>(CALENDAR_EVENT_CREATED, { detail: calendarEvent }))
+    }
   }
 
   return (
@@ -451,7 +453,12 @@ function renderActionIcon(action: SyncAssistantAction) {
     case 'navigate':
     case 'open_modal':
       return <Navigation size={16} />
+    case 'open_projects_tree':
+      return <Workflow size={16} />
+    case 'set_language':
+      return <Languages size={16} />
     case 'create_calendar_event':
+    case 'create_calendar_events':
       return <CalendarPlus size={16} />
     case 'create_note':
     case 'complete_note':
@@ -469,16 +476,9 @@ function modalEventName(modal: Extract<SyncAssistantAction, { kind: 'open_modal'
   return 'sync:open-post-modal'
 }
 
-function toneForKind(kind: CalendarEventKind): LocalCalendarEvent['tone'] {
-  if (kind === 'focus') return 'sky'
-  if (kind === 'launch') return 'emerald'
-  if (kind === 'deadline') return 'amber'
-  return 'violet'
-}
-
 function readCalendarEvents() {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '[]') as LocalCalendarEvent[]
+    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '[]') as AssistantLocalCalendarEvent[]
     return Array.isArray(parsed) ? parsed : []
   } catch {
     return []
@@ -494,16 +494,8 @@ function readProjectFolders() {
   }
 }
 
-function upsertCalendarEvent(events: LocalCalendarEvent[], event: LocalCalendarEvent) {
+function upsertCalendarEvent(events: AssistantLocalCalendarEvent[], event: AssistantLocalCalendarEvent) {
   return events.some((item) => item.id === event.id)
     ? events.map((item) => (item.id === event.id ? event : item))
     : [...events, event]
-}
-
-function pad(value: number) {
-  return String(value).padStart(2, '0')
-}
-
-function localDateTimeString(date: Date) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }

@@ -43,7 +43,11 @@ import Textarea from '@/components/ui/Textarea'
 import { FolderTreeOverlay, ROOT_ID } from '@/components/projects/folder-tree'
 import { ProjectCardSkeleton } from '@/components/ui/Skeleton'
 import { ensureChatChannel } from '@/lib/chat-channels'
-import { PROJECT_FOLDER_CREATED_EVENT } from '@/lib/assistant/client-actions'
+import {
+  PROJECT_FOLDER_CREATED_EVENT,
+  PROJECTS_TREE_EVENT,
+  PROJECTS_VIEW_STORAGE_KEY,
+} from '@/lib/assistant/client-actions'
 import { useUser } from '@/context/UserContext'
 import type { GitHubUserRepo, Profile, ProjectFolder, ProjectFolderMember, ProjectItem, ProjectLogo } from '@/types'
 
@@ -702,6 +706,19 @@ export default function ProjectsPage() {
   const [treeSubfolderParentId, setTreeSubfolderParentId] = useState<string | null>(null)
   const [treeItemFolderId, setTreeItemFolderId] = useState<string | null>(null)
   const [treeItemMode, setTreeItemMode] = useState<ResourceMode>('github')
+
+  useEffect(() => {
+    function openAssistantTree() {
+      window.sessionStorage.removeItem(PROJECTS_VIEW_STORAGE_KEY)
+      setTreeOpen(true)
+    }
+
+    window.addEventListener(PROJECTS_TREE_EVENT, openAssistantTree)
+    if (window.sessionStorage.getItem(PROJECTS_VIEW_STORAGE_KEY) === 'tree') {
+      queueMicrotask(openAssistantTree)
+    }
+    return () => window.removeEventListener(PROJECTS_TREE_EVENT, openAssistantTree)
+  }, [])
 
   function addSubfolder(parentId: string, data: Pick<ProjectFolder, 'name' | 'description' | 'color' | 'logo'>) {
     const creator = folderMemberFromProfile(currentProfile)

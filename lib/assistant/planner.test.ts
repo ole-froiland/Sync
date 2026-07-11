@@ -102,6 +102,50 @@ describe('planLocalSyncResponse', () => {
     expect(plan.actions).toEqual([{ kind: 'open_modal', modal: 'settings' }])
   })
 
+  it('opens the calendar from the exact misspelled Norwegian request', () => {
+    const plan = planLocalSyncResponse(
+      [{ role: 'user', content: 'kan du åpne kalendern min i sync?' }],
+      { now }
+    )
+
+    expect(plan.actions).toEqual([{ kind: 'navigate', href: '/calendar' }])
+  })
+
+  it('opens Projects directly in tree view', () => {
+    const plan = planLocalSyncResponse(
+      [{ role: 'user', content: 'kan du åpne prosjekter jeg har i tre-form?' }],
+      { now }
+    )
+
+    expect(plan.actions).toEqual([{ kind: 'open_projects_tree' }])
+  })
+
+  it('changes the Sync language to English', () => {
+    const plan = planLocalSyncResponse(
+      [{ role: 'user', content: 'kan du endre språk på sync fra norsk til engelsk?' }],
+      { now }
+    )
+
+    expect(plan.actions).toEqual([{ kind: 'set_language', locale: 'en' }])
+  })
+
+  it('uses the prior calendar request when the user answers a clarification', () => {
+    const plan = planLocalSyncResponse(
+      [
+        { role: 'user', content: 'legg tannlege i kalenderen' },
+        { role: 'assistant', content: 'Hvilken dato og hvilket tidspunkt?' },
+        { role: 'user', content: 'i morgen kl 14' },
+      ],
+      { now }
+    )
+
+    expect(plan.actions[0]).toMatchObject({
+      kind: 'create_calendar_event',
+      title: 'tannlege',
+      start: '2026-07-09T14:00:00',
+    })
+  })
+
   it('creates tasks from a project route', () => {
     const plan = planLocalSyncResponse(
       [{ role: 'user', content: 'lag task: skriv readme' }],

@@ -3,6 +3,7 @@ import { requireUser } from '@/lib/api-auth'
 import { logAiAuditEvent } from '@/lib/assistant/audit'
 import { buildActionEnvelopes } from '@/lib/assistant/envelope'
 import { planLocalSyncResponse, planOpenAiSyncResponse } from '@/lib/assistant/planner'
+import { planPremierLeagueFixtures } from '@/lib/assistant/sports-fixtures'
 import type { SyncAssistantMessage, SyncAssistantPlan } from '@/lib/assistant/types'
 
 export const runtime = 'nodejs'
@@ -25,17 +26,19 @@ export async function POST(request: Request) {
   }
 
   let planner: 'openai' | 'local' = 'local'
-  let plan: SyncAssistantPlan | null = null
+  let plan: SyncAssistantPlan | null = await planPremierLeagueFixtures(messages, { now: new Date() })
   const model = process.env.OPENAI_MODEL || 'gpt-5.4-mini'
 
-  try {
-    plan = await planOpenAiSyncResponse(messages, {
-      currentPath: body.currentPath,
-      now: new Date(),
-    })
-    if (plan) planner = 'openai'
-  } catch {
-    plan = null
+  if (!plan) {
+    try {
+      plan = await planOpenAiSyncResponse(messages, {
+        currentPath: body.currentPath,
+        now: new Date(),
+      })
+      if (plan) planner = 'openai'
+    } catch {
+      plan = null
+    }
   }
 
   if (!plan) {
