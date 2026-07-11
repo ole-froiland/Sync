@@ -43,6 +43,7 @@ import Textarea from '@/components/ui/Textarea'
 import { FolderTreeOverlay, ROOT_ID } from '@/components/projects/folder-tree'
 import { ProjectCardSkeleton } from '@/components/ui/Skeleton'
 import { ensureChatChannel } from '@/lib/chat-channels'
+import { PROJECT_FOLDER_CREATED_EVENT } from '@/lib/assistant/client-actions'
 import { useUser } from '@/context/UserContext'
 import type { GitHubUserRepo, Profile, ProjectFolder, ProjectFolderMember, ProjectItem, ProjectLogo } from '@/types'
 
@@ -529,6 +530,20 @@ export default function ProjectsPage() {
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
+  useEffect(() => {
+    function onAssistantCreatedFolder(event: Event) {
+      const folder = (event as CustomEvent<ProjectFolder>).detail
+      if (!folder?.id || !folder.name || !Array.isArray(folder.items)) return
+      setFolders((current) => mergeProjectFolders([folder], current))
+      setSelectedFolderId(folder.id)
+      setActiveParentFolderId(folder.parentId ?? null)
+      setPreviewFolderId(null)
+    }
+
+    window.addEventListener(PROJECT_FOLDER_CREATED_EVENT, onAssistantCreatedFolder)
+    return () => window.removeEventListener(PROJECT_FOLDER_CREATED_EVENT, onAssistantCreatedFolder)
   }, [])
 
   useEffect(() => {

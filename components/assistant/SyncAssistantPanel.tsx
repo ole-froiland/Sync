@@ -2,10 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bot, CalendarPlus, Check, Loader2, MessageSquare, Navigation, Send, Sparkles, StickyNote, X } from 'lucide-react'
+import { Bot, CalendarPlus, Check, FolderPlus, Loader2, MessageSquare, Navigation, Send, Sparkles, StickyNote, X } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Textarea from '@/components/ui/Textarea'
+import { useUser } from '@/context/UserContext'
+import {
+  automaticBrowserAction,
+  buildAssistantProjectFolder,
+  PROJECT_FOLDER_CREATED_EVENT,
+  PROJECT_FOLDERS_STORAGE_KEY,
+  TASK_CREATED_EVENT,
+} from '@/lib/assistant/client-actions'
 import { cn } from '@/lib/utils'
+import type { Post, ProjectFolder, Task } from '@/types'
 import type {
   SyncAssistantAction,
   SyncAssistantActionEnvelope,
@@ -46,6 +55,7 @@ const starterMessage: SyncAssistantMessage = {
 export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanelProps) {
   const router = useRouter()
   const pathname = usePathname()
+  const profile = useUser()
   const [messages, setMessages] = useState<SyncAssistantMessage[]>([starterMessage])
   const [input, setInput] = useState('')
   const [actions, setActions] = useState<SyncAssistantActionEnvelope[]>([])
@@ -112,7 +122,15 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
       if (!res.ok || !body.message) throw new Error(body.error ?? 'Sync AI svarte ikke.')
 
       setMessages((prev) => [...prev, body.message as SyncAssistantMessage])
-      setActions(body.actions ?? [])
+      const plannedActions = body.actions ?? []
+      const automaticAction = automaticBrowserAction(plannedActions)
+      if (automaticAction) {
+        await runBrowserAction(automaticAction.action)
+        setActions([])
+        onClose()
+      } else {
+        setActions(plannedActions)
+      }
     } catch (error) {
       setMessages((prev) => [
         ...prev,
@@ -138,11 +156,12 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: envelope.confirmationToken, sessionId }),
         })
-        const body = (await res.json().catch(() => ({}))) as { message?: string; error?: string }
+        const body = (await res.json().catch(() => ({}))) as { message?: string; data?: unknown; error?: string }
         if (!res.ok) throw new Error(body.error ?? 'Kunne ikke kjøre handlingen.')
         setToast({ tone: 'success', message: body.message ?? 'Handling utført.' })
+        handleServerActionResult(envelope.action, body.data)
       } else {
-        const message = runBrowserAction(envelope.action)
+        const message = await runBrowserAction(envelope.action)
         setToast({ tone: 'success', message })
       }
 
@@ -157,7 +176,7 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
     }
   }
 
-  function runBrowserAction(action: SyncAssistantAction) {
+  async function runBrowserAction(action: SyncAssistantAction) {
     switch (action.kind) {
       case 'navigate':
         router.push(action.href)
@@ -167,9 +186,57 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
         return 'Åpnet panelet.'
       case 'create_calendar_event':
         createLocalCalendarEvent(action)
+        router.push('/calendar')
         return `La "${action.title}" i kalenderen.`
+      case 'create_project_folder':
+        await createProjectFolder(action)
+        router.push('/projects')
+        return `Opprettet prosjektmappen "${action.name}".`
       default:
         throw new Error('Denne handlingen må kjøres på serveren.')
+    }
+  }
+
+  function handleServerActionResult(action: SyncAssistantAction, data: unknown) {
+    if (action.kind === 'create_note' || action.kind === 'complete_note') {
+      router.push('/notes')
+      return
+    }
+    if (action.kind === 'create_post') {
+      if (data && typeof data === 'object') {
+        window.dispatchEvent(new CustomEvent<Post>('sync:post-created', { detail: data as Post }))
+      }
+      router.push('/dashboard')
+      return
+    }
+    if (action.kind === 'create_project') {
+      const id = data && typeof data === 'object' && 'id' in data ? String(data.id) : ''
+      router.push(id ? `/projects/${encodeURIComponent(id)}` : '/projects')
+      return
+    }
+    if (action.kind === 'create_task' && data && typeof data === 'object') {
+      window.dispatchEvent(new CustomEvent<Task>(TASK_CREATED_EVENT, { detail: data as Task }))
+    }
+  }
+
+  async function createProjectFolder(
+    action: Extract<SyncAssistantAction, { kind: 'create_project_folder' }>
+  ) {
+    const folder = buildAssistantProjectFolder(action, profile)
+    const existing = readProjectFolders()
+    const next = [folder, ...existing.filter((item) => item.id !== folder.id)]
+    window.localStorage.setItem(PROJECT_FOLDERS_STORAGE_KEY, JSON.stringify(next))
+    window.dispatchEvent(new CustomEvent<ProjectFolder>(PROJECT_FOLDER_CREATED_EVENT, { detail: folder }))
+
+    try {
+      await fetch('/api/project-folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folders: [folder] }),
+        signal: AbortSignal.timeout(10_000),
+      })
+    } catch {
+      // The local cache remains authoritative until the next successful project sync.
     }
   }
 
@@ -389,6 +456,8 @@ function renderActionIcon(action: SyncAssistantAction) {
     case 'create_note':
     case 'complete_note':
       return <StickyNote size={16} />
+    case 'create_project_folder':
+      return <FolderPlus size={16} />
     default:
       return <MessageSquare size={16} />
   }
@@ -410,6 +479,15 @@ function toneForKind(kind: CalendarEventKind): LocalCalendarEvent['tone'] {
 function readCalendarEvents() {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '[]') as LocalCalendarEvent[]
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function readProjectFolders() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PROJECT_FOLDERS_STORAGE_KEY) ?? '[]') as ProjectFolder[]
     return Array.isArray(parsed) ? parsed : []
   } catch {
     return []

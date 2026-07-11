@@ -38,6 +38,11 @@ export type SyncAssistantAction =
       sourceUrl?: string | null
     }
   | {
+      kind: 'create_project_folder'
+      name: string
+      description?: string | null
+    }
+  | {
       kind: 'create_project'
       name: string
       description?: string | null
@@ -143,6 +148,16 @@ export function normalizeAssistantAction(input: unknown): SyncAssistantAction | 
     }
   }
 
+  if (kind === 'create_project_folder') {
+    const name = stringValue(value.name)
+    if (!name) return null
+    return {
+      kind,
+      name,
+      description: stringValue(value.description) || null,
+    }
+  }
+
   if (kind === 'create_project') {
     const name = stringValue(value.name)
     if (!name) return null
@@ -172,7 +187,7 @@ export function normalizeAssistantAction(input: unknown): SyncAssistantAction | 
 }
 
 export function actionRequiresServer(action: SyncAssistantAction) {
-  return !['navigate', 'open_modal', 'create_calendar_event'].includes(action.kind)
+  return !['navigate', 'open_modal', 'create_calendar_event', 'create_project_folder'].includes(action.kind)
 }
 
 export function actionRequiresConfirmation(action: SyncAssistantAction) {
@@ -202,6 +217,8 @@ export function actionLabel(action: SyncAssistantAction) {
       return 'Create calendar event'
     case 'create_post':
       return 'Create post'
+    case 'create_project_folder':
+      return 'Create project folder'
     case 'create_project':
       return 'Create project'
     case 'create_task':
@@ -223,6 +240,8 @@ export function actionDescription(action: SyncAssistantAction) {
       return `${action.title} from ${formatActionDate(action.start)} to ${formatActionDate(action.end)}.`
     case 'create_post':
       return action.title
+    case 'create_project_folder':
+      return action.description ? `${action.name} — ${action.description}` : action.name
     case 'create_project':
       return action.name
     case 'create_task':

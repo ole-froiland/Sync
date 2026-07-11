@@ -1,4 +1,4 @@
-import type { SyncAssistantMessage, SyncAssistantPlan } from './types'
+import { SYNC_NAV_TARGETS, type SyncAssistantMessage, type SyncAssistantPlan } from './types'
 
 type PlannerContext = {
   currentPath?: string
@@ -57,16 +57,30 @@ export function planLocalSyncResponse(messages: SyncAssistantMessage[], context:
   }
 
   if (lower.includes('kalender') || lower.includes('calendar') || lower.includes('aktivitet') || lower.includes('møte') || lower.includes('meeting')) {
+    if (isBulkCalendarRequest(lower)) {
+      return {
+        reply: 'Jeg kan legge hendelsene i Sync-kalenderen, men jeg kan ikke gjette eller hente en komplett terminliste. Send dato og tidspunkt for hendelsene du vil legge inn.',
+        actions: [],
+      }
+    }
+
     const parsed = parseCalendarRequest(latest, now)
+    if (!parsed.ok) {
+      return {
+        reply:
+          parsed.missing === 'date'
+            ? 'Hvilken dato skal hendelsen være? Skriv for eksempel "i morgen kl. 10:30".'
+            : 'Hvilket tidspunkt skal hendelsen starte? Skriv for eksempel "i morgen kl. 10:30".',
+        actions: [],
+      }
+    }
+
     return {
-      reply: `Jeg kan legge "${parsed.title}" i kalenderen. Bekreft først, så oppretter jeg aktiviteten.`,
+      reply: `Jeg kan legge "${parsed.event.title}" i kalenderen. Bekreft først, så oppretter jeg aktiviteten.`,
       actions: [
         {
           kind: 'create_calendar_event',
-          title: parsed.title,
-          start: parsed.start,
-          end: parsed.end,
-          eventKind: parsed.eventKind,
+          ...parsed.event,
         },
       ],
     }
@@ -95,8 +109,8 @@ export function planLocalSyncResponse(messages: SyncAssistantMessage[], context:
   if (isProjectCreateRequest(lower)) {
     const name = parseProjectName(latest)
     return {
-      reply: `Jeg kan lage prosjektet "${name}". Bekreft først, så oppretter jeg det i Projects.`,
-      actions: [{ kind: 'create_project', name, status: 'idea', techStack: [] }],
+      reply: `Jeg kan lage prosjektmappen "${name}". Bekreft først, så oppretter jeg den i Projects.`,
+      actions: [{ kind: 'create_project_folder', name, description: null }],
     }
   }
 
@@ -155,7 +169,7 @@ export async function planOpenAiSyncResponse(messages: SyncAssistantMessage[], c
         {
           role: 'system',
           content:
-            'You are Sync AI. You only help with actions inside the Sync workspace. If the user asks for anything outside Sync, refuse briefly. Return exactly one function call using plan_sync_response.',
+            'You are Sync AI, an action planner for the Sync workspace. Return exactly one plan_sync_response function call. Never claim an action will happen unless you return a complete matching action. Use the user\'s language. Refuse requests outside Sync briefly and truthfully.',
         },
         {
           role: 'user',
@@ -167,45 +181,21 @@ export async function planOpenAiSyncResponse(messages: SyncAssistantMessage[], c
             allowedSurfaces: ['notes', 'calendar', 'projects', 'tasks', 'posts', 'chat', 'repositories', 'people', 'settings'],
             rules: [
               'Only plan actions inside Sync.',
+              'For a simple request to open a page or modal, return exactly one navigate or open_modal action; the client executes that safe action automatically.',
+              'Use create_project_folder for the project folders shown on the current Projects page. Do not use the legacy project model.',
               'Use create_task only when currentProjectId is present, and set projectId to currentProjectId.',
               'Use open_modal for settings, new_post, and new_repo when the user asks to open those controls.',
+              'Only create a calendar event when the user supplied a concrete date and start time. Ask a short clarifying question with zero actions when either is missing.',
+              'Never invent sports fixtures, schedules, dates, people, repository data, or other external facts. If external data is required and was not supplied, explain what the user must provide and return zero actions.',
+              'Set every unused action field to null.',
               'Refuse briefly with no actions for weather, web search, general knowledge, coding, or other non-Sync requests.',
             ],
           }),
         },
       ],
-      tools: [
-        {
-          type: 'function',
-          name: 'plan_sync_response',
-          description: 'Plan a Sync-only response and zero to three Sync actions.',
-          parameters: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              reply: { type: 'string' },
-              outOfScope: { type: 'boolean' },
-              actions: {
-                type: 'array',
-                maxItems: 3,
-                items: {
-                  type: 'object',
-                  additionalProperties: true,
-                  properties: {
-                    kind: {
-                      type: 'string',
-                      enum: ['navigate', 'open_modal', 'create_note', 'complete_note', 'create_calendar_event', 'create_post', 'create_project', 'create_task'],
-                    },
-                  },
-                  required: ['kind'],
-                },
-              },
-            },
-            required: ['reply', 'actions'],
-          },
-        },
-      ],
+      tools: [syncPlannerTool()],
       tool_choice: { type: 'function', name: 'plan_sync_response' },
+      parallel_tool_calls: false,
     }),
   })
 
@@ -223,6 +213,79 @@ export async function planOpenAiSyncResponse(messages: SyncAssistantMessage[], c
     return parsed
   } catch {
     return null
+  }
+}
+
+function syncPlannerTool() {
+  const nullableString = { type: ['string', 'null'] }
+  return {
+    type: 'function',
+    name: 'plan_sync_response',
+    description: 'Plan a truthful Sync-only response and zero to three validated Sync actions.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        reply: { type: 'string' },
+        outOfScope: { type: 'boolean' },
+        actions: {
+          type: 'array',
+          maxItems: 3,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              kind: {
+                type: 'string',
+                enum: [
+                  'navigate',
+                  'open_modal',
+                  'create_note',
+                  'complete_note',
+                  'create_calendar_event',
+                  'create_post',
+                  'create_project_folder',
+                  'create_task',
+                ],
+              },
+              href: { type: ['string', 'null'], enum: [...SYNC_NAV_TARGETS, null] },
+              modal: { type: ['string', 'null'], enum: ['settings', 'new_post', 'new_repo', null] },
+              title: nullableString,
+              noteId: nullableString,
+              start: nullableString,
+              end: nullableString,
+              eventKind: { type: ['string', 'null'], enum: ['meeting', 'focus', 'launch', 'deadline', null] },
+              body: nullableString,
+              postType: { type: ['string', 'null'], enum: ['update', 'news', 'question', 'resource', null] },
+              sourceUrl: nullableString,
+              name: nullableString,
+              description: nullableString,
+              projectId: nullableString,
+              status: { type: ['string', 'null'], enum: ['todo', 'in_progress', 'done', null] },
+            },
+            required: [
+              'kind',
+              'href',
+              'modal',
+              'title',
+              'noteId',
+              'start',
+              'end',
+              'eventKind',
+              'body',
+              'postType',
+              'sourceUrl',
+              'name',
+              'description',
+              'projectId',
+              'status',
+            ],
+          },
+        },
+      },
+      required: ['reply', 'outOfScope', 'actions'],
+    },
   }
 }
 
@@ -312,32 +375,136 @@ function projectIdFromPath(path?: string) {
 }
 
 function parseCalendarRequest(text: string, now: Date) {
+  const day = requestedCalendarDay(text, now)
+  if (!day) return { ok: false as const, missing: 'date' as const }
+
+  const time = requestedCalendarTime(text)
+  if (!time) return { ok: false as const, missing: 'time' as const }
+
+  day.setHours(time.hour, time.minute, 0, 0)
+  const end = requestedCalendarEnd(text, day)
   const lower = text.toLowerCase()
-  const day = new Date(now)
-  if (lower.includes('i morgen') || lower.includes('tomorrow')) day.setDate(day.getDate() + 1)
-  if (lower.includes('neste uke') || lower.includes('next week')) day.setDate(day.getDate() + 7)
-
-  const timeMatch = text.match(/\b([01]?\d|2[0-3])(?::|\.)([0-5]\d)\b/) ?? text.match(/\b([01]?\d|2[0-3])\b/)
-  const hour = timeMatch ? Number(timeMatch[1]) : 9
-  const minute = timeMatch?.[2] ? Number(timeMatch[2]) : 0
-  day.setHours(hour, minute, 0, 0)
-  const end = new Date(day)
-  end.setHours(end.getHours() + 1)
-
-  const title =
-    cleanLeadingCommand(afterFirstMarker(text, ['kalenderaktivitet', 'calendar event', 'aktivitet', 'møte', 'meeting', 'kalender']) || text)
-      .replace(/\b(i morgen|tomorrow|neste uke|next week)\b/gi, '')
-      .replace(/\bkl\.?\s*/gi, '')
-      .replace(/\b([01]?\d|2[0-3])(?::|\.)([0-5]\d)\b/g, '')
-      .replace(/\b([01]?\d|2[0-3])\b/g, '')
-      .trim() || 'Sync activity'
 
   return {
-    title,
-    start: localDateTime(day),
-    end: localDateTime(end),
-    eventKind: lower.includes('focus') || lower.includes('fokus') ? 'focus' as const : 'meeting' as const,
+    ok: true as const,
+    event: {
+      title: parseCalendarTitle(text) || 'Sync activity',
+      start: localDateTime(day),
+      end: localDateTime(end),
+      eventKind: lower.includes('focus') || lower.includes('fokus') ? 'focus' as const : 'meeting' as const,
+    },
   }
+}
+
+function isBulkCalendarRequest(value: string) {
+  return (
+    /\b(alle|all|hver|every|samtlige)\b/i.test(value) &&
+    /\b(kamper|kampene|matches|fixtures|games|hendelser|events|møter|meetings)\b/i.test(value)
+  )
+}
+
+function requestedCalendarDay(text: string, now: Date) {
+  const lower = text.toLowerCase()
+  const day = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+  const iso = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/)
+  if (iso) return validLocalDate(Number(iso[1]), Number(iso[2]), Number(iso[3]))
+
+  const dotted = text.match(/\b(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?\b/)
+  if (dotted) {
+    const hasYear = Boolean(dotted[3])
+    let year = hasYear ? Number(dotted[3]) : now.getFullYear()
+    let candidate = validLocalDate(year, Number(dotted[2]), Number(dotted[1]))
+    if (candidate && !hasYear && +candidate < +day) {
+      year += 1
+      candidate = validLocalDate(year, Number(dotted[2]), Number(dotted[1]))
+    }
+    return candidate
+  }
+
+  if (lower.includes('overmorgen') || lower.includes('day after tomorrow')) {
+    day.setDate(day.getDate() + 2)
+    return day
+  }
+  if (lower.includes('i morgen') || lower.includes('tomorrow')) {
+    day.setDate(day.getDate() + 1)
+    return day
+  }
+  if (lower.includes('i dag') || lower.includes('today')) return day
+  if (lower.includes('neste uke') || lower.includes('next week')) {
+    day.setDate(day.getDate() + 7)
+    return day
+  }
+
+  const weekdays = [
+    ['søndag', 'sunday'],
+    ['mandag', 'monday'],
+    ['tirsdag', 'tuesday'],
+    ['onsdag', 'wednesday'],
+    ['torsdag', 'thursday'],
+    ['fredag', 'friday'],
+    ['lørdag', 'saturday'],
+  ]
+  const weekday = weekdays.findIndex((names) => names.some((name) => lower.includes(name)))
+  if (weekday !== -1) {
+    const offset = (weekday - day.getDay() + 7) % 7 || 7
+    day.setDate(day.getDate() + offset)
+    return day
+  }
+
+  return null
+}
+
+function requestedCalendarTime(text: string) {
+  const withoutDates = text
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, '')
+    .replace(/\b\d{1,2}\.\d{1,2}(?:\.\d{4})?\b/g, '')
+  const match =
+    withoutDates.match(/\b(?:kl(?:okka)?\.?|at)\s*([01]?\d|2[0-3])(?:[:.]([0-5]\d))?\b/i) ??
+    withoutDates.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/)
+  if (!match) return null
+  return { hour: Number(match[1]), minute: match[2] ? Number(match[2]) : 0 }
+}
+
+function requestedCalendarEnd(text: string, start: Date) {
+  const end = new Date(start)
+  const explicitEnd = text.match(/\b(?:til|to)\s*([01]?\d|2[0-3])(?:[:.]([0-5]\d))?\b/i)
+  if (explicitEnd) {
+    end.setHours(Number(explicitEnd[1]), explicitEnd[2] ? Number(explicitEnd[2]) : 0, 0, 0)
+    if (+end > +start) return end
+  }
+
+  const duration = text.match(/\b(?:i|for)\s+(\d+(?:[.,]\d+)?)\s*(?:timer?|hours?)\b/i)
+  if (duration) {
+    end.setTime(+start + Number(duration[1].replace(',', '.')) * 60 * 60 * 1000)
+    return end
+  }
+
+  end.setHours(end.getHours() + 1)
+  return end
+}
+
+function parseCalendarTitle(text: string) {
+  return cleanLeadingCommand(text)
+    .replace(/\b(kalenderaktivitet|kalenderhendelse|calendar event)\b/gi, '')
+    .replace(/\b(?:i|på)\s+(?:min\s+)?kalender(?:en)?\b/gi, '')
+    .replace(/\b(i dag|today|i morgen|tomorrow|overmorgen|day after tomorrow|neste uke|next week)\b/gi, '')
+    .replace(/\b(mandag|monday|tirsdag|tuesday|onsdag|wednesday|torsdag|thursday|fredag|friday|lørdag|saturday|søndag|sunday)\b/gi, '')
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, '')
+    .replace(/\b\d{1,2}\.\d{1,2}(?:\.\d{4})?\b/g, '')
+    .replace(/\b(?:kl(?:okka)?\.?|at)\s*([01]?\d|2[0-3])(?:[:.]([0-5]\d))?\b/gi, '')
+    .replace(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g, '')
+    .replace(/\b(?:til|to)\s*([01]?\d|2[0-3])(?:[:.]([0-5]\d))?\b/gi, '')
+    .replace(/\b(?:i|for)\s+\d+(?:[.,]\d+)?\s*(?:timer?|hours?)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function validLocalDate(year: number, month: number, day: number) {
+  const candidate = new Date(year, month - 1, day)
+  return candidate.getFullYear() === year && candidate.getMonth() === month - 1 && candidate.getDate() === day
+    ? candidate
+    : null
 }
 
 function afterFirstMarker(text: string, markers: string[]) {
@@ -351,7 +518,9 @@ function afterFirstMarker(text: string, markers: string[]) {
 
 function cleanLeadingCommand(value: string) {
   return value
-    .replace(/^(kan du|please|pls|vennligst|lag|legg til|opprett|create|add)\s+/i, '')
+    .replace(/^(?:hei|hello)(?:\s+(?:sync\s+)?ai)?[,!:.\s-]*/i, '')
+    .replace(/^(?:kan du|could you|please|pls|vennligst)\s+/i, '')
+    .replace(/^(?:lag|legg(?:e)?\s+(?:til|inn)|opprett|create|add)\s+/i, '')
     .replace(/^[:\-–—\s]+/, '')
     .trim()
     .slice(0, 240)

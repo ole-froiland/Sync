@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { useUser } from '@/context/UserContext'
 import { mockProjects, mockTasks, mockMessages } from '@/lib/mock-data'
 import { STATUS_COLORS, STATUS_LABELS, formatDate } from '@/lib/utils'
+import { TASK_CREATED_EVENT } from '@/lib/assistant/client-actions'
 import { GitBranch, ExternalLink, ArrowLeft, UserPlus, MessageSquare, Send } from 'lucide-react'
 import type { Project, Task, Message, Profile } from '@/types'
 
@@ -101,6 +102,21 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     subscribe()
     return () => { cleanup?.() }
   }, [id, fetchMessages])
+
+  useEffect(() => {
+    function onAssistantCreatedTask(event: Event) {
+      const task = (event as CustomEvent<Task>).detail
+      if (!task?.id || task.project_id !== id) return
+      setTasks((current) =>
+        current.some((item) => item.id === task.id)
+          ? current.map((item) => (item.id === task.id ? task : item))
+          : [...current, task]
+      )
+    }
+
+    window.addEventListener(TASK_CREATED_EVENT, onAssistantCreatedTask)
+    return () => window.removeEventListener(TASK_CREATED_EVENT, onAssistantCreatedTask)
+  }, [id])
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault()
