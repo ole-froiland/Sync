@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bot, CalendarPlus, Check, FolderPlus, Languages, Loader2, MessageSquare, Navigation, Send, Sparkles, StickyNote, Workflow, X } from 'lucide-react'
+import { Bot, CalendarPlus, Check, FolderPlus, Languages, Loader2, Maximize2, MessageSquare, Minimize2, Navigation, Send, Sparkles, StickyNote, Workflow, X } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Textarea from '@/components/ui/Textarea'
 import { useLanguage } from '@/context/LanguageContext'
@@ -57,6 +57,7 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
   const [busy, setBusy] = useState(false)
   const [runningId, setRunningId] = useState<string | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
+  const [expanded, setExpanded] = useState(false)
   const [sessionId] = useState(() => crypto.randomUUID())
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -65,10 +66,16 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
 
   useEffect(() => {
     if (!open) return
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     inputRef.current?.focus()
+    const mobileQuery = window.matchMedia('(max-width: 1023px)')
+    const previousOverflow = document.body.style.overflow
+    const syncBodyOverflow = () => {
+      document.body.style.overflow = mobileQuery.matches ? 'hidden' : previousOverflow
+    }
+    syncBodyOverflow()
+    mobileQuery.addEventListener('change', syncBodyOverflow)
     return () => {
+      mobileQuery.removeEventListener('change', syncBodyOverflow)
       document.body.style.overflow = previousOverflow
     }
   }, [open])
@@ -122,7 +129,6 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
       if (automaticAction) {
         await runBrowserAction(automaticAction.action)
         setActions([])
-        onClose()
       } else {
         setActions(plannedActions)
       }
@@ -175,14 +181,17 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
     switch (action.kind) {
       case 'navigate':
         router.push(action.href)
+        closeOnMobile()
         return `Åpnet ${action.href}.`
       case 'open_modal':
         window.dispatchEvent(new Event(modalEventName(action.modal)))
+        closeOnMobile()
         return 'Åpnet panelet.'
       case 'open_projects_tree':
         window.sessionStorage.setItem(PROJECTS_VIEW_STORAGE_KEY, 'tree')
         window.dispatchEvent(new Event(PROJECTS_TREE_EVENT))
         router.push('/projects')
+        closeOnMobile()
         return 'Åpnet prosjektene som tre.'
       case 'set_language':
         setLocale(action.locale)
@@ -190,14 +199,17 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
       case 'create_calendar_event':
         createLocalCalendarEvents(action)
         router.push('/calendar')
+        closeOnMobile()
         return `La "${action.title}" i kalenderen.`
       case 'create_calendar_events':
         createLocalCalendarEvents(action)
         router.push('/calendar')
+        closeOnMobile()
         return `La ${action.events.length} hendelser i kalenderen.`
       case 'create_project_folder':
         await createProjectFolder(action)
         router.push('/projects')
+        closeOnMobile()
         return `Opprettet prosjektmappen "${action.name}".`
       default:
         throw new Error('Denne handlingen må kjøres på serveren.')
@@ -207,6 +219,7 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
   function handleServerActionResult(action: SyncAssistantAction, data: unknown) {
     if (action.kind === 'create_note' || action.kind === 'complete_note') {
       router.push('/notes')
+      closeOnMobile()
       return
     }
     if (action.kind === 'create_post') {
@@ -214,16 +227,22 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
         window.dispatchEvent(new CustomEvent<Post>('sync:post-created', { detail: data as Post }))
       }
       router.push('/dashboard')
+      closeOnMobile()
       return
     }
     if (action.kind === 'create_project') {
       const id = data && typeof data === 'object' && 'id' in data ? String(data.id) : ''
       router.push(id ? `/projects/${encodeURIComponent(id)}` : '/projects')
+      closeOnMobile()
       return
     }
     if (action.kind === 'create_task' && data && typeof data === 'object') {
       window.dispatchEvent(new CustomEvent<Task>(TASK_CREATED_EVENT, { detail: data as Task }))
     }
+  }
+
+  function closeOnMobile() {
+    if (window.matchMedia('(max-width: 1023px)').matches) onClose()
   }
 
   async function createProjectFolder(
@@ -263,9 +282,16 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
     <aside
       aria-label="Sync AI"
       aria-hidden={!open}
+      inert={!open ? true : undefined}
       className={cn(
-        'fixed inset-y-0 right-0 z-[980] flex w-full max-w-[28rem] flex-col border-l border-gray-200 bg-white shadow-2xl transition-transform duration-200 ease-out dark:border-gray-800 dark:bg-gray-950 sm:max-w-[27rem]',
-        open ? 'translate-x-0' : 'translate-x-full',
+        'fixed inset-y-0 right-0 z-[980] flex w-full flex-col bg-white shadow-2xl transition-[transform,width] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] dark:bg-gray-950',
+        'lg:static lg:inset-auto lg:z-auto lg:h-full lg:max-w-none lg:flex-none lg:translate-x-0 lg:shadow-none',
+        open
+          ? cn(
+              'translate-x-0 border-l border-gray-200 dark:border-gray-800',
+              expanded ? 'sm:max-w-[36rem] lg:w-[30rem] xl:w-[36rem]' : 'sm:max-w-[27rem] lg:w-[23rem] xl:w-[27rem]',
+            )
+          : 'translate-x-full sm:max-w-[27rem] lg:w-0 lg:translate-x-0 lg:overflow-hidden lg:border-l-0',
       )}
     >
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-100 px-4 dark:border-gray-800">
@@ -278,14 +304,25 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
             <p className="truncate text-xs text-gray-500 dark:text-gray-400">Kun inne i Sync</p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close Sync AI"
-          className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-900 dark:hover:text-gray-200"
-        >
-          <X size={18} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setExpanded((current) => !current)}
+            aria-label={expanded ? 'Reduce Sync AI' : 'Expand Sync AI'}
+            title={expanded ? 'Reduce panel' : 'Expand panel'}
+            className="hidden rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-900 dark:hover:text-gray-200 lg:inline-flex"
+          >
+            {expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close Sync AI"
+            className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-900 dark:hover:text-gray-200"
+          >
+            <X size={18} />
+          </button>
+        </div>
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">

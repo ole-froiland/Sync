@@ -40,7 +40,7 @@ export function planLocalSyncResponse(messages: SyncAssistantMessage[], context:
     }
   }
 
-  const language = languageTarget(latest)
+  const language = contextualLanguageTarget(messages)
   if (language) {
     return {
       reply: language === 'en'
@@ -343,14 +343,29 @@ function modalTarget(value: string) {
   return null
 }
 
-function languageTarget(value: string) {
+function languageTarget(value: string, allowImplicit = false) {
   const normalized = normalizeIntent(value)
-  if (!/(?:sprak|language)/.test(normalized) || !/(?:endre|bytt|skift|change|switch|set)/.test(normalized)) return null
+    .replace(/\bnrosk\b/g, 'norsk')
+    .replace(/\bnorwgian\b/g, 'norwegian')
+  if ((!allowImplicit && !/(?:sprak|language)/.test(normalized)) || !/(?:endre|bytt|skift|change|switch|set)/.test(normalized)) return null
   const explicitTarget = normalized.match(/(?:til|to)\s+(engelsk|english|norsk|norwegian)(?:\s|$)/)?.[1]
   const target = explicitTarget ?? normalized.match(/(?:engelsk|english|norsk|norwegian)/)?.[0]
   if (target === 'engelsk' || target === 'english') return 'en' as const
   if (target === 'norsk' || target === 'norwegian') return 'no' as const
   return null
+}
+
+function contextualLanguageTarget(messages: SyncAssistantMessage[]) {
+  const latestIndex = messages.findLastIndex((message) => message.role === 'user')
+  if (latestIndex === -1) return null
+  const latest = messages[latestIndex].content
+  const direct = languageTarget(latest)
+  if (direct) return direct
+
+  const hasLanguageContext = messages
+    .slice(Math.max(0, latestIndex - 4), latestIndex)
+    .some((message) => /(?:sprak|language)/.test(normalizeIntent(message.content)))
+  return hasLanguageContext ? languageTarget(latest, true) : null
 }
 
 function isProjectTreeRequest(value: string) {

@@ -129,6 +129,28 @@ describe('planLocalSyncResponse', () => {
     expect(plan.actions).toEqual([{ kind: 'set_language', locale: 'en' }])
   })
 
+  it('changes the language back from a contextual follow-up', () => {
+    const plan = planLocalSyncResponse(
+      [
+        { role: 'user', content: 'kan du endre språk på Sync fra norsk til engelsk?' },
+        { role: 'assistant', content: 'Jeg kan endre språket i Sync til engelsk. Bekreft først, så bytter jeg språk.' },
+        { role: 'user', content: 'kan du endre det tilbake til norsk' },
+      ],
+      { now }
+    )
+
+    expect(plan.actions).toEqual([{ kind: 'set_language', locale: 'no' }])
+  })
+
+  it('understands a misspelled Norwegian language target', () => {
+    const plan = planLocalSyncResponse(
+      [{ role: 'user', content: 'endre språket fra engelsk til nrosk i synx' }],
+      { now }
+    )
+
+    expect(plan.actions).toEqual([{ kind: 'set_language', locale: 'no' }])
+  })
+
   it('uses the prior calendar request when the user answers a clarification', () => {
     const plan = planLocalSyncResponse(
       [
