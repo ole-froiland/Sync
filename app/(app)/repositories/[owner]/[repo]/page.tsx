@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useCallback, useEffect, useMemo, useState } from 'react'
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
@@ -29,6 +29,8 @@ import {
   Eye,
   Calendar,
   Check,
+  ChevronDown,
+  MoreHorizontal,
 } from 'lucide-react'
 
 type RepoDetail = {
@@ -332,38 +334,22 @@ export default function RepositoryDetailPage({
                       <ExternalLink size={13} />
                       GitHub
                     </a>
-                    <button
-                      onClick={handleOpenVSCode}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                    >
-                      <Code2 size={13} />
-                      VS Code
-                    </button>
                     <OpenInCodeAgentMenu
                       cloneUrl={data.clone_url}
                       repoFullName={data.full_name}
                       defaultBranch={data.default_branch}
                     />
-                    <button
-                      onClick={handleCopyClone}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                      title="Copy clone URL"
-                    >
-                      {copied === 'clone' ? <Check size={13} /> : <Copy size={13} />}
-                      {copied === 'clone' ? 'Copied' : 'Clone'}
-                    </button>
-                    <button
-                      onClick={handleShare}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                    >
-                      <Share2 size={13} />
-                      Share
-                    </button>
-                    <DeployMenu repoUrl={data.html_url} />
                     <Button size="sm" onClick={() => summarize('summary')}>
                       <Sparkles size={13} />
                       Summarize
                     </Button>
+                    <RepositoryMoreActions
+                      repoUrl={data.html_url}
+                      copied={copied === 'clone'}
+                      onOpenVSCode={handleOpenVSCode}
+                      onCopyClone={handleCopyClone}
+                      onShare={handleShare}
+                    />
                   </div>
                 </div>
 
@@ -521,6 +507,99 @@ export default function RepositoryDetailPage({
         ))}
       </div>
     </>
+  )
+}
+
+function RepositoryMoreActions({
+  repoUrl,
+  copied,
+  onOpenVSCode,
+  onCopyClone,
+  onShare,
+}: {
+  repoUrl: string
+  copied: boolean
+  onOpenVSCode: () => void
+  onCopyClone: () => void
+  onShare: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const closeOutside = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setOpen(false)
+      buttonRef.current?.focus()
+    }
+    document.addEventListener('mousedown', closeOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  const menuItemClass =
+    'flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500 dark:text-gray-200 dark:hover:bg-gray-800'
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 dark:focus-visible:ring-offset-gray-900"
+      >
+        <MoreHorizontal size={13} />
+        More
+        <ChevronDown size={12} className="opacity-60" />
+      </button>
+
+      {open && (
+        <div
+          className="absolute right-0 z-30 mt-1.5 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              onOpenVSCode()
+            }}
+            className={menuItemClass}
+          >
+            <Code2 size={14} className="text-gray-400" />
+            Open in VS Code
+          </button>
+          <button
+            type="button"
+            onClick={onCopyClone}
+            className={menuItemClass}
+          >
+            {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} className="text-gray-400" />}
+            {copied ? 'Clone URL copied' : 'Copy clone URL'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              onShare()
+            }}
+            className={menuItemClass}
+          >
+            <Share2 size={14} className="text-gray-400" />
+            Share repository
+          </button>
+          <DeployMenu repoUrl={repoUrl} appearance="menu-item" onSelect={() => setOpen(false)} />
+        </div>
+      )}
+    </div>
   )
 }
 

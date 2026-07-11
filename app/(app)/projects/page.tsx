@@ -1326,7 +1326,7 @@ export default function ProjectsPage() {
             </div>
 
             {folders.length === 0 && initialSyncPending ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-3">
                 <ProjectCardSkeleton />
                 <ProjectCardSkeleton />
                 <ProjectCardSkeleton />
@@ -1483,7 +1483,7 @@ export default function ProjectsPage() {
                 </main>
               </div>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-3">
                 {visibleFolders.map((folder) => {
                   const members = projectFolderMembers(folder, currentProfile)
                   const active = folder.id === previewFolderId
@@ -1518,7 +1518,7 @@ export default function ProjectsPage() {
                         if (folderId) moveFolderIntoFolder(folderId, folder.id)
                       }}
                       onContextMenu={(event) => openFolderContextMenu(event, folder.id)}
-                      className={`group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
+                      className={`group flex w-full flex-col gap-2 rounded-lg border px-3 py-3 text-left transition ${
                         isDropTarget
                           ? 'border-cyan-400 bg-cyan-50 shadow-sm dark:border-cyan-500 dark:bg-cyan-950/30'
                           : active
@@ -1533,37 +1533,45 @@ export default function ProjectsPage() {
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') openFolderFromOverview(folder)
                         }}
-                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        className="flex min-w-0 w-full items-center gap-3 text-left"
                         aria-pressed={active}
                         title="Dobbeltklikk for å åpne"
                       >
                         <ProjectLogoThumbnail folder={folder} className="h-9 w-9" iconSize={18} />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium text-gray-950 dark:text-gray-100">{folder.name}</span>
-                          <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
-                            {childCount > 0 ? `${childCount} mapper` : projectFolderShareLabel(folder)}
+                          <span
+                            className="block break-words text-sm font-medium leading-5 text-gray-950 dark:text-gray-100"
+                            title={folder.name}
+                            data-no-translate
+                          >
+                            {folder.name}
                           </span>
                         </span>
                       </button>
-                      <ProjectMemberBubbles members={members} max={3} />
-                      <button
-                        type="button"
-                        onClick={() => enterFolder(folder.id)}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-purple-600 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 group-hover:opacity-100 dark:hover:bg-gray-800 dark:hover:text-purple-300"
-                        aria-label={`Vis mapper i ${folder.name}`}
-                        title="Vis undermapper"
-                      >
-                        <FolderOpen size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(event) => openFolderContextMenu(event, folder.id)}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-purple-600 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 group-hover:opacity-100 dark:hover:bg-gray-800 dark:hover:text-purple-300"
-                        aria-label={`Mappevalg for ${folder.name}`}
-                        title="Mappevalg"
-                      >
-                        <MoreVertical size={16} />
-                      </button>
+                      <div className="flex min-h-8 w-full items-center gap-2 pl-12">
+                        <span className="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400">
+                          {childCount > 0 ? `${childCount} mapper` : projectFolderShareLabel(folder)}
+                        </span>
+                        <ProjectMemberBubbles members={members} max={3} />
+                        <button
+                          type="button"
+                          onClick={() => enterFolder(folder.id)}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:hover:bg-gray-800 dark:hover:text-purple-300"
+                          aria-label={`Vis mapper i ${folder.name}`}
+                          title="Vis undermapper"
+                        >
+                          <FolderOpen size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => openFolderContextMenu(event, folder.id)}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:hover:bg-gray-800 dark:hover:text-purple-300"
+                          aria-label={`Mappevalg for ${folder.name}`}
+                          title="Mappevalg"
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+                      </div>
                     </div>
                   )
                 })}

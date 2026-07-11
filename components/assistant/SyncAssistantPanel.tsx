@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { Bot, CalendarPlus, Check, FolderPlus, Languages, Loader2, Maximize2, MessageSquare, Minimize2, Navigation, Send, Sparkles, StickyNote, Workflow, X } from 'lucide-react'
 import Button from '@/components/ui/Button'
@@ -19,6 +20,14 @@ import {
   type AssistantLocalCalendarEvent,
 } from '@/lib/assistant/client-actions'
 import { cn } from '@/lib/utils'
+import {
+  ASSISTANT_PANEL_DEFAULT_WIDTH,
+  ASSISTANT_PANEL_MAX_WIDTH,
+  ASSISTANT_PANEL_MIN_WIDTH,
+  assistantPanelMaxWidth,
+  clampAssistantPanelWidth,
+  stepAssistantPanelWidth,
+} from '@/lib/assistant/panel-size'
 import type { Post, ProjectFolder, Task } from '@/types'
 import type {
   SyncAssistantAction,
@@ -39,6 +48,7 @@ type Toast = {
 
 const STORAGE_KEY = 'sync-calendar-events'
 const CALENDAR_EVENT_CREATED = 'sync:calendar-event-created'
+const PANEL_WIDTH_STORAGE_KEY = 'sync-assistant-panel-width'
 
 const starterMessage: SyncAssistantMessage = {
   role: 'assistant',
@@ -57,7 +67,9 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
   const [busy, setBusy] = useState(false)
   const [runningId, setRunningId] = useState<string | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
-  const [expanded, setExpanded] = useState(false)
+  const [panelWidth, setPanelWidth] = useState(ASSISTANT_PANEL_DEFAULT_WIDTH)
+  const [panelMaxWidth, setPanelMaxWidth] = useState(ASSISTANT_PANEL_MAX_WIDTH)
+  const [resizing, setResizing] = useState(false)
   const [sessionId] = useState(() => crypto.randomUUID())
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -79,6 +91,36 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
       document.body.style.overflow = previousOverflow
     }
   }, [open])
+
+  useEffect(() => {
+    const syncWidth = () => {
+      const nextMax = assistantPanelMaxWidth(window.innerWidth)
+      setPanelMaxWidth(nextMax)
+      setPanelWidth((current) => clampAssistantPanelWidth(current, window.innerWidth))
+    }
+    const storedWidth = Number(window.localStorage.getItem(PANEL_WIDTH_STORAGE_KEY))
+    setPanelMaxWidth(assistantPanelMaxWidth(window.innerWidth))
+    setPanelWidth(
+      clampAssistantPanelWidth(
+        Number.isFinite(storedWidth) && storedWidth > 0 ? storedWidth : ASSISTANT_PANEL_DEFAULT_WIDTH,
+        window.innerWidth
+      )
+    )
+    window.addEventListener('resize', syncWidth)
+    return () => window.removeEventListener('resize', syncWidth)
+  }, [])
+
+  useEffect(() => {
+    if (!resizing) return
+    const previousCursor = document.body.style.cursor
+    const previousSelection = document.body.style.userSelect
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    return () => {
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousSelection
+    }
+  }, [resizing])
 
   useEffect(() => {
     if (!open) return
@@ -245,6 +287,42 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
     if (window.matchMedia('(max-width: 1023px)').matches) onClose()
   }
 
+  function updatePanelWidth(width: number) {
+    const next = clampAssistantPanelWidth(width, window.innerWidth)
+    setPanelWidth(next)
+    window.localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(next))
+  }
+
+  function startPanelResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setResizing(true)
+  }
+
+  function movePanelResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!resizing) return
+    updatePanelWidth(window.innerWidth - event.clientX)
+  }
+
+  function stopPanelResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    setResizing(false)
+  }
+
+  function resizePanelWithKeyboard(event: ReactKeyboardEvent<HTMLDivElement>) {
+    let next: number | null = null
+    if (event.key === 'ArrowLeft') next = stepAssistantPanelWidth(panelWidth, 'larger', window.innerWidth)
+    if (event.key === 'ArrowRight') next = stepAssistantPanelWidth(panelWidth, 'smaller', window.innerWidth)
+    if (event.key === 'Home') next = ASSISTANT_PANEL_MIN_WIDTH
+    if (event.key === 'End') next = panelMaxWidth
+    if (next === null) return
+    event.preventDefault()
+    updatePanelWidth(next)
+  }
+
   async function createProjectFolder(
     action: Extract<SyncAssistantAction, { kind: 'create_project_folder' }>
   ) {
@@ -283,17 +361,43 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
       aria-label="Sync AI"
       aria-hidden={!open}
       inert={!open ? true : undefined}
+      style={{ '--assistant-panel-width': `${panelWidth}px` } as CSSProperties}
       className={cn(
         'fixed inset-y-0 right-0 z-[980] flex w-full flex-col bg-white shadow-2xl transition-[transform,width] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] dark:bg-gray-950',
-        'lg:static lg:inset-auto lg:z-auto lg:h-full lg:max-w-none lg:flex-none lg:translate-x-0 lg:shadow-none',
+        'lg:static lg:inset-auto lg:z-auto lg:h-full lg:max-w-none lg:flex-none lg:translate-x-0 lg:shadow-none lg:relative',
         open
           ? cn(
               'translate-x-0 border-l border-gray-200 dark:border-gray-800',
-              expanded ? 'sm:max-w-[36rem] lg:w-[30rem] xl:w-[36rem]' : 'sm:max-w-[27rem] lg:w-[23rem] xl:w-[27rem]',
+              'sm:max-w-[27rem] lg:w-[var(--assistant-panel-width)]',
             )
           : 'translate-x-full sm:max-w-[27rem] lg:w-0 lg:translate-x-0 lg:overflow-hidden lg:border-l-0',
+        resizing && 'lg:transition-none',
       )}
     >
+      <div
+        role="separator"
+        aria-label="Resize Sync AI"
+        aria-orientation="vertical"
+        aria-valuemin={ASSISTANT_PANEL_MIN_WIDTH}
+        aria-valuemax={panelMaxWidth}
+        aria-valuenow={panelWidth}
+        aria-valuetext={`${panelWidth} pixels`}
+        title="Drag to resize. Use left and right arrow keys for precise adjustment."
+        tabIndex={open ? 0 : -1}
+        onPointerDown={startPanelResize}
+        onPointerMove={movePanelResize}
+        onPointerUp={stopPanelResize}
+        onPointerCancel={stopPanelResize}
+        onKeyDown={resizePanelWithKeyboard}
+        className="group absolute inset-y-0 left-0 z-20 hidden w-3 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center outline-none lg:flex"
+      >
+        <span
+          className={cn(
+            'h-16 w-1 rounded-full bg-gray-300 opacity-0 transition group-hover:opacity-100 group-focus:opacity-100 dark:bg-gray-700',
+            resizing && 'bg-fuchsia-500 opacity-100 dark:bg-fuchsia-400'
+          )}
+        />
+      </div>
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-100 px-4 dark:border-gray-800">
         <div className="flex min-w-0 items-center gap-2">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-fuchsia-600 text-white">
@@ -307,12 +411,12 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setExpanded((current) => !current)}
-            aria-label={expanded ? 'Reduce Sync AI' : 'Expand Sync AI'}
-            title={expanded ? 'Reduce panel' : 'Expand panel'}
+            onClick={() => updatePanelWidth(panelWidth >= panelMaxWidth - 8 ? ASSISTANT_PANEL_DEFAULT_WIDTH : panelMaxWidth)}
+            aria-label={panelWidth >= panelMaxWidth - 8 ? 'Reduce Sync AI' : 'Expand Sync AI'}
+            title={panelWidth >= panelMaxWidth - 8 ? 'Reduce panel' : 'Expand panel'}
             className="hidden rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-900 dark:hover:text-gray-200 lg:inline-flex"
           >
-            {expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+            {panelWidth >= panelMaxWidth - 8 ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
           </button>
           <button
             type="button"
