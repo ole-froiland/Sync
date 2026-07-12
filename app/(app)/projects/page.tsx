@@ -39,6 +39,7 @@ import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
 import ProjectAddMenu from '@/components/projects/ProjectAddMenu'
 import Input from '@/components/ui/Input'
+import Select from '@/components/ui/Select'
 import Modal from '@/components/ui/Modal'
 import Textarea from '@/components/ui/Textarea'
 import { FolderTreeOverlay, ROOT_ID } from '@/components/projects/folder-tree'
@@ -3221,14 +3222,13 @@ function CreateItemModal({
   const appOptions: Array<{
     type: AppResourceType
     label: string
-    icon: React.ElementType
     url: string
   }> = [
-    { type: 'docs', label: 'Google Docs', icon: FilePenLine, url: 'https://docs.new' },
-    { type: 'sheets', label: 'Google Sheets', icon: FileSpreadsheet, url: 'https://sheets.new' },
-    { type: 'word', label: 'Word', icon: FilePenLine, url: 'https://www.office.com/launch/word' },
-    { type: 'excel', label: 'Excel', icon: FileSpreadsheet, url: 'https://www.office.com/launch/excel' },
-    { type: 'notion', label: 'Notion', icon: PanelsTopLeft, url: 'https://www.notion.so/new' },
+    { type: 'docs', label: 'Google Docs', url: 'https://docs.new' },
+    { type: 'sheets', label: 'Google Sheets', url: 'https://sheets.new' },
+    { type: 'word', label: 'Word', url: 'https://www.office.com/launch/word' },
+    { type: 'excel', label: 'Excel', url: 'https://www.office.com/launch/excel' },
+    { type: 'notion', label: 'Notion', url: 'https://www.notion.so/new' },
   ]
   const selectedApp = appOptions.find((option) => option.type === appType) ?? appOptions[0]
   const filteredRepos = repos.filter((repo) => {
@@ -3382,14 +3382,14 @@ function CreateItemModal({
   }
 
   return (
-    <Modal open={open} onClose={() => { reset(); onClose() }} title="Legg til ressurs" className="max-w-4xl">
+    <Modal open={open} onClose={() => { reset(); onClose() }} title="Legg til ressurs" className="max-w-2xl">
       <div className="space-y-5">
         <div className="grid gap-2 sm:grid-cols-4">
           {[
             { type: 'github' as const, label: 'Repos', icon: FolderGit2 },
             { type: 'url' as const, label: 'Link', icon: Globe2 },
             { type: 'document' as const, label: 'Upload', icon: Upload },
-            { type: 'app' as const, label: 'App', icon: PanelsTopLeft },
+            { type: 'app' as const, label: 'Dokument', icon: PanelsTopLeft },
           ].map((option) => {
             const Icon = option.icon
             const active = mode === option.type
@@ -3399,7 +3399,7 @@ function CreateItemModal({
                 key={option.type}
                 type="button"
                 onClick={() => selectMode(option.type)}
-                className={`flex h-20 flex-col items-center justify-center gap-2 rounded-lg border text-sm font-medium transition ${
+                className={`flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition ${
                   active
                     ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-200'
                     : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800'
@@ -3527,29 +3527,12 @@ function CreateItemModal({
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'app' && (
-              <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Velg app</label>
-                <div className="grid gap-2 sm:grid-cols-5">
-                  {appOptions.map((option) => {
-                    const Icon = option.icon
-                    return (
-                      <button
-                        key={option.type}
-                        type="button"
-                        onClick={() => setAppType(option.type)}
-                        className={`flex h-16 flex-col items-center justify-center gap-1 rounded-lg border text-sm transition ${
-                          appType === option.type
-                            ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-200'
-                            : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800'
-                        }`}
-                      >
-                        <Icon size={18} />
-                        {option.label.replace('Google ', '')}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
+              <Select
+                label="Dokumenttype"
+                value={appType}
+                onChange={(event) => setAppType(event.target.value as AppResourceType)}
+                options={appOptions.map((option) => ({ value: option.type, label: option.label }))}
+              />
             )}
 
             <Input
