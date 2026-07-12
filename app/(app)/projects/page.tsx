@@ -1525,7 +1525,7 @@ export default function ProjectsPage() {
                         if (folderId) moveFolderIntoFolder(folderId, folder.id)
                       }}
                       onContextMenu={(event) => openFolderContextMenu(event, folder.id)}
-                      className={`group flex w-full flex-col gap-2 rounded-lg border px-3 py-3 text-left transition ${
+                      className={`group relative flex w-full flex-col gap-2 rounded-lg border px-3 py-3 text-left transition ${
                         isDropTarget
                           ? 'border-cyan-400 bg-cyan-50 shadow-sm dark:border-cyan-500 dark:bg-cyan-950/30'
                           : active
@@ -1539,7 +1539,7 @@ export default function ProjectsPage() {
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') openFolderFromOverview(folder)
                         }}
-                        className="flex min-w-0 w-full items-center gap-3 text-left"
+                        className="flex min-w-0 w-full items-center gap-3 text-left after:absolute after:inset-0 after:content-['']"
                         aria-pressed={active}
                         title="Åpne mappe"
                       >
@@ -1554,7 +1554,7 @@ export default function ProjectsPage() {
                           </span>
                         </span>
                       </button>
-                      <div className="flex min-h-8 w-full items-center gap-2 pl-12">
+                      <div className="pointer-events-none relative z-10 flex min-h-8 w-full items-center gap-2 pl-12">
                         <span className="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400">
                           {childCount > 0 ? `${childCount} mapper` : projectFolderShareLabel(folder)}
                         </span>
@@ -1562,7 +1562,7 @@ export default function ProjectsPage() {
                         <button
                           type="button"
                           onClick={() => enterFolder(folder.id)}
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:hover:bg-gray-800 dark:hover:text-purple-300"
+                          className="pointer-events-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:hover:bg-gray-800 dark:hover:text-purple-300"
                           aria-label={`Vis mapper i ${folder.name}`}
                           title="Vis undermapper"
                         >
@@ -1571,7 +1571,7 @@ export default function ProjectsPage() {
                         <button
                           type="button"
                           onClick={(event) => openFolderContextMenu(event, folder.id)}
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:hover:bg-gray-800 dark:hover:text-purple-300"
+                          className="pointer-events-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:hover:bg-gray-800 dark:hover:text-purple-300"
                           aria-label={`Mappevalg for ${folder.name}`}
                           title="Mappevalg"
                         >
