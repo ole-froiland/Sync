@@ -543,8 +543,8 @@ export default function ProjectsPage() {
       const folder = (event as CustomEvent<ProjectFolder>).detail
       if (!folder?.id || !folder.name || !Array.isArray(folder.items)) return
       setFolders((current) => mergeProjectFolders([folder], current))
-      setSelectedFolderId(folder.id)
-      setActiveParentFolderId(folder.parentId ?? null)
+      setSelectedFolderId(null)
+      setActiveParentFolderId(folder.id)
       setPreviewFolderId(null)
     }
 
@@ -701,7 +701,7 @@ export default function ProjectsPage() {
       items: [],
     }
     setFolders((current) => [nextFolder, ...current])
-    setSelectedFolderId(nextFolder.id)
+    setPreviewFolderId(nextFolder.id)
   }
 
   const [treeOpen, setTreeOpen] = useState(false)
@@ -813,6 +813,9 @@ export default function ProjectsPage() {
     setSelectedFolderId(null)
     setActiveParentFolderId(folderId)
     setPreviewFolderId(null)
+    setActiveItemFolderId(null)
+    setSelectedItemIds([])
+    setClipboard(null)
     setSearch('')
   }
 
@@ -824,10 +827,7 @@ export default function ProjectsPage() {
   }
 
   function openFolderFromOverview(folder: ProjectFolder) {
-    setSelectedFolderId(folder.id)
-    setActiveItemFolderId(null)
-    setSelectedItemIds([])
-    setClipboard(null)
+    enterFolder(folder.id)
   }
 
   function openFolderContextMenu(event: React.MouseEvent<HTMLElement>, folderId: string) {
@@ -867,7 +867,8 @@ export default function ProjectsPage() {
   }
 
   function createItem(item: Omit<ProjectItem, 'id' | 'createdAt' | 'updatedAt'>) {
-    if (!selectedFolder) return
+    const targetFolderId = selectedFolder?.id ?? activeParentFolderId
+    if (!targetFolderId) return
     const nextItem: ProjectItem = {
       ...item,
       id: makeId('item'),
@@ -877,7 +878,7 @@ export default function ProjectsPage() {
     }
     setFolders((current) =>
       current.map((folder) =>
-        folder.id === selectedFolder.id ? { ...folder, items: [nextItem, ...folder.items] } : folder
+        folder.id === targetFolderId ? { ...folder, items: [nextItem, ...folder.items] } : folder
       )
     )
     setSelectedItemIds([nextItem.id])
@@ -1283,7 +1284,15 @@ export default function ProjectsPage() {
                   <Workflow size={16} />
                   Vis som tre
                 </Button>
-                <ProjectAddMenu onAddFolder={() => setFolderOpen(true)} resourcesAvailable={false} />
+                <ProjectAddMenu
+                  onAddFolder={() => setFolderOpen(true)}
+                  onAddResource={(mode) => {
+                    if (!activeParentFolderId) return
+                    setItemMode(mode)
+                    setItemOpen(true)
+                  }}
+                  resourcesAvailable={Boolean(activeParentFolderId)}
+                />
               </div>
               {folderPath.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -1618,7 +1627,7 @@ export default function ProjectsPage() {
         }}
       />
       <CreateFolderModal open={folderOpen} onClose={() => setFolderOpen(false)} onCreate={createFolder} />
-      <CreateItemModal open={itemOpen} onClose={() => setItemOpen(false)} onCreate={createItem} />
+      <CreateItemModal key={`overview-item-${itemMode}`} open={itemOpen} initialMode={itemMode} onClose={() => setItemOpen(false)} onCreate={createItem} />
       {menuFolder && folderMenu && (
         <FolderContextMenu
           folder={menuFolder}
