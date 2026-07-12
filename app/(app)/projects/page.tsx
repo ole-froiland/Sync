@@ -3382,7 +3382,7 @@ function CreateItemModal({
       <div className="space-y-5">
         <div className="grid gap-2 sm:grid-cols-4">
           {[
-            { type: 'github' as const, label: 'Repos', icon: FolderGit2 },
+            { type: 'github' as const, label: 'Repositories', icon: FolderGit2 },
             { type: 'url' as const, label: 'Link', icon: Globe2 },
             { type: 'document' as const, label: 'Upload', icon: Upload },
             { type: 'app' as const, label: 'Dokument', icon: PanelsTopLeft },

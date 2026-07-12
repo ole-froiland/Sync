@@ -238,6 +238,10 @@ const pairs = [
   ['This removes the item from the project folder.', 'Dette fjerner elementet fra prosjektmappen.'],
   ['This removes the item from the folder.', 'Dette fjerner elementet fra mappen.'],
   ['Search folders', 'Søk i mapper'],
+  ['Search folders and content', 'Søk i mapper og innhold'],
+  ['Preview', 'Forhåndsvis'],
+  ['View as tree', 'Vis som tre'],
+  ['Double-click to open', 'Dobbeltklikk for å åpne'],
   ['No projects yet', 'Ingen prosjekter enda'],
   ['Start with a folder. Then add repos, documents, links and other resources.', 'Start med en mappe. Etterpå kan du legge inn repoer, dokumenter, lenker og andre ressurser.'],
   ['No folders found', 'Ingen mapper funnet'],
@@ -260,6 +264,26 @@ const pairs = [
   ['This permanently deletes the folder and everything in it from the project overview.', 'Dette sletter mappen og alt innholdet i den permanent fra prosjektoversikten.'],
   ['Folder contents', 'Innhold i mappen'],
   ['Choose app', 'Velg app'],
+  ['Document type', 'Dokumenttype'],
+  ['Document', 'Dokument'],
+  ['Document or Excel', 'Dokument eller Excel'],
+  ['Upload', 'Last opp'],
+  ['Upload file', 'Last opp fil'],
+  ['Reset view', 'Tilbakestill visning'],
+  ['Open entire tree', 'Åpne hele treet'],
+  ['Close entire tree', 'Lukk hele treet'],
+  ['View', 'Visning'],
+  ['Zoom out', 'Zoom ut'],
+  ['Zoom in', 'Zoom inn'],
+  ['Open', 'Åpne'],
+  ['New top-level folder', 'Ny topp-mappe'],
+  ['Hide subfolders', 'Skjul undermapper'],
+  ['View horizontally', 'Vis vannrett'],
+  ['View vertically', 'Vis loddrett'],
+  ['Exit fullscreen', 'Avslutt fullskjerm'],
+  ['Fullscreen', 'Fullskjerm'],
+  ['Folder tree', 'Mappetre'],
+  ['Double-click opens · drag to move', 'Dobbeltklikk åpner · dra for å flytte'],
   ['File', 'Fil'],
   ['Could not fetch repos right now.', 'Kunne ikke hente repoer akkurat nå.'],
   ['Could not create the repo right now.', 'Kunne ikke lage repo akkurat nå.'],
@@ -363,6 +387,45 @@ const pairs = [
   ['Search repositories...', 'Søk i repoer...'],
   ['Open on GitHub', 'Åpne på GitHub'],
   ['More actions', 'Flere handlinger'],
+  ['All repositories', 'Alle repoer'],
+  ['Back to repositories', 'Tilbake til repoer'],
+  ['Repository not found', 'Fant ikke repoet'],
+  ['Failed to load repository', 'Kunne ikke laste repoet'],
+  ['Network error. Please try again.', 'Nettverksfeil. Prøv igjen.'],
+  ['No description.', 'Ingen beskrivelse.'],
+  ['More', 'Mer'],
+  ['Open in VS Code', 'Åpne i VS Code'],
+  ['Copy clone URL', 'Kopier klonings-URL'],
+  ['Clone URL copied', 'Klonings-URL kopiert'],
+  ['Deploy', 'Publiser'],
+  ['Deploy to', 'Publiser til'],
+  ["You'll finish signing in on the provider's site.", 'Du fullfører innloggingen på leverandørens nettsted.'],
+  ['Updated', 'Oppdatert'],
+  ['What this repo does', 'Dette gjør repoet'],
+  ['AI summary', 'AI-oppsummering'],
+  ['Explain', 'Forklar'],
+  ['Could not summarize', 'Kunne ikke oppsummere'],
+  ['Failed to summarize repository', 'Kunne ikke oppsummere repoet'],
+  ['No README yet', 'Ingen README ennå'],
+  ['Add a README on GitHub to give this repository a clear, scannable introduction.', 'Legg til en README på GitHub for å gi repoet en tydelig og lettlest introduksjon.'],
+  ['Link copied', 'Lenke kopiert'],
+  ['Could not copy link', 'Kunne ikke kopiere lenken'],
+  ['Copy link', 'Kopier lenke'],
+  ['Share with synced users', 'Del med synkede brukere'],
+  ['No synced users yet', 'Ingen synkede brukere ennå'],
+  ['No matches.', 'Ingen treff.'],
+  ['just now', 'akkurat nå'],
+  ['Unauthorized', 'Ikke autorisert'],
+  ['GitHub not connected.', 'GitHub er ikke tilkoblet.'],
+  ['GitHub token expired or revoked.', 'GitHub-tokenet er utløpt eller trukket tilbake.'],
+  ['Repository not found.', 'Fant ikke repoet.'],
+  ['Failed to fetch repository', 'Kunne ikke hente repoet'],
+  ['Choose repository', 'Velg repo'],
+  ['Create new repository', 'Lag nytt repo'],
+  ['No repositories found here.', 'Fant ingen repoer her.'],
+  ['Back', 'Tilbake'],
+  ['Create and add repository', 'Lag repo og legg til'],
+  ['Optional. Enter a path if you want to save where the folder is located on your computer.', 'Valgfritt. Skriv inn sti hvis du vil lagre hvor mappen ligger på maskinen.'],
   ['Fork', 'Fork'],
   ['Archived', 'Arkivert'],
   ['Connect your GitHub account', 'Koble til GitHub-kontoen din'],
@@ -402,6 +465,50 @@ const pairs = [
 ] as const satisfies readonly TranslationPair[]
 
 const normalizers: Array<[RegExp, (match: RegExpMatchArray, locale: Locale) => string]> = [
+  [
+    /^(\d+)([mhd]) ago$/,
+    (match, locale) =>
+      locale === 'no' ? `${match[1]} ${match[2]} siden` : `${match[1]}${match[2]} ago`,
+  ],
+  [
+    /^(\d+) ([mhd]) siden$/,
+    (match, locale) =>
+      locale === 'no' ? `${match[1]} ${match[2]} siden` : `${match[1]}${match[2]} ago`,
+  ],
+  [
+    /^Updated (\d+)([mhd]) ago$/,
+    (match, locale) =>
+      locale === 'no'
+        ? `Oppdatert ${match[1]} ${match[2]} siden`
+        : `Updated ${match[1]}${match[2]} ago`,
+  ],
+  [
+    /^Oppdatert (\d+) ([mhd]) siden$/,
+    (match, locale) =>
+      locale === 'no'
+        ? `Oppdatert ${match[1]} ${match[2]} siden`
+        : `Updated ${match[1]}${match[2]} ago`,
+  ],
+  [
+    /^Sent (.+) to (.+)$/,
+    (match, locale) =>
+      locale === 'no' ? `Sendte ${match[1]} til ${match[2]}` : `Sent ${match[1]} to ${match[2]}`,
+  ],
+  [
+    /^Sendte (.+) til (.+)$/,
+    (match, locale) =>
+      locale === 'no' ? `Sendte ${match[1]} til ${match[2]}` : `Sent ${match[1]} to ${match[2]}`,
+  ],
+  [
+    /^GitHub API error: (\d+)$/,
+    (match, locale) =>
+      locale === 'no' ? `GitHub API-feil: ${match[1]}` : `GitHub API error: ${match[1]}`,
+  ],
+  [
+    /^GitHub API-feil: (\d+)$/,
+    (match, locale) =>
+      locale === 'no' ? `GitHub API-feil: ${match[1]}` : `GitHub API error: ${match[1]}`,
+  ],
   [
     /^Go to slide (\d+)$/,
     (match, locale) => (locale === 'no' ? `Gå til slide ${match[1]}` : `Go to slide ${match[1]}`),

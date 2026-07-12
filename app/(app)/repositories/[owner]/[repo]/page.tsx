@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { cn, formatDate } from '@/lib/utils'
 import { languageColor } from '@/lib/github-language-colors'
 import { renderMarkdown } from '@/lib/markdown'
+import { useLanguage } from '@/context/LanguageContext'
 import ShareRepoModal from '@/components/repositories/ShareRepoModal'
 import DeployMenu from '@/components/repositories/DeployMenu'
 import OpenInCodeAgentMenu from '@/components/repositories/OpenInCodeAgentMenu'
@@ -79,6 +80,7 @@ export default function RepositoryDetailPage({
 }) {
   const { owner, repo } = use(params)
   const query = use(searchParams)
+  const { locale } = useLanguage()
   const projectPath =
     query.from === 'projects' && typeof query.path === 'string' ? query.path : null
 
@@ -191,6 +193,7 @@ export default function RepositoryDetailPage({
             topics: data.topics,
             readme: data.readme,
             mode,
+            locale,
           }),
         })
         const body = await res.json()
@@ -203,7 +206,7 @@ export default function RepositoryDetailPage({
         setSummary({ status: 'error', message: 'Network error' })
       }
     },
-    [data]
+    [data, locale]
   )
 
   const readmeSource = data?.readme ?? null
