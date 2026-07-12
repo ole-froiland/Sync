@@ -11,7 +11,6 @@ import {
   Users,
   Settings,
   LogOut,
-  GitBranch,
   CalendarDays,
   Lightbulb,
   NotebookPen,
@@ -33,7 +32,6 @@ const navSections: { label: string | null; items: { href: string; label: string;
     label: 'Workspace',
     items: [
       { href: '/projects', label: 'Projects', icon: FolderKanban },
-      { href: '/repositories', label: 'Repositories', icon: GitBranch },
       { href: '/calendar', label: 'Calendar', icon: CalendarDays },
     ],
   },
