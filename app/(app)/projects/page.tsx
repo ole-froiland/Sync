@@ -37,6 +37,7 @@ import {
 import Avatar from '@/components/ui/Avatar'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
+import ProjectAddMenu from '@/components/projects/ProjectAddMenu'
 import Input from '@/components/ui/Input'
 import Modal from '@/components/ui/Modal'
 import Textarea from '@/components/ui/Textarea'
@@ -445,6 +446,7 @@ export default function ProjectsPage() {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
   const [folderOpen, setFolderOpen] = useState(false)
   const [itemOpen, setItemOpen] = useState(false)
+  const [itemMode, setItemMode] = useState<ResourceMode>('github')
   const [localFolderOpen, setLocalFolderOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [activeItemFolderId, setActiveItemFolderId] = useState<string | null>(null)
@@ -1082,40 +1084,49 @@ export default function ProjectsPage() {
       setClipboard(null)
     }
 
+    function openItemComposer(mode: ResourceMode) {
+      setItemMode(mode)
+      setItemOpen(true)
+    }
+
+    function previewSelectedFolder() {
+      setPreviewMode(true)
+      returnToSelectedFolderParent()
+    }
+
+    function openTreeFromSelectedFolder() {
+      setSelectedFolderId(null)
+      setActiveParentFolderId(openFolderId)
+      setTreeOpen(true)
+    }
+
     return (
       <>
-        <TopBar
-          title="Prosjekter"
-          actions={
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="secondary" onClick={() => openProjectChat(selectedFolder)}>
-                <MessageSquare size={16} />
-                Chat
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => setFolderOpen(true)}>
-                <FolderOpen size={16} />
-                <span>Ny mappe</span>
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => setShareOpen(true)}>
-                <Share2 size={16} />
-                Del
-              </Button>
-              <Button size="sm" onClick={() => setItemOpen(true)}>
-                <Plus size={16} />
-                Legg til
-              </Button>
-            </div>
-          }
-        />
+      <TopBar
+        title="Prosjekter"
+      />
 
         <div className="flex-1 overflow-y-auto px-6 py-8">
-          <button
-            onClick={returnToSelectedFolderParent}
-            className="mb-3 inline-flex h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100"
-          >
-            <ArrowLeft size={16} />
-            {selectedFolderParent ? `Tilbake til ${selectedFolderParent.name}` : 'Tilbake til mapper'}
-          </button>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <button
+              onClick={returnToSelectedFolderParent}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+            >
+              <ArrowLeft size={16} />
+              {selectedFolderParent ? `Tilbake til ${selectedFolderParent.name}` : 'Tilbake til mapper'}
+            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" size="sm" variant="secondary" onClick={previewSelectedFolder} className="h-10">
+                <Eye size={16} />
+                Forhåndsvis
+              </Button>
+              <Button type="button" size="sm" variant="secondary" onClick={openTreeFromSelectedFolder} className="h-10">
+                <Workflow size={16} />
+                Vis som tre
+              </Button>
+              <ProjectAddMenu onAddFolder={() => setFolderOpen(true)} onAddResource={openItemComposer} />
+            </div>
+          </div>
 
           <nav className="mb-6 flex flex-wrap items-center gap-2 text-sm" aria-label="Prosjektsti">
             <button
@@ -1209,7 +1220,7 @@ export default function ProjectsPage() {
           </main>
         </div>
 
-      <CreateItemModal open={itemOpen} onClose={() => setItemOpen(false)} onCreate={createItem} />
+      <CreateItemModal key={`selected-item-${itemMode}`} open={itemOpen} initialMode={itemMode} onClose={() => setItemOpen(false)} onCreate={createItem} />
       <CreateFolderModal open={folderOpen} onClose={() => setFolderOpen(false)} onCreate={createChildFolder} />
       <DeleteItemModal
         open={Boolean(deleteItemTarget)}
@@ -1236,11 +1247,6 @@ export default function ProjectsPage() {
     <>
       <TopBar
         title="Prosjekter"
-        actions={
-          <Button size="sm" onClick={() => setFolderOpen(true)} className="h-10 w-10 px-0" aria-label="Lag mappe">
-            <Plus size={20} />
-          </Button>
-        }
       />
 
       <div className={`flex-1 overflow-y-auto px-6 py-8 ${treeOpen ? 'hidden' : ''}`}>
@@ -1277,10 +1283,7 @@ export default function ProjectsPage() {
                   <Workflow size={16} />
                   Vis som tre
                 </Button>
-                <Button onClick={() => setFolderOpen(true)} className="h-10 whitespace-nowrap">
-                  <Plus size={16} />
-                  <span>Ny mappe</span>
-                </Button>
+                <ProjectAddMenu onAddFolder={() => setFolderOpen(true)} resourcesAvailable={false} />
               </div>
               {folderPath.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -2286,23 +2289,13 @@ function ProjectDetailContent({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="secondary" onClick={onOpenChat}>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={onOpenChat} className="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:hover:bg-gray-800 dark:hover:text-purple-300" aria-label="Åpne chat" title="Chat">
             <MessageSquare size={16} />
-            Chat
-          </Button>
-          <Button size="sm" variant="secondary" onClick={onAddLocalFolder}>
-            <FolderOpen size={16} />
-            <span>Ny mappe</span>
-          </Button>
-          <Button size="sm" variant="secondary" onClick={onShare}>
+          </button>
+          <button type="button" onClick={onShare} className="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-purple-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:hover:bg-gray-800 dark:hover:text-purple-300" aria-label="Del mappe" title="Del">
             <Share2 size={16} />
-            Del
-          </Button>
-          <Button size="sm" onClick={onAddResource}>
-            <Plus size={16} />
-            Legg til
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -3256,7 +3249,7 @@ function CreateItemModal({
   }, [open])
 
   function reset() {
-    setMode('github')
+    setMode(initialMode ?? 'github')
     setAppType('docs')
     setTitle('')
     setUrl('')
