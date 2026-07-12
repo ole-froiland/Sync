@@ -45,6 +45,7 @@ import Textarea from '@/components/ui/Textarea'
 import { FolderTreeOverlay, ROOT_ID } from '@/components/projects/folder-tree'
 import { ProjectCardSkeleton } from '@/components/ui/Skeleton'
 import { ensureChatChannel } from '@/lib/chat-channels'
+import { filterProjectFolderLevel } from '@/lib/project-folder-view'
 import {
   PROJECT_FOLDER_CREATED_EVENT,
   PROJECTS_TREE_EVENT,
@@ -655,19 +656,12 @@ export default function ProjectsPage() {
   const activeItemFolder =
     selectedFolder?.items.find((item) => item.id === activeItemFolderId && item.type === 'local_folder') ?? null
 
-  const visibleFolders = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    return folders.filter((folder) => {
-      if ((folder.parentId ?? null) !== activeParentFolderId) return false
-      if (!query) return true
-      const folderText = `${folder.name} ${folder.description}`.toLowerCase()
-      const itemText = folder.items
-        .map((item) => `${item.title} ${item.body} ${item.url ?? ''} ${item.path ?? ''}`)
-        .join(' ')
-        .toLowerCase()
-      return folderText.includes(query) || itemText.includes(query)
-    })
-  }, [folders, search, activeParentFolderId])
+  const visibleLevel = useMemo(
+    () => filterProjectFolderLevel(folders, activeParentFolderId, search),
+    [folders, search, activeParentFolderId]
+  )
+  const visibleFolders = visibleLevel.folders
+  const visibleLevelItems = visibleLevel.items
 
   const folderPath = useMemo(
     () => projectFolderPath(folders, activeParentFolder?.id ?? null),
@@ -1259,7 +1253,7 @@ export default function ProjectsPage() {
                   <input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Søk i mapper"
+                    placeholder="Søk i mapper og innhold"
                     className="h-10 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100"
                   />
                 </div>
@@ -1359,7 +1353,7 @@ export default function ProjectsPage() {
                   Lag mappe
                 </Button>
               </div>
-            ) : visibleFolders.length === 0 ? (
+            ) : visibleFolders.length === 0 && visibleLevelItems.length === 0 ? (
               <div className="flex min-h-[42vh] flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 text-center dark:border-gray-800 dark:bg-gray-900/30">
                 <FolderOpen size={38} className="mb-4 text-gray-300 dark:text-gray-700" />
                 <h2 className="font-medium text-gray-950 dark:text-gray-100">
@@ -1371,7 +1365,7 @@ export default function ProjectsPage() {
                     : 'Dra en mappe hit, eller lag en ny mappe på dette nivået.'}
                 </p>
               </div>
-            ) : previewMode ? (
+            ) : previewMode && visibleFolders.length > 0 ? (
               <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
                 <aside className="space-y-3">
                   {visibleFolders.map((folder) => {
@@ -1541,14 +1535,13 @@ export default function ProjectsPage() {
                     >
                       <button
                         type="button"
-                        onClick={() => setPreviewFolderId(folder.id)}
-                        onDoubleClick={() => openFolderFromOverview(folder)}
+                        onClick={() => openFolderFromOverview(folder)}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') openFolderFromOverview(folder)
                         }}
                         className="flex min-w-0 w-full items-center gap-3 text-left"
                         aria-pressed={active}
-                        title="Dobbeltklikk for å åpne"
+                        title="Åpne mappe"
                       >
                         <ProjectLogoThumbnail folder={folder} className="h-9 w-9" iconSize={18} />
                         <span className="min-w-0 flex-1">
@@ -1588,6 +1581,9 @@ export default function ProjectsPage() {
                     </div>
                   )
                 })}
+                {visibleLevelItems.map((item) => (
+                  <ProjectItemPreviewCard key={item.id} item={item} />
+                ))}
               </div>
             )}
       </div>
