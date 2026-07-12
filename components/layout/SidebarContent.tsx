@@ -16,6 +16,8 @@ import {
   NotebookPen,
   UserCircle,
   HelpCircle,
+  GraduationCap,
+  LibraryBig,
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
@@ -47,6 +49,13 @@ const navSections: { label: string | null; items: { href: string; label: string;
     items: [
       { href: '/notes', label: 'Notes', icon: NotebookPen },
       { href: '/ideas', label: 'Ideas', icon: Lightbulb },
+    ],
+  },
+  {
+    label: 'Learn',
+    items: [
+      { href: '/learn/sync', label: 'Sync', icon: GraduationCap },
+      { href: '/learn/others', label: 'Other courses', icon: LibraryBig },
     ],
   },
 ]
@@ -297,7 +306,7 @@ export default function SidebarContent({ profile, onSignOut, signingOut }: Sideb
               Innstillinger
             </button>
             <Link
-              href="/how-to-sync"
+              href="/learn/sync"
               onClick={() => setProfileMenuOpen(false)}
               className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
             >

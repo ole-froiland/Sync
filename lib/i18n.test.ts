@@ -33,8 +33,17 @@ const projectUi = [
   ['Document or Excel', 'Dokument eller Excel'],
 ] as const
 
+const learningUi = [
+  ['Learn', 'Lære'],
+  ['Other courses', 'Andre kurs'],
+  ['Welcome to Sync', 'Velkommen til Sync'],
+  ['Create focused projects', 'Lag fokuserte prosjekter'],
+  ['Connect where you already build', 'Koble til der du allerede bygger'],
+  ['Your team', 'Teamet ditt'],
+] as const
+
 describe('UI translations', () => {
-  it.each([...repositoryUi, ...projectUi])('translates %s to Norwegian and back', (english, norwegian) => {
+  it.each([...repositoryUi, ...projectUi, ...learningUi])('translates %s to Norwegian and back', (english, norwegian) => {
     expect(translateText(english, 'no')).toBe(norwegian)
     expect(translateText(norwegian, 'en')).toBe(english)
   })
