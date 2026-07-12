@@ -56,6 +56,10 @@ interface Props {
   onDelete: () => void
 }
 
+export function readableTreeLabel(label: string, itemType?: ProjectItem['type']) {
+  return itemType === 'github' ? label.split('/').filter(Boolean).at(-1) || label : label
+}
+
 export default function TreeNode({
   node,
   orientation,
@@ -74,6 +78,10 @@ export default function TreeNode({
   const isItem = node.kind === 'item'
   const isRoot = node.kind === 'root'
   const Icon = isItem && node.itemType ? ITEM_ICONS[node.itemType] : node.onPath ? FolderOpen : Folder
+  // GitHub entries are stored as "owner/repository". The owner repeats across
+  // the tree, so show the useful repository part while retaining the full name
+  // in the node tooltip.
+  const displayLabel = readableTreeLabel(node.label, node.itemType)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -171,7 +179,7 @@ export default function TreeNode({
             className="min-w-0 flex-1 bg-transparent text-center text-gray-100 outline-none"
           />
         ) : (
-          <span className="min-w-0 truncate">{node.label}</span>
+          <span className="min-w-0 truncate">{displayLabel}</span>
         )}
       </div>
 

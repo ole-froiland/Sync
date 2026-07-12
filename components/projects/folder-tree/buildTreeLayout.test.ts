@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ProjectFolder } from '@/types'
 import { buildTreeLayout } from './buildTreeLayout'
 import { COL_H, NODE_W, NODE_H, H_GAP, ROW_V, ROOT_ID } from './constants'
+import { readableTreeLabel } from './TreeNode'
 
 function folder(id: string, parentId?: string, items: ProjectFolder['items'] = []): ProjectFolder {
   return { id, name: id, description: '', color: 'bg-fuchsia-600', parentId, createdAt: '2026-01-01', items }
@@ -82,6 +83,11 @@ describe('buildTreeLayout', () => {
     expect(item.itemType).toBe('github')
     expect(item.parentId).toBe('a')
     expect(item.hasChildren).toBe(false)
+  })
+
+  it('uses the repository portion of a GitHub name for a compact node label', () => {
+    expect(readableTreeLabel('ole-froiland/sync-app', 'github')).toBe('sync-app')
+    expect(readableTreeLabel('Prosjektmappe', 'folder')).toBe('Prosjektmappe')
   })
 
   it('marks the active path from root to currentId', () => {

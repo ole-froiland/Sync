@@ -124,6 +124,14 @@ export default function FolderTreeOverlay({
     })
   }
 
+  function expandAll() {
+    setCollapsed(new Set())
+  }
+
+  function collapseAll() {
+    setCollapsed(new Set(folders.map((folder) => folder.id)))
+  }
+
   function openNode(node: TreeNodeModel) {
     if (node.kind === 'item') {
       const item = findItem(folders, node.id)
@@ -405,6 +413,8 @@ export default function FolderTreeOverlay({
             const r = viewportRef.current!.getBoundingClientRect()
             fit(layout.width, layout.height, r.width, r.height)
           }}
+          onExpandAll={expandAll}
+          onCollapseAll={collapseAll}
         />
       </div>
     </>
