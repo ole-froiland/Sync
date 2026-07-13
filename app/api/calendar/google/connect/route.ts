@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { getSiteUrl } from '@/lib/site-url'
+import { GOOGLE_DRIVE_FILE_SCOPE } from '@/lib/google-drive-documents'
 
 const GOOGLE_CALENDAR_CLIENT_ID = process.env.GOOGLE_CALENDAR_CLIENT_ID
 const SITE_URL = getSiteUrl()
@@ -39,7 +40,7 @@ export async function GET() {
     response_type: 'code',
     access_type: 'offline',
     prompt: 'consent',
-    scope: 'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+    scope: `openid email profile https://www.googleapis.com/auth/calendar.readonly ${GOOGLE_DRIVE_FILE_SCOPE}`,
     state,
   })
 

@@ -81,6 +81,13 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${SITE_URL}/login`)
   }
 
+  const { data: existingConnection } = await supabase
+    .from('calendar_connections')
+    .select('refresh_token')
+    .eq('user_id', user.id)
+    .eq('provider', 'google')
+    .maybeSingle()
+
   const expiresAt = tokenData.expires_in
     ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
     : null
@@ -93,7 +100,7 @@ export async function GET(request: Request) {
       provider_account_name: userInfo?.name ?? null,
       provider_email: userInfo?.email ?? null,
       access_token: tokenData.access_token,
-      refresh_token: tokenData.refresh_token ?? null,
+      refresh_token: tokenData.refresh_token ?? existingConnection?.refresh_token ?? null,
       token_type: tokenData.token_type ?? null,
       scope: tokenData.scope ?? null,
       expires_at: expiresAt,

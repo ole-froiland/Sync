@@ -45,6 +45,7 @@ import Textarea from '@/components/ui/Textarea'
 import { FolderTreeOverlay, ROOT_ID } from '@/components/projects/folder-tree'
 import { ProjectCardSkeleton } from '@/components/ui/Skeleton'
 import { ensureChatChannel } from '@/lib/chat-channels'
+import { isGoogleDriveDocumentType } from '@/lib/google-drive-documents'
 import { filterProjectFolderLevel } from '@/lib/project-folder-view'
 import { openExternalUrl } from '@/lib/project-item-open'
 import {
@@ -1765,8 +1766,6 @@ function ProjectItemCard({
   onDragItems: (itemId: string) => string[]
   onMoveToFolder: (itemIds: string[], targetFolderId: string) => void
 }) {
-  const meta = itemTypeMeta[item.type]
-  const Icon = meta.icon
   const isFolder = item.type === 'local_folder'
   const openTarget = projectItemOpenTarget(item, projectPath)
 
@@ -1793,11 +1792,9 @@ function ProjectItemCard({
   }
 
   const content = (
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-300">
-          <Icon size={19} />
-        </span>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+        <ProjectItemIcon item={item} />
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className={`truncate text-sm font-medium text-gray-950 dark:text-gray-100 ${item.done ? 'line-through opacity-60' : ''}`}>{item.title}</h3>
@@ -1932,7 +1929,7 @@ function ProjectItemCard({
       className={`cursor-grab rounded-lg border px-3 py-2.5 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 ${
         selected
           ? 'border-purple-400 bg-purple-50/80 dark:border-purple-700 dark:bg-purple-950/30'
-          : 'border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950/40'
+          : 'border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900'
       } ${cut ? 'opacity-45' : ''}`}
     >
       {content}
@@ -2564,8 +2561,6 @@ function LogoEditorModal({
   )
 }
 function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
-  const meta = itemTypeMeta[item.type]
-  const Icon = meta.icon
   const openTarget = projectItemOpenTarget(item)
 
   return (
@@ -2578,13 +2573,11 @@ function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
       onKeyDown={(event) => {
         if (event.key === 'Enter' && openTarget) openProjectItem(item)
       }}
-      className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-950/40"
+      className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-900"
     >
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-300">
-            <Icon size={19} />
-          </span>
+          <ProjectItemIcon item={item} />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className={`truncate text-sm font-medium text-gray-950 dark:text-gray-100 ${item.done ? 'line-through opacity-60' : ''}`}>{item.title}</h3>
@@ -2626,6 +2619,25 @@ function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
         )}
       </div>
     </article>
+  )
+}
+
+function ProjectItemIcon({ item }: { item: ProjectItem }) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const Icon = itemTypeMeta[item.type].icon
+  const isImage = Boolean(
+    item.url && (item.type === 'url' || (item.type === 'document' && item.url.startsWith('data:image/')))
+  )
+
+  return (
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-300">
+      {isImage && !imageFailed ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={item.url} alt="" onError={() => setImageFailed(true)} className="h-full w-full object-cover" />
+      ) : (
+        <Icon size={19} />
+      )}
+    </span>
   )
 }
 
@@ -3212,19 +3224,22 @@ function CreateItemModal({
   const [newRepoPrivate, setNewRepoPrivate] = useState(false)
   const [creatingRepo, setCreatingRepo] = useState(false)
   const [createRepoError, setCreateRepoError] = useState<string | null>(null)
+  const [creatingGoogleDocument, setCreatingGoogleDocument] = useState(false)
+  const [appError, setAppError] = useState<string | null>(null)
   const usesFile = mode === 'document'
   const appOptions: Array<{
     type: AppResourceType
     label: string
-    url: string
+    requiresExistingUrl?: boolean
   }> = [
-    { type: 'docs', label: 'Google Docs', url: 'https://docs.new' },
-    { type: 'sheets', label: 'Google Sheets', url: 'https://sheets.new' },
-    { type: 'word', label: 'Word', url: 'https://www.office.com/launch/word' },
-    { type: 'excel', label: 'Excel', url: 'https://www.office.com/launch/excel' },
-    { type: 'notion', label: 'Notion', url: 'https://www.notion.so/new' },
+    { type: 'docs', label: 'Google Docs' },
+    { type: 'sheets', label: 'Google Sheets' },
+    { type: 'word', label: 'Word', requiresExistingUrl: true },
+    { type: 'excel', label: 'Excel', requiresExistingUrl: true },
+    { type: 'notion', label: 'Notion', requiresExistingUrl: true },
   ]
   const selectedApp = appOptions.find((option) => option.type === appType) ?? appOptions[0]
+  const appRequiresExistingUrl = mode === 'app' && selectedApp.requiresExistingUrl
   const filteredRepos = repos.filter((repo) => {
     const query = repoSearch.trim().toLowerCase()
     if (!query) return true
@@ -3264,11 +3279,13 @@ function CreateItemModal({
     setNewRepoPrivate(false)
     setCreatingRepo(false)
     setCreateRepoError(null)
+    setCreatingGoogleDocument(false)
+    setAppError(null)
     setReposLoading(true)
     setRepoError(null)
   }
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     const fallbackTitle = mode === 'app' ? selectedApp.label : file?.name ?? url.trim().split('/').filter(Boolean).at(-1) ?? ''
     const itemTitle = title.trim() || fallbackTitle
@@ -3298,11 +3315,42 @@ function CreateItemModal({
       return
     }
 
+    if (mode === 'app' && isGoogleDriveDocumentType(appType)) {
+      setCreatingGoogleDocument(true)
+      setAppError(null)
+      try {
+        const response = await fetch('/api/google-drive/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: appType, title: itemTitle }),
+        })
+        const data = await response.json()
+        if (!response.ok || typeof data.url !== 'string') {
+          setAppError(data.error ?? 'Kunne ikke opprette dokumentet.')
+          return
+        }
+        onCreate({
+          type: appType,
+          title: itemTitle,
+          body: '',
+          url: data.url,
+          status: 'Created',
+        })
+        reset()
+        onClose()
+      } catch {
+        setAppError('Kunne ikke opprette dokumentet akkurat nå.')
+      } finally {
+        setCreatingGoogleDocument(false)
+      }
+      return
+    }
+
     onCreate({
       type: mode === 'app' ? appType : mode,
       title: itemTitle,
       body: '',
-      url: mode === 'url' ? url.trim() : mode === 'app' ? selectedApp.url : undefined,
+      url: mode === 'url' || appRequiresExistingUrl ? url.trim() : undefined,
       status: mode === 'app' ? 'Created' : 'Connected',
     })
     reset()
@@ -3373,6 +3421,7 @@ function CreateItemModal({
     setTitle('')
     setUrl('')
     setFile(null)
+    setAppError(null)
   }
 
   return (
@@ -3546,6 +3595,16 @@ function CreateItemModal({
                 required
               />
             )}
+            {appRequiresExistingUrl && (
+              <Input
+                label="Link"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="https://..."
+                type="url"
+                required
+              />
+            )}
             {usesFile && (
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Fil</label>
@@ -3557,11 +3616,16 @@ function CreateItemModal({
                 />
               </div>
             )}
+            {appError && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-300">
+                {appError}
+              </p>
+            )}
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="secondary" onClick={() => { reset(); onClose() }}>
                 Avbryt
               </Button>
-              <Button type="submit">
+              <Button type="submit" loading={creatingGoogleDocument}>
                 <Plus size={16} />
                 Legg til
               </Button>
