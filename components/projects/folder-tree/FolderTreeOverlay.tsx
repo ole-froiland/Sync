@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Folder, Maximize, Minimize, Network, X } from 'lucide-react'
 import type { ProjectFolder, ProjectItem } from '@/types'
+import { openExternalUrl } from '@/lib/project-item-open'
 import type { AddKind } from './constants'
 import { NODE_H, NODE_W, ROOT_ID } from './constants'
 import { buildTreeLayout, type TreeNodeModel, type TreeOrientation } from './buildTreeLayout'
@@ -135,7 +136,7 @@ export default function FolderTreeOverlay({
   function openNode(node: TreeNodeModel) {
     if (node.kind === 'item') {
       const item = findItem(folders, node.id)
-      if (item?.url) window.open(item.url, '_blank', 'noopener')
+      if (item?.url) openExternalUrl(item.url)
       else if (node.parentId && node.parentId !== ROOT_ID) onOpenFolder(node.parentId)
       return
     }

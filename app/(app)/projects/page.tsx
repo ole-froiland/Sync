@@ -46,6 +46,7 @@ import { FolderTreeOverlay, ROOT_ID } from '@/components/projects/folder-tree'
 import { ProjectCardSkeleton } from '@/components/ui/Skeleton'
 import { ensureChatChannel } from '@/lib/chat-channels'
 import { filterProjectFolderLevel } from '@/lib/project-folder-view'
+import { openExternalUrl } from '@/lib/project-item-open'
 import {
   PROJECT_FOLDER_CREATED_EVENT,
   PROJECTS_TREE_EVENT,
@@ -1734,37 +1735,11 @@ function openProjectItem(item: ProjectItem, projectPath: string[] = []) {
   if (!target) return
 
   if (target.external) {
-    if (target.href.startsWith('data:')) {
-      const blobUrl = dataUrlToBlobUrl(target.href)
-      if (blobUrl) {
-        window.open(blobUrl, '_blank', 'noopener,noreferrer')
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
-        return
-      }
-    }
-    window.open(target.href, '_blank', 'noopener,noreferrer')
+    openExternalUrl(target.href)
     return
   }
 
   window.location.assign(target.href)
-}
-
-function dataUrlToBlobUrl(dataUrl: string): string | null {
-  const match = dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/)
-  if (!match) return null
-  const [, mime = 'application/octet-stream', base64Flag, payload] = match
-  try {
-    if (base64Flag) {
-      const binary = atob(payload)
-      const bytes = new Uint8Array(binary.length)
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-      return URL.createObjectURL(new Blob([bytes], { type: mime }))
-    }
-    const decoded = decodeURIComponent(payload)
-    return URL.createObjectURL(new Blob([decoded], { type: mime }))
-  } catch {
-    return null
-  }
 }
 
 function ProjectItemCard({
@@ -1855,7 +1830,13 @@ function ProjectItemCard({
               href={openTarget.href}
               target="_blank"
               rel="noreferrer"
-              onClick={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation()
+                if (openTarget.href.startsWith('data:')) {
+                  event.preventDefault()
+                  openProjectItem(item, projectPath)
+                }
+              }}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-white hover:text-purple-600 dark:hover:bg-gray-900 dark:hover:text-purple-300"
               aria-label={openTarget.label}
               title={openTarget.label}
@@ -2588,7 +2569,17 @@ function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
   const openTarget = projectItemOpenTarget(item)
 
   return (
-    <article className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-950/40">
+    <article
+      role={openTarget ? 'button' : undefined}
+      tabIndex={openTarget ? 0 : undefined}
+      onClick={() => {
+        if (openTarget) openProjectItem(item)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && openTarget) openProjectItem(item)
+      }}
+      className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-950/40"
+    >
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-300">
@@ -2609,6 +2600,13 @@ function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
               href={openTarget.href}
               target="_blank"
               rel="noreferrer"
+              onClick={(event) => {
+                event.stopPropagation()
+                if (openTarget.href.startsWith('data:')) {
+                  event.preventDefault()
+                  openProjectItem(item)
+                }
+              }}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 transition hover:bg-white hover:text-purple-600 dark:hover:bg-gray-900 dark:hover:text-purple-300"
               aria-label={openTarget.label}
               title={openTarget.label}
