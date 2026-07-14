@@ -2,9 +2,8 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Folder, Maximize, Minimize, Network, X } from 'lucide-react'
+import { Folder, Network, X } from 'lucide-react'
 import type { ProjectFolder, ProjectItem } from '@/types'
 import { openExternalUrl } from '@/lib/project-item-open'
 import type { AddKind } from './constants'
@@ -60,9 +59,8 @@ function findItem(folders: ProjectFolder[], itemId: string): ProjectItem | undef
 }
 
 /**
- * Interactive folder tree. Renders embedded in its parent container by default;
- * the fullscreen toggle re-renders it through a portal as a fixed overlay.
- * Mount this only while open (so the default collapsed set is fresh each time).
+ * Interactive folder tree. Mount this only while open (so the default collapsed
+ * set is fresh each time).
  */
 export default function FolderTreeOverlay({
   folders,
@@ -79,7 +77,6 @@ export default function FolderTreeOverlay({
 }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => defaultCollapsed(folders, currentFolderId))
   const [orientation, setOrientation] = useState<TreeOrientation>('vertical')
-  const [fullscreen, setFullscreen] = useState(false)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [menuFolderId, setMenuFolderId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -95,26 +92,25 @@ export default function FolderTreeOverlay({
     [folders, collapsed, currentFolderId, orientation]
   )
 
-  // Re-fit when the content size, orientation, or container (embedded↔fullscreen) changes.
+  // Re-fit when the content size or orientation changes.
   useLayoutEffect(() => {
     if (!viewportRef.current) return
     const { clientWidth, clientHeight } = viewportRef.current
     fit(layout.width, layout.height, clientWidth, clientHeight)
-  }, [layout.width, layout.height, fit, fullscreen])
+  }, [layout.width, layout.height, fit])
 
-  // Escape backs out one layer at a time: rename → menu → selection → fullscreen → close.
+  // Escape backs out one layer at a time: rename → menu → selection → close.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       if (renamingId) setRenamingId(null)
       else if (menuFolderId) setMenuFolderId(null)
       else if (selectedId) setSelectedId(null)
-      else if (fullscreen) setFullscreen(false)
       else onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, renamingId, menuFolderId, selectedId, fullscreen])
+  }, [onClose, renamingId, menuFolderId, selectedId])
 
   function toggle(id: string) {
     setCollapsed((prev) => {
@@ -289,9 +285,6 @@ export default function FolderTreeOverlay({
           >
             <Network size={15} className={orientation === 'horizontal' ? '-rotate-90' : ''} />
           </HeaderBtn>
-          <HeaderBtn label={fullscreen ? 'Avslutt fullskjerm' : 'Fullskjerm'} onClick={() => setFullscreen((f) => !f)}>
-            {fullscreen ? <Minimize size={15} /> : <Maximize size={15} />}
-          </HeaderBtn>
           <HeaderBtn label="Lukk" onClick={onClose}>
             <X size={15} />
           </HeaderBtn>
@@ -420,20 +413,6 @@ export default function FolderTreeOverlay({
       </div>
     </>
   )
-
-  if (fullscreen && typeof document !== 'undefined') {
-    return createPortal(
-      <motion.div
-        className="fixed inset-0 z-[900] flex flex-col bg-[#0a0b10]"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.18 }}
-      >
-        {content}
-      </motion.div>,
-      document.body
-    )
-  }
 
   return (
     <motion.div
