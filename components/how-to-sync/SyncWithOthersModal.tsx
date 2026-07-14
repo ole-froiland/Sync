@@ -6,18 +6,45 @@ import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import { Copy, Check, Send } from 'lucide-react'
 
+const copy = {
+  no: {
+    title: 'Inviter andre',
+    body: 'Inviter noen med e-post - de får en lenke for å bli med i Sync.',
+    placeholder: 'kollega@eksempel.no',
+    send: 'Send',
+    sent: 'Invitasjon sendt til',
+    or: 'eller del en lenke',
+    link: 'Invitasjonslenke',
+    copy: 'Kopier',
+    copied: 'Kopiert',
+  },
+  en: {
+    title: 'Invite others',
+    body: "Invite someone by email - they'll get a link to join Sync.",
+    placeholder: 'colleague@example.com',
+    send: 'Send',
+    sent: 'Invite sent to',
+    or: 'or share a link',
+    link: 'Invite link',
+    copy: 'Copy',
+    copied: 'Copied',
+  },
+} as const
+
 interface SyncWithOthersModalProps {
   open: boolean
   onClose: () => void
   userId: string
+  locale?: keyof typeof copy
 }
 
-export default function SyncWithOthersModal({ open, onClose, userId }: SyncWithOthersModalProps) {
+export default function SyncWithOthersModal({ open, onClose, userId, locale = 'en' }: SyncWithOthersModalProps) {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
   const [inviteLink, setInviteLink] = useState('')
   const [copied, setCopied] = useState(false)
+  const text = copy[locale]
 
   // Pre-generate a link whenever the modal opens
   useEffect(() => {
@@ -65,25 +92,25 @@ export default function SyncWithOthersModal({ open, onClose, userId }: SyncWithO
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title="Sync with others">
+    <Modal open={open} onClose={handleClose} title={text.title}>
       <div className="flex flex-col gap-6">
         {/* Invite by email */}
         <div>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Invite someone by email — they&apos;ll get a link to join Sync.
+            {text.body}
           </p>
           {sent ? (
             <div className="flex items-center gap-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/50 rounded-xl p-3.5 text-sm text-emerald-700 dark:text-emerald-400">
               <Check size={14} className="flex-shrink-0" />
               <span>
-                Invite sent to <strong>{email}</strong>
+                {text.sent} <strong>{email}</strong>
               </span>
             </div>
           ) : (
             <form onSubmit={handleSend} className="flex gap-2">
               <Input
                 type="email"
-                placeholder="colleague@example.com"
+                placeholder={text.placeholder}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -91,7 +118,7 @@ export default function SyncWithOthersModal({ open, onClose, userId }: SyncWithO
               />
               <Button type="submit" loading={loading}>
                 <Send size={13} />
-                Send
+                {text.send}
               </Button>
             </form>
           )}
@@ -100,13 +127,13 @@ export default function SyncWithOthersModal({ open, onClose, userId }: SyncWithO
         {/* Divider */}
         <div className="flex items-center gap-3">
           <div className="flex-1 h-px bg-gray-100 dark:bg-gray-800" />
-          <span className="text-xs text-gray-400 dark:text-gray-500">or share a link</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">{text.or}</span>
           <div className="flex-1 h-px bg-gray-100 dark:bg-gray-800" />
         </div>
 
         {/* Share link */}
         <div>
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Invite link</p>
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{text.link}</p>
           <div className="flex gap-2">
             <input
               readOnly
@@ -119,7 +146,7 @@ export default function SyncWithOthersModal({ open, onClose, userId }: SyncWithO
               ) : (
                 <Copy size={13} />
               )}
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? text.copied : text.copy}
             </Button>
           </div>
         </div>
