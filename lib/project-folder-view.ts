@@ -2,6 +2,11 @@ import type { ProjectFolder, ProjectItem } from '@/types'
 
 export type FolderReorderPlacement = 'before' | 'after'
 
+export type ProjectItemDeleteRequest = {
+  folderId: string
+  itemId: string
+}
+
 function matchesItem(item: ProjectItem, query: string) {
   return `${item.title} ${item.body} ${item.url ?? ''} ${item.path ?? ''}`.toLowerCase().includes(query)
 }
@@ -31,6 +36,16 @@ export function filterProjectFolderLevel(
     folders: visibleFolders,
     items: query ? directItems.filter((item) => matchesItem(item, query)) : directItems,
   }
+}
+
+export function resolveProjectItemDeleteRequest(
+  folders: ProjectFolder[],
+  request: ProjectItemDeleteRequest | null
+) {
+  if (!request) return null
+  const folder = folders.find((candidate) => candidate.id === request.folderId)
+  const item = folder?.items.find((candidate) => candidate.id === request.itemId)
+  return folder && item ? { folder, item } : null
 }
 
 /** Reorders two folders that share a parent without changing their hierarchy. */

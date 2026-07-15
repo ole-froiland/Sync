@@ -46,7 +46,12 @@ import { FolderTreeOverlay, ROOT_ID } from '@/components/projects/folder-tree'
 import { ProjectCardSkeleton } from '@/components/ui/Skeleton'
 import { ensureChatChannel } from '@/lib/chat-channels'
 import { isGoogleDriveDocumentType } from '@/lib/google-drive-documents'
-import { filterProjectFolderLevel, reorderSiblingFolder } from '@/lib/project-folder-view'
+import {
+  filterProjectFolderLevel,
+  reorderSiblingFolder,
+  resolveProjectItemDeleteRequest,
+  type ProjectItemDeleteRequest,
+} from '@/lib/project-folder-view'
 import { openExternalUrl } from '@/lib/project-item-open'
 import {
   PROJECT_FOLDER_CREATED_EVENT,
@@ -466,7 +471,7 @@ export default function ProjectsPage() {
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
   const [logoFolderId, setLogoFolderId] = useState<string | null>(null)
   const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null)
-  const [deleteItemId, setDeleteItemId] = useState<string | null>(null)
+  const [deleteItemRequest, setDeleteItemRequest] = useState<ProjectItemDeleteRequest | null>(null)
   const [storageReady, setStorageReady] = useState(false)
   const [initialSyncPending, setInitialSyncPending] = useState(true)
   const loadedRef = useRef(false)
@@ -683,9 +688,9 @@ export default function ProjectsPage() {
   const previewFolderChildren = previewFolder
     ? folders.filter((folder) => folder.parentId === previewFolder.id)
     : []
-  const deleteItemTarget = selectedFolder && deleteItemId
-    ? selectedFolder.items.find((item) => item.id === deleteItemId) ?? null
-    : null
+  const deleteItemContext = resolveProjectItemDeleteRequest(folders, deleteItemRequest)
+  const deleteItemTarget = deleteItemContext?.item ?? null
+  const deleteItemFolder = deleteItemContext?.folder ?? null
 
   function createFolder(folder: Pick<ProjectFolder, 'name' | 'description' | 'color' | 'logo'>) {
     const creator = folderMemberFromProfile(currentProfile)
@@ -756,14 +761,6 @@ export default function ProjectsPage() {
         return folder
       })
     })
-  }
-
-  function removeFolderItem(folderId: string, itemId: string) {
-    setFolders((current) =>
-      current.map((folder) =>
-        folder.id === folderId ? { ...folder, items: folder.items.filter((item) => item.id !== itemId) } : folder
-      )
-    )
   }
 
   function openFolderFromTree(folderId: string) {
@@ -900,23 +897,24 @@ export default function ProjectsPage() {
     )
   }
 
-  function requestRemoveItem(itemId: string) {
-    setDeleteItemId(itemId)
+  function requestRemoveItem(itemId: string, folderId: string) {
+    setDeleteItemRequest({ folderId, itemId })
   }
 
-  function removeItem(itemId: string) {
-    if (!selectedFolder) return
-    const deletedIds = new Set([itemId, ...projectItemDescendantIds(selectedFolder.items, itemId)])
+  function removeItem(folderId: string, itemId: string) {
+    const folder = folders.find((candidate) => candidate.id === folderId)
+    if (!folder) return
+    const deletedIds = new Set([itemId, ...projectItemDescendantIds(folder.items, itemId)])
     setFolders((current) =>
       current.map((folder) =>
-        folder.id === selectedFolder.id
+        folder.id === folderId
           ? { ...folder, items: folder.items.filter((item) => !deletedIds.has(item.id)) }
           : folder
       )
     )
     if (activeItemFolderId && deletedIds.has(activeItemFolderId)) setActiveItemFolderId(null)
     setSelectedItemIds((current) => current.filter((id) => !deletedIds.has(id)))
-    if (deleteItemId === itemId) setDeleteItemId(null)
+    if (deleteItemRequest?.folderId === folderId && deleteItemRequest.itemId === itemId) setDeleteItemRequest(null)
   }
 
   function moveItemsToFolder(itemIds: string[], targetFolderId: string) {
@@ -1193,7 +1191,7 @@ export default function ProjectsPage() {
                 setClipboard(null)
               }}
               onToggleTask={toggleTask}
-              onRemoveItem={requestRemoveItem}
+              onRemoveItem={(itemId) => requestRemoveItem(itemId, selectedFolder.id)}
               onOpenItemFolder={(itemId) => {
                 setActiveItemFolderId(itemId)
                 setSelectedItemIds([])
@@ -1226,9 +1224,11 @@ export default function ProjectsPage() {
       <DeleteItemModal
         open={Boolean(deleteItemTarget)}
         item={deleteItemTarget}
-        items={selectedFolder.items}
-        onClose={() => setDeleteItemId(null)}
-        onConfirm={(itemId) => removeItem(itemId)}
+        items={deleteItemFolder?.items ?? []}
+        onClose={() => setDeleteItemRequest(null)}
+        onConfirm={(itemId) => {
+          if (deleteItemFolder) removeItem(deleteItemFolder.id, itemId)
+        }}
       />
       <ShareProjectFolderModal
           open={shareOpen}
@@ -1602,7 +1602,7 @@ export default function ProjectsPage() {
             onOpenFolder={openFolderFromTree}
             onRenameFolder={(folderId, name) => updateFolder(folderId, { name })}
             onDeleteFolder={(folderId) => requestDeleteFolder(folderId)}
-            onDeleteItem={(itemId, folderId) => removeFolderItem(folderId, itemId)}
+            onDeleteItem={(itemId, folderId) => requestRemoveItem(itemId, folderId)}
             onAdd={handleTreeAdd}
             onMoveFolder={(folderId, targetParentId) => moveFolderIntoFolder(folderId, targetParentId)}
             onReorderFolder={reorderFolder}
@@ -1654,6 +1654,15 @@ export default function ProjectsPage() {
         folders={folders}
         onClose={() => setDeleteFolderId(null)}
         onConfirm={(folderId) => confirmDeleteFolder(folderId)}
+      />
+      <DeleteItemModal
+        open={Boolean(deleteItemTarget)}
+        item={deleteItemTarget}
+        items={deleteItemFolder?.items ?? []}
+        onClose={() => setDeleteItemRequest(null)}
+        onConfirm={(itemId) => {
+          if (deleteItemFolder) removeItem(deleteItemFolder.id, itemId)
+        }}
       />
       {renamingFolder && (
         <RenameFolderModal

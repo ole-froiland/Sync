@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectFolder } from '@/types'
-import { filterProjectFolderLevel, reorderSiblingFolder } from './project-folder-view'
+import { filterProjectFolderLevel, reorderSiblingFolder, resolveProjectItemDeleteRequest } from './project-folder-view'
 
 function folder(id: string, parentId?: string, items: ProjectFolder['items'] = []): ProjectFolder {
   return { id, name: id, description: '', color: 'bg-fuchsia-600', parentId, createdAt: '2026-01-01', items }
@@ -41,5 +41,24 @@ describe('reorderSiblingFolder', () => {
     const folders = [folder('a'), folder('b')]
 
     expect(reorderSiblingFolder(folders, 'a', 'b', 'before')).toBe(folders)
+  })
+})
+
+describe('resolveProjectItemDeleteRequest', () => {
+  it('finds an item in its own folder even when another folder is open', () => {
+    const image = { id: 'image', type: 'file' as const, title: 'Bilde', body: '', createdAt: '2026-01-01' }
+    const folders = [folder('open-folder'), folder('tree-folder', undefined, [image])]
+
+    expect(resolveProjectItemDeleteRequest(folders, { folderId: 'tree-folder', itemId: 'image' })).toEqual({
+      folder: folders[1],
+      item: image,
+    })
+  })
+
+  it('returns null for stale or missing requests', () => {
+    const folders = [folder('folder')]
+
+    expect(resolveProjectItemDeleteRequest(folders, null)).toBeNull()
+    expect(resolveProjectItemDeleteRequest(folders, { folderId: 'folder', itemId: 'missing' })).toBeNull()
   })
 })
