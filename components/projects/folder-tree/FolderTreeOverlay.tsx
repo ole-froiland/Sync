@@ -89,7 +89,7 @@ export default function FolderTreeOverlay({
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const pressRef = useRef<PressState | null>(null)
-  const { transform, bind, zoomIn, zoomOut, fit } = usePanZoom()
+  const { transform, bind, zoomIn, zoomOut, fit, focusPoint } = usePanZoom()
 
   const layout = useMemo(
     () => buildTreeLayout(folders, { collapsed, currentId: currentFolderId, orientation }),
@@ -249,6 +249,11 @@ export default function FolderTreeOverlay({
       } else {
         setSelectedId(pr.nodeId === ROOT_ID ? null : pr.nodeId)
         setMenuFolderId(null)
+        const selectedNode = layout.nodes.find((node) => node.id === pr.nodeId)
+        const viewport = viewportRef.current
+        if (selectedNode?.kind === 'folder' && viewport) {
+          focusPoint(selectedNode.x, selectedNode.y, viewport.clientWidth, viewport.clientHeight)
+        }
       }
       setGhost(null)
       setDropTarget(null)

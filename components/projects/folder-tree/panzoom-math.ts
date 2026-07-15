@@ -39,3 +39,19 @@ export function computeFit(
     ty: (viewH - contentH * scale) / 2,
   }
 }
+
+/** Centers one world-space point in the viewport at a predictable zoom level. */
+export function centerOnPoint(
+  worldX: number,
+  worldY: number,
+  viewW: number,
+  viewH: number,
+  scale = 1.35
+): ViewTransform {
+  const nextScale = clampScale(scale)
+  return {
+    scale: nextScale,
+    tx: viewW / 2 - worldX * nextScale,
+    ty: viewH / 2 - worldY * nextScale,
+  }
+}
