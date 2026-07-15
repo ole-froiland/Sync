@@ -1,3 +1,5 @@
+import type { ProjectItem } from '@/types'
+
 export type ExternalOpenTarget = {
   href: string
   revoke?: () => void
@@ -33,6 +35,10 @@ export function externalOpenTarget(href: string): ExternalOpenTarget {
     href: blobUrl,
     revoke: () => URL.revokeObjectURL(blobUrl),
   }
+}
+
+export function syncRepositoryHref(item: Pick<ProjectItem, 'type' | 'title'>): string | null {
+  return item.type === 'github' && item.title.includes('/') ? `/repositories/${item.title}` : null
 }
 
 export function openExternalUrl(href: string) {

@@ -769,7 +769,6 @@ export default function ProjectsPage() {
   function openFolderFromTree(folderId: string) {
     const folder = folders.find((f) => f.id === folderId)
     if (folder) openFolderFromOverview(folder)
-    setTreeOpen(false)
   }
 
   function handleTreeAdd(folderId: string, kind: 'subfolder' | 'repo' | 'link' | 'app' | 'file') {

@@ -1,11 +1,10 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Folder, Network, X } from 'lucide-react'
 import type { ProjectFolder, ProjectItem } from '@/types'
-import { openExternalUrl } from '@/lib/project-item-open'
+import { openExternalUrl, syncRepositoryHref } from '@/lib/project-item-open'
 import type { FolderReorderPlacement } from '@/lib/project-folder-view'
 import type { AddKind } from './constants'
 import { NODE_H, NODE_W, ROOT_ID } from './constants'
@@ -90,7 +89,6 @@ export default function FolderTreeOverlay({
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const pressRef = useRef<PressState | null>(null)
-  const router = useRouter()
   const { transform, bind, zoomIn, zoomOut, fit } = usePanZoom()
 
   const layout = useMemo(
@@ -152,8 +150,9 @@ export default function FolderTreeOverlay({
   function activateNode(node: TreeNodeModel) {
     if (node.kind === 'item') {
       const item = findItem(folders, node.id)
-      if (item?.type === 'github' && item.title?.includes('/')) {
-        router.push(`/repositories/${item.title}`)
+      const repositoryHref = item ? syncRepositoryHref(item) : null
+      if (repositoryHref) {
+        openExternalUrl(repositoryHref)
         return
       }
     }
