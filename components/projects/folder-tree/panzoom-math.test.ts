@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { centerOnPoint, clampScale, computeFit, zoomAt } from './panzoom-math'
+import { clampScale, computeFit, computeFitBounds, zoomAt } from './panzoom-math'
 
 describe('clampScale', () => {
   it('clamps to [0.3, 2]', () => {
@@ -35,16 +35,20 @@ describe('computeFit', () => {
   })
 })
 
-describe('centerOnPoint', () => {
-  it('places the chosen world point in the center of the viewport', () => {
-    const t = centerOnPoint(300, 180, 1000, 600, 1.35)
+describe('computeFitBounds', () => {
+  it('centers a small subtree at the preferred readable zoom', () => {
+    const t = computeFitBounds({ left: 214, top: 159, right: 386, bottom: 201 }, 1000, 600)
 
     expect(t.tx + 300 * t.scale).toBeCloseTo(500, 5)
     expect(t.ty + 180 * t.scale).toBeCloseTo(300, 5)
     expect(t.scale).toBeCloseTo(1.35, 5)
   })
 
-  it('keeps the requested focus scale within the zoom limits', () => {
-    expect(centerOnPoint(0, 0, 1000, 600, 10).scale).toBe(2)
+  it('zooms out enough to keep a wide subtree inside the viewport padding', () => {
+    const t = computeFitBounds({ left: 0, top: 0, right: 2200, bottom: 500 }, 1000, 600, 50)
+
+    expect(t.scale).toBeCloseTo(900 / 2200, 5)
+    expect(t.tx).toBeCloseTo(50, 5)
+    expect(t.tx + 2200 * t.scale).toBeCloseTo(950, 5)
   })
 })

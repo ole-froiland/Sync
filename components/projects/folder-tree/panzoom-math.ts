@@ -4,6 +4,13 @@ export interface ViewTransform {
   ty: number
 }
 
+export interface ContentBounds {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
 export const MIN_SCALE = 0.3
 export const MAX_SCALE = 2
 
@@ -40,18 +47,24 @@ export function computeFit(
   }
 }
 
-/** Centers one world-space point in the viewport at a predictable zoom level. */
-export function centerOnPoint(
-  worldX: number,
-  worldY: number,
+/** Fits a bounded part of the tree inside the viewport, capped at a readable zoom. */
+export function computeFitBounds(
+  bounds: ContentBounds,
   viewW: number,
   viewH: number,
-  scale = 1.35
+  padding = 64,
+  maxScale = 1.35
 ): ViewTransform {
-  const nextScale = clampScale(scale)
+  const contentW = Math.max(1, bounds.right - bounds.left)
+  const contentH = Math.max(1, bounds.bottom - bounds.top)
+  const usableW = Math.max(1, viewW - padding * 2)
+  const usableH = Math.max(1, viewH - padding * 2)
+  const scale = clampScale(Math.min(usableW / contentW, usableH / contentH, maxScale))
+  const centerX = (bounds.left + bounds.right) / 2
+  const centerY = (bounds.top + bounds.bottom) / 2
   return {
-    scale: nextScale,
-    tx: viewW / 2 - worldX * nextScale,
-    ty: viewH / 2 - worldY * nextScale,
+    scale,
+    tx: viewW / 2 - centerX * scale,
+    ty: viewH / 2 - centerY * scale,
   }
 }

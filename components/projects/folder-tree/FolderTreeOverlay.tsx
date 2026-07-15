@@ -8,7 +8,7 @@ import { openExternalUrl, syncRepositoryHref } from '@/lib/project-item-open'
 import type { FolderReorderPlacement } from '@/lib/project-folder-view'
 import type { AddKind } from './constants'
 import { NODE_H, NODE_W, ROOT_ID } from './constants'
-import { buildTreeLayout, type TreeNodeModel, type TreeOrientation } from './buildTreeLayout'
+import { buildTreeLayout, visibleSubtreeBounds, type TreeNodeModel, type TreeOrientation } from './buildTreeLayout'
 import { usePanZoom } from './usePanZoom'
 import TreeConnectors from './TreeConnectors'
 import TreeNode from './TreeNode'
@@ -89,7 +89,7 @@ export default function FolderTreeOverlay({
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const pressRef = useRef<PressState | null>(null)
-  const { transform, bind, zoomIn, zoomOut, fit, focusPoint } = usePanZoom()
+  const { transform, bind, zoomIn, zoomOut, fit, fitBounds } = usePanZoom()
 
   const layout = useMemo(
     () => buildTreeLayout(folders, { collapsed, currentId: currentFolderId, orientation }),
@@ -252,7 +252,8 @@ export default function FolderTreeOverlay({
         const selectedNode = layout.nodes.find((node) => node.id === pr.nodeId)
         const viewport = viewportRef.current
         if (selectedNode?.kind === 'folder' && viewport) {
-          focusPoint(selectedNode.x, selectedNode.y, viewport.clientWidth, viewport.clientHeight)
+          const bounds = visibleSubtreeBounds(layout.nodes, selectedNode.id)
+          if (bounds) fitBounds(bounds, viewport.clientWidth, viewport.clientHeight)
         }
       }
       setGhost(null)

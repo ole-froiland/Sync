@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
-import { centerOnPoint, clampScale, computeFit, zoomAt, type ViewTransform } from './panzoom-math'
+import { clampScale, computeFit, computeFitBounds, zoomAt, type ContentBounds, type ViewTransform } from './panzoom-math'
 
 const ZOOM_STEP = 1.2
 /** Movement (px) before a press turns into a pan. Below this, it stays a click. */
@@ -87,8 +87,8 @@ export function usePanZoom() {
     setT(computeFit(contentW, contentH, viewW, viewH))
   }, [])
 
-  const focusPoint = useCallback((worldX: number, worldY: number, viewW: number, viewH: number) => {
-    setT(centerOnPoint(worldX, worldY, viewW, viewH))
+  const fitBounds = useCallback((bounds: ContentBounds, viewW: number, viewH: number) => {
+    setT(computeFitBounds(bounds, viewW, viewH))
   }, [])
 
   return {
@@ -98,6 +98,6 @@ export function usePanZoom() {
     zoomOut,
     setScaleAbsolute,
     fit,
-    focusPoint,
+    fitBounds,
   }
 }

@@ -35,6 +35,13 @@ export interface TreeLayout {
   height: number
 }
 
+export interface TreeBounds {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
 export interface BuildOpts {
   collapsed: ReadonlySet<string>
   currentId: string | null
@@ -44,6 +51,31 @@ export interface BuildOpts {
 interface WorkNode {
   model: TreeNodeModel
   children: WorkNode[]
+}
+
+/** Bounds of one visible node and all of its currently visible descendants. */
+export function visibleSubtreeBounds(nodes: TreeNodeModel[], nodeId: string): TreeBounds | null {
+  const root = nodes.find((node) => node.id === nodeId)
+  if (!root) return null
+
+  const descendantIds = new Set([nodeId])
+  let foundDescendant = true
+  while (foundDescendant) {
+    foundDescendant = false
+    for (const node of nodes) {
+      if (descendantIds.has(node.id) || !node.parentId || !descendantIds.has(node.parentId)) continue
+      descendantIds.add(node.id)
+      foundDescendant = true
+    }
+  }
+
+  const subtree = nodes.filter((node) => descendantIds.has(node.id))
+  return {
+    left: Math.min(...subtree.map((node) => node.x - NODE_W / 2)),
+    top: Math.min(...subtree.map((node) => node.y - NODE_H / 2)),
+    right: Math.max(...subtree.map((node) => node.x + NODE_W / 2)),
+    bottom: Math.max(...subtree.map((node) => node.y + NODE_H / 2)),
+  }
 }
 
 export function buildTreeLayout(folders: ProjectFolder[], opts: BuildOpts): TreeLayout {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectFolder } from '@/types'
-import { buildTreeLayout } from './buildTreeLayout'
+import { buildTreeLayout, visibleSubtreeBounds } from './buildTreeLayout'
 import { COL_H, NODE_W, NODE_H, H_GAP, ROW_V, ROOT_ID } from './constants'
 import { readableTreeLabel } from './TreeNode'
 
@@ -108,5 +108,36 @@ describe('buildTreeLayout', () => {
     const { width, height } = buildTreeLayout([folder('a'), folder('b')], opts())
     expect(width).toBe(NODE_W + H_GAP + NODE_W) // 372
     expect(height).toBe(ROW_V + NODE_H) // deepest row top + node height
+  })
+})
+
+describe('visibleSubtreeBounds', () => {
+  it('covers the selected folder and all visible descendants but not its siblings', () => {
+    const { nodes } = buildTreeLayout(
+      [folder('selected'), folder('child-a', 'selected'), folder('child-b', 'selected'), folder('sibling')],
+      opts()
+    )
+    const bounds = visibleSubtreeBounds(nodes, 'selected')!
+    const subtreeNodes = nodes.filter((node) => ['selected', 'child-a', 'child-b'].includes(node.id))
+    const sibling = nodes.find((node) => node.id === 'sibling')!
+
+    expect(bounds.left).toBe(Math.min(...subtreeNodes.map((node) => node.x - NODE_W / 2)))
+    expect(bounds.right).toBe(Math.max(...subtreeNodes.map((node) => node.x + NODE_W / 2)))
+    expect(bounds.right).toBeLessThan(sibling.x - NODE_W / 2)
+  })
+
+  it('returns only the selected box when its descendants are collapsed', () => {
+    const { nodes } = buildTreeLayout(
+      [folder('selected'), folder('child', 'selected')],
+      opts({ collapsed: new Set(['selected']) })
+    )
+    const selected = nodes.find((node) => node.id === 'selected')!
+
+    expect(visibleSubtreeBounds(nodes, 'selected')).toEqual({
+      left: selected.x - NODE_W / 2,
+      top: selected.y - NODE_H / 2,
+      right: selected.x + NODE_W / 2,
+      bottom: selected.y + NODE_H / 2,
+    })
   })
 })
