@@ -46,7 +46,7 @@ import { FolderTreeOverlay, ROOT_ID } from '@/components/projects/folder-tree'
 import { ProjectCardSkeleton } from '@/components/ui/Skeleton'
 import { ensureChatChannel } from '@/lib/chat-channels'
 import { isGoogleDriveDocumentType } from '@/lib/google-drive-documents'
-import { filterProjectFolderLevel } from '@/lib/project-folder-view'
+import { filterProjectFolderLevel, reorderSiblingFolder } from '@/lib/project-folder-view'
 import { openExternalUrl } from '@/lib/project-item-open'
 import {
   PROJECT_FOLDER_CREATED_EVENT,
@@ -804,6 +804,10 @@ export default function ProjectsPage() {
     if (previewFolderId === folderId) setPreviewFolderId(null)
     setDraggedFolderId(null)
     setDragOverFolderId(null)
+  }
+
+  function reorderFolder(folderId: string, targetFolderId: string, placement: 'before' | 'after') {
+    setFolders((current) => reorderSiblingFolder(current, folderId, targetFolderId, placement))
   }
 
   function enterFolder(folderId: string) {
@@ -1602,6 +1606,7 @@ export default function ProjectsPage() {
             onDeleteItem={(itemId, folderId) => removeFolderItem(folderId, itemId)}
             onAdd={handleTreeAdd}
             onMoveFolder={(folderId, targetParentId) => moveFolderIntoFolder(folderId, targetParentId)}
+            onReorderFolder={reorderFolder}
             onMoveItem={(itemId, targetFolderId) => moveItemToFolder(itemId, targetFolderId)}
             canMoveFolder={(folderId, targetParentId) => canMoveFolderIntoFolder(folderId, targetParentId)}
           />

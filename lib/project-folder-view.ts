@@ -1,5 +1,7 @@
 import type { ProjectFolder, ProjectItem } from '@/types'
 
+export type FolderReorderPlacement = 'before' | 'after'
+
 function matchesItem(item: ProjectItem, query: string) {
   return `${item.title} ${item.body} ${item.url ?? ''} ${item.path ?? ''}`.toLowerCase().includes(query)
 }
@@ -29,4 +31,28 @@ export function filterProjectFolderLevel(
     folders: visibleFolders,
     items: query ? directItems.filter((item) => matchesItem(item, query)) : directItems,
   }
+}
+
+/** Reorders two folders that share a parent without changing their hierarchy. */
+export function reorderSiblingFolder(
+  folders: ProjectFolder[],
+  folderId: string,
+  targetFolderId: string,
+  placement: FolderReorderPlacement
+) {
+  if (folderId === targetFolderId) return folders
+
+  const folder = folders.find((candidate) => candidate.id === folderId)
+  const target = folders.find((candidate) => candidate.id === targetFolderId)
+  if (!folder || !target || (folder.parentId ?? null) !== (target.parentId ?? null)) return folders
+
+  const withoutFolder = folders.filter((candidate) => candidate.id !== folderId)
+  const targetIndex = withoutFolder.findIndex((candidate) => candidate.id === targetFolderId)
+  if (targetIndex < 0) return folders
+
+  const insertionIndex = targetIndex + (placement === 'after' ? 1 : 0)
+  const reordered = [...withoutFolder]
+  reordered.splice(insertionIndex, 0, folder)
+
+  return reordered.every((candidate, index) => candidate === folders[index]) ? folders : reordered
 }

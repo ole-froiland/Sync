@@ -46,6 +46,7 @@ interface Props {
   renaming: boolean
   selected: boolean
   isDropTarget: boolean
+  reorderDrop: 'before' | 'after' | null
   onToggle: () => void
   onOpen: () => void
   onActivate: () => void
@@ -66,6 +67,7 @@ export default function TreeNode({
   renaming,
   selected,
   isDropTarget,
+  reorderDrop,
   onToggle,
   onOpen,
   onActivate,
@@ -95,6 +97,20 @@ export default function TreeNode({
 
   return (
     <div className="group relative h-full w-full">
+      {reorderDrop && (
+        <div
+          className={cn(
+            'pointer-events-none absolute z-[5] rounded-full bg-violet-400 shadow-[0_0_10px_rgba(167,139,250,0.8)]',
+            orientation === 'vertical'
+              ? reorderDrop === 'before'
+                ? '-left-2.5 top-0 h-full w-1'
+                : '-right-2.5 top-0 h-full w-1'
+              : reorderDrop === 'before'
+              ? '-top-2.5 left-0 h-1 w-full'
+              : '-bottom-2.5 left-0 h-1 w-full'
+          )}
+        />
+      )}
       {/* action toolbar — shows on hover / when selected. The hidden ::before
           bridge spans the gap so the cursor can reach it without losing hover. */}
       {!renaming && (

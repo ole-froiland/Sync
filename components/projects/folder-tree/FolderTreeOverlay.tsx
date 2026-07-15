@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Folder, Network, X } from 'lucide-react'
 import type { ProjectFolder, ProjectItem } from '@/types'
 import { openExternalUrl } from '@/lib/project-item-open'
+import type { FolderReorderPlacement } from '@/lib/project-folder-view'
 import type { AddKind } from './constants'
 import { NODE_H, NODE_W, ROOT_ID } from './constants'
 import { buildTreeLayout, type TreeNodeModel, type TreeOrientation } from './buildTreeLayout'
@@ -25,11 +26,15 @@ interface Props {
   onDeleteItem: (itemId: string, folderId: string) => void
   onAdd: (folderId: string, kind: AddKind) => void
   onMoveFolder: (folderId: string, targetParentId: string | null) => void
+  onReorderFolder: (folderId: string, targetFolderId: string, placement: FolderReorderPlacement) => void
   onMoveItem: (itemId: string, targetFolderId: string) => void
   canMoveFolder: (folderId: string, targetParentId: string | null) => boolean
 }
 
 type PressState = { x: number; y: number; nodeId: string | null; active: boolean }
+type DropTarget =
+  | { kind: 'move'; targetId: string }
+  | { kind: 'reorder'; targetId: string; placement: FolderReorderPlacement }
 
 function ancestorsOf(folders: ProjectFolder[], id: string | null): Set<string> {
   const byId = new Map(folders.map((f) => [f.id, f]))
@@ -72,6 +77,7 @@ export default function FolderTreeOverlay({
   onDeleteItem,
   onAdd,
   onMoveFolder,
+  onReorderFolder,
   onMoveItem,
   canMoveFolder,
 }: Props) {
@@ -81,7 +87,7 @@ export default function FolderTreeOverlay({
   const [menuFolderId, setMenuFolderId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [ghost, setGhost] = useState<{ nodeId: string; x: number; y: number } | null>(null)
-  const [dropTargetId, setDropTargetId] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const pressRef = useRef<PressState | null>(null)
   const router = useRouter()
@@ -155,7 +161,7 @@ export default function FolderTreeOverlay({
   }
 
   /** Screen point → which folder/root box is under it, if a valid drop target. */
-  function computeDrop(clientX: number, clientY: number, dragNodeId: string): string | null {
+  function computeDrop(clientX: number, clientY: number, dragNodeId: string): DropTarget | null {
     const vp = viewportRef.current
     if (!vp) return null
     const r = vp.getBoundingClientRect()
@@ -170,20 +176,31 @@ export default function FolderTreeOverlay({
       if (dragNode.kind === 'item') {
         if (n.kind === 'root') return null
         if (n.id === dragNode.parentId) return null
-        return n.id
+        return { kind: 'move', targetId: n.id }
       }
       // dragging a folder
       if (n.id === dragNode.parentId) return null
+      if (n.kind === 'folder' && n.parentId === dragNode.parentId) {
+        const siblingOffset = orientation === 'horizontal' ? (cy - n.y) / (NODE_H / 2) : (cx - n.x) / (NODE_W / 2)
+        if (Math.abs(siblingOffset) >= 0.35) {
+          return { kind: 'reorder', targetId: n.id, placement: siblingOffset < 0 ? 'before' : 'after' }
+        }
+      }
       const targetParent = n.kind === 'root' ? null : n.id
       if (!canMoveFolder(dragNode.id, targetParent)) return null
-      return n.id
+      return { kind: 'move', targetId: n.id }
     }
     return null
   }
 
-  function applyMove(dragNodeId: string, targetId: string) {
+  function applyDrop(dragNodeId: string, target: DropTarget) {
     const dragNode = layout.nodes.find((n) => n.id === dragNodeId)
     if (!dragNode) return
+    if (target.kind === 'reorder') {
+      if (dragNode.kind === 'folder') onReorderFolder(dragNodeId, target.targetId, target.placement)
+      return
+    }
+    const targetId = target.targetId
     if (dragNode.kind === 'folder') {
       onMoveFolder(dragNodeId, targetId === ROOT_ID ? null : targetId)
     } else if (dragNode.kind === 'item' && targetId !== ROOT_ID) {
@@ -216,7 +233,7 @@ export default function FolderTreeOverlay({
       if (!pr.active && !moved) return
       pr.active = true
       setGhost({ nodeId: pr.nodeId, x: e.clientX, y: e.clientY })
-      setDropTargetId(computeDrop(e.clientX, e.clientY, pr.nodeId))
+      setDropTarget(computeDrop(e.clientX, e.clientY, pr.nodeId))
     } else {
       if (moved) pr.active = true
       bind.onPointerMove(e)
@@ -229,13 +246,13 @@ export default function FolderTreeOverlay({
     if (pr?.nodeId) {
       if (pr.active) {
         const target = computeDrop(e.clientX, e.clientY, pr.nodeId)
-        if (target) applyMove(pr.nodeId, target)
+        if (target) applyDrop(pr.nodeId, target)
       } else {
         setSelectedId(pr.nodeId === ROOT_ID ? null : pr.nodeId)
         setMenuFolderId(null)
       }
       setGhost(null)
-      setDropTargetId(null)
+      setDropTarget(null)
     } else {
       bind.onPointerUp(e)
       if (pr && !pr.active) {
@@ -336,7 +353,8 @@ export default function FolderTreeOverlay({
                   orientation={orientation}
                   renaming={renamingId === node.id}
                   selected={selectedId === node.id}
-                  isDropTarget={dropTargetId === node.id}
+                  isDropTarget={dropTarget?.kind === 'move' && dropTarget.targetId === node.id}
+                  reorderDrop={dropTarget?.kind === 'reorder' && dropTarget.targetId === node.id ? dropTarget.placement : null}
                   onToggle={() => toggle(node.id)}
                   onOpen={() => openNode(node)}
                   onActivate={() => activateNode(node)}
