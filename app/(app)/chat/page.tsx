@@ -39,6 +39,11 @@ import {
 } from '@/lib/chat-channels'
 import Modal from '@/components/ui/Modal'
 import Input from '@/components/ui/Input'
+import {
+  DirectCallButtons,
+  DirectCallOverlay,
+  useDirectCall,
+} from '@/components/chat/DirectCall'
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
 const PROJECT_FOLDERS_STORAGE_KEY = 'sync-project-folders-v1'
@@ -321,6 +326,12 @@ export default function ChatPage() {
     setToasts((prev) => [...prev, { id, tone, message }])
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 2400)
   }, [])
+
+  const directCall = useDirectCall({
+    profile,
+    people: directPeople,
+    onNotice: showToast,
+  })
 
   function nextOptimisticId(prefix: string) {
     optimisticIdRef.current += 1
@@ -1011,14 +1022,24 @@ export default function ChatPage() {
               </span>
             )}
             {active.kind === 'dm' && (
-              <button
-                type="button"
-                className="ml-auto inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
-                onClick={() => toggleMute(active.user.id)}
-              >
-                {mutedIds.includes(active.user.id) ? <Bell size={12} /> : <BellOff size={12} />}
-                {mutedIds.includes(active.user.id) ? 'Unmute' : 'Mute'}
-              </button>
+              <>
+                <DirectCallButtons
+                  peer={active.user}
+                  enabled={directStates[active.user.id] === 'synced'}
+                  call={directCall}
+                />
+                <button
+                  type="button"
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+                  onClick={() => toggleMute(active.user.id)}
+                  aria-label={mutedIds.includes(active.user.id) ? 'Unmute conversation' : 'Mute conversation'}
+                >
+                  {mutedIds.includes(active.user.id) ? <Bell size={12} /> : <BellOff size={12} />}
+                  <span className="hidden md:inline">
+                    {mutedIds.includes(active.user.id) ? 'Unmute' : 'Mute'}
+                  </span>
+                </button>
+              </>
             )}
             {active.kind === 'dm' && directStates[active.user.id] === 'request_received' && (
               <div className="flex items-center gap-2">
@@ -1291,6 +1312,7 @@ export default function ChatPage() {
         ))}
       </div>
       <ImageLightbox image={lightboxImage} onClose={() => setLightboxImage(null)} />
+      <DirectCallOverlay call={directCall} />
 
       <Modal
         open={newChannelOpen}
