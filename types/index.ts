@@ -242,5 +242,8 @@ export type ProjectFolder = {
   createdAt: string
   members?: ProjectFolderMember[]
   sharedFrom?: ProjectFolderMember
+  collaborationId?: string
+  collaborationOwnerId?: string
+  collaborationRootId?: string
   items: ProjectItem[]
 }

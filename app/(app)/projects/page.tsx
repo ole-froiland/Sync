@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -54,6 +54,14 @@ import {
 } from '@/lib/project-folder-view'
 import { openExternalUrl } from '@/lib/project-item-open'
 import {
+  collaborationSnapshot,
+  collaborationSnapshotHash,
+  extractProjectFolderTree,
+  mergeProjectFolderCollaborations,
+  personalProjectFolders,
+  type ProjectFolderCollaboration,
+} from '@/lib/project-folder-collaboration'
+import {
   PROJECT_FOLDER_CREATED_EVENT,
   PROJECTS_TREE_EVENT,
   PROJECTS_VIEW_STORAGE_KEY,
@@ -88,6 +96,7 @@ type AcceptedSharePayload = {
   members?: ProjectFolderMember[]
   shared_from?: ProjectFolderMember | null
   items?: ProjectItem[]
+  collaboration_id?: string
 }
 
 const STORAGE_KEY = 'sync-project-folders-v1'
@@ -452,6 +461,7 @@ function migrateLocalFolderItems(projectFolders: ProjectFolder[]): ProjectFolder
 export default function ProjectsPage() {
   const currentProfile = useUser()
   const [folders, setFolders] = useState<ProjectFolder[]>([])
+  const [collaborations, setCollaborations] = useState<ProjectFolderCollaboration[]>([])
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
   const [folderOpen, setFolderOpen] = useState(false)
   const [itemOpen, setItemOpen] = useState(false)
@@ -476,6 +486,47 @@ export default function ProjectsPage() {
   const [initialSyncPending, setInitialSyncPending] = useState(true)
   const loadedRef = useRef(false)
   const serverLoadedRef = useRef(false)
+  const collaborationHashesRef = useRef(new Map<string, string>())
+  const collaborationWritesRef = useRef(new Set<string>())
+
+  const loadCollaborations = useCallback(async () => {
+    if (!currentProfile) return
+    try {
+      const response = await fetch('/api/project-folder-shares', {
+        signal: AbortSignal.timeout(10_000),
+      })
+      if (!response.ok) return
+      const body = (await response.json()) as {
+        collaborations?: ProjectFolderCollaboration[]
+        sync?: 'unavailable'
+      }
+      if (body.sync === 'unavailable' || !Array.isArray(body.collaborations)) return
+      const latest = body.collaborations
+
+      setFolders((current) => {
+        const resolved = latest.map((collaboration) => {
+          const knownHash = collaborationHashesRef.current.get(collaboration.id)
+          const localHash = collaborationSnapshotHash(current, collaboration.rootFolderId)
+          const hasLocalChanges = Boolean(knownHash && localHash !== knownHash)
+          if (hasLocalChanges || collaborationWritesRef.current.has(collaboration.id)) {
+            return {
+              ...collaboration,
+              folders: collaborationSnapshot(current, collaboration.rootFolderId),
+            }
+          }
+          collaborationHashesRef.current.set(
+            collaboration.id,
+            collaborationSnapshotHash(collaboration.folders, collaboration.rootFolderId)
+          )
+          return collaboration
+        })
+        return mergeProjectFolderCollaborations(current, resolved)
+      })
+      setCollaborations(latest)
+    } catch {
+      // The private cache remains usable while collaboration sync is offline.
+    }
+  }, [currentProfile])
 
   useEffect(() => {
     let cancelled = false
@@ -533,6 +584,20 @@ export default function ProjectsPage() {
     }
   }, [currentProfile])
 
+  useEffect(() => {
+    if (!currentProfile || !storageReady) return
+    void loadCollaborations()
+    const interval = window.setInterval(() => void loadCollaborations(), 8_000)
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void loadCollaborations()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [currentProfile, loadCollaborations, storageReady])
+
   // Mirror folder changes made in other tabs (localStorage is shared per origin).
   useEffect(() => {
     function onStorage(event: StorageEvent) {
@@ -573,13 +638,14 @@ export default function ProjectsPage() {
       window.localStorage.removeItem(STORAGE_KEY)
     }
     if (!currentProfile || !serverLoadedRef.current) return
+    const privateFolders = personalProjectFolders(folders, collaborations, currentProfile.id)
 
     const controller = new AbortController()
     const id = window.setTimeout(() => {
       void fetch('/api/project-folders', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folders }),
+        body: JSON.stringify({ folders: privateFolders }),
         signal: controller.signal,
       }).catch(() => {
         // Keep the local cache; the next change or reload can retry.
@@ -590,7 +656,40 @@ export default function ProjectsPage() {
       controller.abort()
       window.clearTimeout(id)
     }
-  }, [folders, storageReady, currentProfile])
+  }, [folders, collaborations, storageReady, currentProfile])
+
+  useEffect(() => {
+    if (!currentProfile || !storageReady || collaborations.length === 0) return
+
+    const controller = new AbortController()
+    const id = window.setTimeout(() => {
+      for (const collaboration of collaborations) {
+        const snapshot = collaborationSnapshot(folders, collaboration.rootFolderId)
+        if (!snapshot.some((folder) => folder.id === collaboration.rootFolderId)) continue
+        const hash = JSON.stringify(snapshot)
+        if (collaborationHashesRef.current.get(collaboration.id) === hash) continue
+
+        collaborationWritesRef.current.add(collaboration.id)
+        void fetch(`/api/project-folder-shares/${collaboration.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folders: snapshot }),
+          signal: controller.signal,
+        })
+          .then((response) => {
+            if (response.ok) collaborationHashesRef.current.set(collaboration.id, hash)
+          })
+          .finally(() => {
+            collaborationWritesRef.current.delete(collaboration.id)
+          })
+      }
+    }, 650)
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(id)
+    }
+  }, [collaborations, currentProfile, folders, storageReady])
 
   useEffect(() => {
     if (!currentProfile || !storageReady) return
@@ -622,6 +721,7 @@ export default function ProjectsPage() {
           .filter(
             (item) =>
               item.state === 'accepted' &&
+              !item.payload?.collaboration_id &&
               (item.type === 'project_folder_share' || isProjectFolderSharePayload(item.payload))
           )
           .map((item): ProjectFolder | null => {
@@ -1234,6 +1334,8 @@ export default function ProjectsPage() {
           open={shareOpen}
           onClose={() => setShareOpen(false)}
           folder={selectedFolder}
+          folders={folders}
+          onShared={loadCollaborations}
         />
         <CreateLocalFolderModal
           open={localFolderOpen}
@@ -2998,10 +3100,14 @@ function ShareProjectFolderModal({
   open,
   onClose,
   folder,
+  folders,
+  onShared,
 }: {
   open: boolean
   onClose: () => void
   folder: ProjectFolder
+  folders: ProjectFolder[]
+  onShared: () => Promise<void>
 }) {
   const currentProfile = useUser()
   const [synced, setSynced] = useState<Profile[]>([])
@@ -3009,6 +3115,11 @@ function ShareProjectFolderModal({
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [statusByUser, setStatusByUser] = useState<Record<string, SendStatus>>({})
+  const folderTree = useMemo(() => extractProjectFolderTree(folders, folder.id), [folder.id, folders])
+  const resourceCount = useMemo(
+    () => folderTree.reduce((count, item) => count + item.items.length, 0),
+    [folderTree]
+  )
 
   useEffect(() => {
     if (!open) return
@@ -3072,31 +3183,52 @@ function ShareProjectFolderModal({
     setStatusByUser((current) => ({ ...current, [targetProfile.id]: 'sending' }))
 
     try {
-      const response = await fetch('/api/direct-messages', {
+      let response = await fetch('/api/project-folder-shares', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           receiver_id: targetProfile.id,
-          type: 'project_folder_share',
-          payload: {
-            name: folder.name,
-            description: folder.description,
-            color: folder.color,
-            logo: folder.logo ?? null,
-            kind: 'project_folder_share',
-            members,
-            shared_from: folder.sharedFrom ?? folderMemberFromProfile(currentProfile),
-            items: folder.items,
-            item_count: folder.items.length,
-          },
+          collaboration_id:
+            folder.id === folder.collaborationRootId ? folder.collaborationId : undefined,
+          root_folder_id: folder.id,
+          folders: folderTree,
         }),
       })
+
+      const collaborationBody = (await response.json().catch(() => ({}))) as {
+        error?: string
+        code?: string
+      }
+
+      if (response.status === 503 && collaborationBody.code === 'collaboration_unavailable') {
+        response = await fetch('/api/direct-messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            receiver_id: targetProfile.id,
+            type: 'project_folder_share',
+            payload: {
+              name: folder.name,
+              description: folder.description,
+              color: folder.color,
+              logo: folder.logo ?? null,
+              kind: 'project_folder_share',
+              members,
+              shared_from: folder.sharedFrom ?? folderMemberFromProfile(currentProfile),
+              items: folder.items,
+              folders: folderTree,
+              item_count: resourceCount,
+            },
+          }),
+        })
+      }
 
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string }
         throw new Error(body.error ?? 'Kunne ikke dele mappen.')
       }
 
+      await onShared()
       setStatusByUser((current) => ({ ...current, [targetProfile.id]: 'sent' }))
     } catch {
       setStatusByUser((current) => ({ ...current, [targetProfile.id]: 'error' }))
@@ -3112,7 +3244,7 @@ function ShareProjectFolderModal({
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-gray-950 dark:text-gray-100">{folder.name}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                {folder.items.length} ressurser deles som en kopi
+                Hele mappetreet deles: {folderTree.length} {folderTree.length === 1 ? 'mappe' : 'mapper'} og {resourceCount} ressurser. Nye undermapper og endringer synkroniseres for alle.
               </p>
             </div>
           </div>

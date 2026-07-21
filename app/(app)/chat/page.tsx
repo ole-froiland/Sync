@@ -87,6 +87,8 @@ type ProjectFolderMemberPayload = {
 
 type ProjectFolderSharePayload = {
   kind?: 'project_folder_share'
+  collaboration_id?: string
+  root_folder_id?: string
   name?: string
   description?: string
   color?: string
@@ -779,8 +781,13 @@ export default function ChatPage() {
           throw new Error(body.error ?? 'Failed to respond')
         }
         if (action === 'accept' && isProjectFolderShareMessage(msg)) {
-          const imported = importSharedProjectFolder((msg.payload ?? {}) as ProjectFolderSharePayload, msg.sender)
-          showToast(`${imported.name} added to Projects`)
+          const payload = (msg.payload ?? {}) as ProjectFolderSharePayload
+          if (payload.collaboration_id) {
+            showToast(`${payload.name ?? 'Shared folder'} added to Projects`)
+          } else {
+            const imported = importSharedProjectFolder(payload, msg.sender)
+            showToast(`${imported.name} added to Projects`)
+          }
         } else {
           const payload = msg.payload as RepoSharePayload | ProjectFolderSharePayload | null
           showToast(

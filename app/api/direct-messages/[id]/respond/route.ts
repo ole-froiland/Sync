@@ -18,6 +18,7 @@ type ProjectFolderSharePayload = {
   kind?: string
   name?: string
   items?: unknown[]
+  collaboration_id?: string
 }
 
 type SyncRequestPayload = {
@@ -166,6 +167,29 @@ export async function POST(
 
     if (insertError) {
       return NextResponse.json({ error: insertError.message }, { status: 500 })
+    }
+  }
+
+  if (projectFolderShare) {
+    const payload = (message.payload ?? {}) as ProjectFolderSharePayload
+    if (payload.collaboration_id) {
+      if (!isUuid(payload.collaboration_id)) {
+        return NextResponse.json({ error: 'The folder share has an invalid collaboration id.' }, { status: 400 })
+      }
+      const { data: membership, error: membershipError } = await supabase
+        .from('shared_project_folder_members')
+        .update({ status: nextState })
+        .eq('shared_folder_id', payload.collaboration_id)
+        .eq('user_id', user.id)
+        .select('user_id')
+        .maybeSingle()
+
+      if (membershipError) {
+        return NextResponse.json({ error: membershipError.message }, { status: 500 })
+      }
+      if (!membership) {
+        return NextResponse.json({ error: 'Folder collaboration membership not found.' }, { status: 404 })
+      }
     }
   }
 
