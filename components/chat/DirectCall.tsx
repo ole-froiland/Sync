@@ -13,6 +13,7 @@ import {
   Volume2,
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
+import { hasTurnServer, parseIceServers } from '@/lib/call-ice'
 import { cn } from '@/lib/utils'
 import {
   isFreshCallOffer,
@@ -27,13 +28,6 @@ import {
 import type { Profile } from '@/types'
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
-
-const RTC_CONFIGURATION: RTCConfiguration = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-  ],
-}
 
 type CallPeer = Pick<Profile, 'id' | 'name' | 'avatar_url'>
 type CallStatus = 'idle' | 'incoming' | 'calling' | 'connecting' | 'active'
@@ -85,6 +79,25 @@ async function postSignal(
     const body = (await response.json().catch(() => ({}))) as { error?: string }
     throw new Error(body.error ?? 'Could not send the call signal.')
   }
+}
+
+async function requestRtcConfiguration(): Promise<RTCConfiguration> {
+  let response: Response
+  try {
+    response = await fetch('/api/calls/ice', { cache: 'no-store' })
+  } catch {
+    throw new Error('Secure call relay is unavailable. Please try again shortly.')
+  }
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string }
+    throw new Error(body.error ?? 'Secure call relay is unavailable. Please try again shortly.')
+  }
+  const body = (await response.json().catch(() => null)) as { iceServers?: unknown } | null
+  const iceServers = parseIceServers(body?.iceServers)
+  if (!iceServers || !hasTurnServer(iceServers)) {
+    throw new Error('Secure call relay returned an invalid configuration.')
+  }
+  return { iceServers }
 }
 
 async function waitForIceGathering(peerConnection: RTCPeerConnection) {
@@ -173,8 +186,8 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
     return true
   }, [])
 
-  const createPeerConnection = useCallback(() => {
-    const peerConnection = new RTCPeerConnection(RTC_CONFIGURATION)
+  const createPeerConnection = useCallback((configuration: RTCConfiguration) => {
+    const peerConnection = new RTCPeerConnection(configuration)
     const remoteStream = new MediaStream()
     remoteStreamRef.current = remoteStream
     peerConnectionRef.current = peerConnection
@@ -374,6 +387,7 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
       })
 
       try {
+        const rtcConfiguration = await requestRtcConfiguration()
         const localStream = await requestMedia(media)
         if (callIdRef.current !== callId) {
           localStream.getTracks().forEach((track) => track.stop())
@@ -382,7 +396,7 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
         localStreamRef.current = localStream
         updateState({ localStream })
 
-        const peerConnection = createPeerConnection()
+        const peerConnection = createPeerConnection(rtcConfiguration)
         localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream))
         attachControlChannel(peerConnection.createDataChannel('sync-call-control'))
         if (media === 'audio') {
@@ -415,6 +429,7 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
 
     updateState({ status: 'connecting' })
     try {
+      const rtcConfiguration = await requestRtcConfiguration()
       const localStream = await requestMedia(offerSignal.payload.media)
       if (callIdRef.current !== callId) {
         localStream.getTracks().forEach((track) => track.stop())
@@ -423,7 +438,7 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
       localStreamRef.current = localStream
       updateState({ localStream })
 
-      const peerConnection = createPeerConnection()
+      const peerConnection = createPeerConnection(rtcConfiguration)
       localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream))
       await peerConnection.setRemoteDescription(description)
       if (offerSignal.payload.media === 'audio') {
