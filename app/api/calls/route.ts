@@ -36,7 +36,7 @@ async function ensureSynced(
   return { ok: true }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient()
   const {
     data: { user },
@@ -48,6 +48,32 @@ export async function GET() {
     .from('call_signals')
     .delete()
     .lt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1_000).toISOString())
+
+  const { searchParams } = new URL(request.url)
+  const callId = searchParams.get('call_id')
+  if (callId) {
+    if (!isUuid(callId)) {
+      return NextResponse.json({ error: 'call_id must be a valid UUID' }, { status: 400 })
+    }
+
+    const afterIdValue = searchParams.get('after_id') ?? '0'
+    const afterId = Number(afterIdValue)
+    if (!Number.isSafeInteger(afterId) || afterId < 0) {
+      return NextResponse.json({ error: 'after_id must be a positive integer' }, { status: 400 })
+    }
+
+    const { data, error } = await supabase
+      .from('call_signals')
+      .select('*')
+      .eq('call_id', callId)
+      .eq('receiver_id', user.id)
+      .gt('id', afterId)
+      .order('id', { ascending: true })
+      .limit(20)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data ?? [])
+  }
 
   const cutoff = new Date(Date.now() - CALL_SIGNAL_MAX_AGE_MS).toISOString()
   const { data: offers, error } = await supabase

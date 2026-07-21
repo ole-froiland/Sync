@@ -6,14 +6,19 @@ import {
   MicOff,
   Phone,
   PhoneOff,
+  ScreenShare,
+  ScreenShareOff,
   Video,
   VideoOff,
+  Volume2,
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
 import { cn } from '@/lib/utils'
 import {
   isFreshCallOffer,
+  parseCallControlMessage,
   parseCallSignal,
+  type CallControlMessage,
   type CallMedia,
   type CallSignal,
   type CallSignalKind,
@@ -39,7 +44,10 @@ type CallState = {
   media: CallMedia
   muted: boolean
   cameraOff: boolean
+  screenSharing: boolean
+  remoteScreenSharing: boolean
   localStream: MediaStream | null
+  screenStream: MediaStream | null
   remoteStream: MediaStream | null
 }
 
@@ -49,7 +57,10 @@ const IDLE_CALL: CallState = {
   media: 'audio',
   muted: false,
   cameraOff: false,
+  screenSharing: false,
+  remoteScreenSharing: false,
   localStream: null,
+  screenStream: null,
   remoteStream: null,
 }
 
@@ -107,10 +118,13 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
   const [state, setState] = useState<CallState>(IDLE_CALL)
   const stateRef = useRef<CallState>(IDLE_CALL)
   const callIdRef = useRef<string | null>(null)
+  const lastSignalIdRef = useRef(0)
   const incomingOfferRef = useRef<CallSignal | null>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
+  const screenStreamRef = useRef<MediaStream | null>(null)
   const remoteStreamRef = useRef<MediaStream | null>(null)
+  const controlChannelRef = useRef<RTCDataChannel | null>(null)
 
   const updateState = useCallback((patch: Partial<CallState>) => {
     setState((previous) => {
@@ -121,15 +135,42 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
   }, [])
 
   const resetCall = useCallback((updateUi = true) => {
+    screenStreamRef.current?.getTracks().forEach((track) => {
+      track.onended = null
+      track.stop()
+    })
+    screenStreamRef.current = null
+    controlChannelRef.current?.close()
+    controlChannelRef.current = null
     peerConnectionRef.current?.close()
     peerConnectionRef.current = null
     localStreamRef.current?.getTracks().forEach((track) => track.stop())
     localStreamRef.current = null
     remoteStreamRef.current = null
     callIdRef.current = null
+    lastSignalIdRef.current = 0
     incomingOfferRef.current = null
     stateRef.current = IDLE_CALL
     if (updateUi) setState(IDLE_CALL)
+  }, [])
+
+  const attachControlChannel = useCallback(
+    (channel: RTCDataChannel) => {
+      controlChannelRef.current = channel
+      channel.onmessage = (event) => {
+        const message = parseCallControlMessage(event.data)
+        if (message) updateState({ remoteScreenSharing: message.active })
+      }
+      channel.onclose = () => updateState({ remoteScreenSharing: false })
+    },
+    [updateState]
+  )
+
+  const sendControlMessage = useCallback((message: CallControlMessage) => {
+    const channel = controlChannelRef.current
+    if (channel?.readyState !== 'open') return false
+    channel.send(JSON.stringify(message))
+    return true
   }, [])
 
   const createPeerConnection = useCallback(() => {
@@ -137,6 +178,9 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
     const remoteStream = new MediaStream()
     remoteStreamRef.current = remoteStream
     peerConnectionRef.current = peerConnection
+    peerConnection.ondatachannel = (event) => {
+      if (event.channel.label === 'sync-call-control') attachControlChannel(event.channel)
+    }
 
     peerConnection.ontrack = (event) => {
       for (const track of event.streams[0]?.getTracks() ?? [event.track]) {
@@ -144,7 +188,7 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
           remoteStream.addTrack(track)
         }
       }
-      updateState({ remoteStream, status: 'active' })
+      updateState({ remoteStream })
     }
 
     peerConnection.onconnectionstatechange = () => {
@@ -157,11 +201,13 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
     }
 
     return peerConnection
-  }, [onNotice, resetCall, updateState])
+  }, [attachControlChannel, onNotice, resetCall, updateState])
 
   const handleSignal = useCallback(
     async (signal: CallSignal) => {
       if (!profile || signal.receiver_id !== profile.id) return
+      if (signal.id <= lastSignalIdRef.current) return
+      lastSignalIdRef.current = signal.id
 
       if (signal.kind === 'offer') {
         if (!isFreshCallOffer(signal.created_at)) return
@@ -186,7 +232,10 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
           media: signal.payload.media,
           muted: false,
           cameraOff: false,
+          screenSharing: false,
+          remoteScreenSharing: false,
           localStream: null,
+          screenStream: null,
           remoteStream: null,
         })
         return
@@ -264,6 +313,40 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
     }
   }, [handleSignal, profile])
 
+  useEffect(() => {
+    if (state.status === 'idle' || !profile) return
+    const callId = callIdRef.current
+    if (!callId) return
+    let cancelled = false
+    let timeout: number | undefined
+
+    async function pollSignals() {
+      try {
+        const response = await fetch(
+          `/api/calls?call_id=${encodeURIComponent(callId!)}&after_id=${lastSignalIdRef.current}`
+        )
+        if (response.ok && !cancelled && callIdRef.current === callId) {
+          const rows = (await response.json()) as unknown[]
+          for (const row of Array.isArray(rows) ? rows : []) {
+            const signal = parseCallSignal(row)
+            if (signal) await handleSignal(signal)
+          }
+        }
+      } catch {
+        // Realtime remains the primary path; polling retries transient failures.
+      }
+      if (!cancelled && callIdRef.current === callId) {
+        timeout = window.setTimeout(pollSignals, 1_500)
+      }
+    }
+
+    void pollSignals()
+    return () => {
+      cancelled = true
+      if (timeout) window.clearTimeout(timeout)
+    }
+  }, [handleSignal, profile, state.status])
+
   useEffect(() => () => resetCall(false), [resetCall])
 
   const startCall = useCallback(
@@ -276,13 +359,17 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
 
       const callId = crypto.randomUUID()
       callIdRef.current = callId
+      lastSignalIdRef.current = 0
       updateState({
         status: 'calling',
         peer,
         media,
         muted: false,
         cameraOff: false,
+        screenSharing: false,
+        remoteScreenSharing: false,
         localStream: null,
+        screenStream: null,
         remoteStream: null,
       })
 
@@ -297,6 +384,10 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
 
         const peerConnection = createPeerConnection()
         localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream))
+        attachControlChannel(peerConnection.createDataChannel('sync-call-control'))
+        if (media === 'audio') {
+          peerConnection.addTransceiver('video', { direction: 'sendrecv' })
+        }
         const offer = await peerConnection.createOffer()
         await peerConnection.setLocalDescription(offer)
         await waitForIceGathering(peerConnection)
@@ -312,7 +403,7 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
         onNotice(error instanceof Error ? error.message : 'Could not start the call.', 'error')
       }
     },
-    [createPeerConnection, onNotice, resetCall, updateState]
+    [attachControlChannel, createPeerConnection, onNotice, resetCall, updateState]
   )
 
   const acceptCall = useCallback(async () => {
@@ -335,6 +426,12 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
       const peerConnection = createPeerConnection()
       localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream))
       await peerConnection.setRemoteDescription(description)
+      if (offerSignal.payload.media === 'audio') {
+        const videoTransceiver = peerConnection
+          .getTransceivers()
+          .find((transceiver) => transceiver.receiver.track.kind === 'video')
+        if (videoTransceiver) videoTransceiver.direction = 'sendrecv'
+      }
       const answer = await peerConnection.createAnswer()
       await peerConnection.setLocalDescription(answer)
       await waitForIceGathering(peerConnection)
@@ -381,6 +478,16 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
     return () => window.clearTimeout(timeout)
   }, [endCall, onNotice, state.status])
 
+  useEffect(() => {
+    if (state.status !== 'connecting') return
+    const timeout = window.setTimeout(() => {
+      if (stateRef.current.status !== 'connecting') return
+      endCall()
+      onNotice('Could not establish the media connection. Try again or change network.', 'error')
+    }, 20_000)
+    return () => window.clearTimeout(timeout)
+  }, [endCall, onNotice, state.status])
+
   const toggleMute = useCallback(() => {
     const muted = !stateRef.current.muted
     localStreamRef.current?.getAudioTracks().forEach((track) => {
@@ -390,12 +497,86 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
   }, [updateState])
 
   const toggleCamera = useCallback(() => {
+    if (stateRef.current.screenSharing) return
     const cameraOff = !stateRef.current.cameraOff
     localStreamRef.current?.getVideoTracks().forEach((track) => {
       track.enabled = !cameraOff
     })
     updateState({ cameraOff })
   }, [updateState])
+
+  const stopScreenShare = useCallback(async () => {
+    const screenStream = screenStreamRef.current
+    const peerConnection = peerConnectionRef.current
+    if (!screenStream || !peerConnection) return
+
+    const videoSender = peerConnection
+      .getTransceivers()
+      .find((transceiver) => transceiver.receiver.track.kind === 'video')
+      ?.sender
+    const cameraTrack =
+      stateRef.current.media === 'video'
+        ? (localStreamRef.current?.getVideoTracks()[0] ?? null)
+        : null
+
+    if (videoSender) await videoSender.replaceTrack(cameraTrack).catch(() => {})
+    sendControlMessage({ type: 'screen-share', active: false })
+    screenStream.getTracks().forEach((track) => {
+      track.onended = null
+      track.stop()
+    })
+    screenStreamRef.current = null
+    updateState({ screenSharing: false, screenStream: null })
+  }, [sendControlMessage, updateState])
+
+  const startScreenShare = useCallback(async () => {
+    if (stateRef.current.status !== 'active' || stateRef.current.screenSharing) return
+    const peerConnection = peerConnectionRef.current
+    if (!peerConnection) return
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      onNotice('Screen sharing is not supported by this browser.', 'error')
+      return
+    }
+    if (controlChannelRef.current?.readyState !== 'open') {
+      onNotice('Wait until the call is fully connected before sharing.', 'error')
+      return
+    }
+
+    let requestedStream: MediaStream | null = null
+    try {
+      requestedStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      })
+      const screenStream = requestedStream
+      const screenTrack = screenStream.getVideoTracks()[0]
+      const videoSender = peerConnection
+        .getTransceivers()
+        .find((transceiver) => transceiver.receiver.track.kind === 'video')
+        ?.sender
+      if (!screenTrack || !videoSender) {
+        screenStream.getTracks().forEach((track) => track.stop())
+        throw new Error('Could not prepare screen sharing for this call.')
+      }
+
+      await videoSender.replaceTrack(screenTrack)
+      if (!sendControlMessage({ type: 'screen-share', active: true })) {
+        const cameraTrack =
+          stateRef.current.media === 'video'
+            ? (localStreamRef.current?.getVideoTracks()[0] ?? null)
+            : null
+        await videoSender.replaceTrack(cameraTrack).catch(() => {})
+        throw new Error('The screen-sharing connection is not ready yet.')
+      }
+      screenStreamRef.current = screenStream
+      screenTrack.onended = () => void stopScreenShare()
+      updateState({ screenSharing: true, screenStream })
+    } catch (error) {
+      requestedStream?.getTracks().forEach((track) => track.stop())
+      if (error instanceof DOMException && error.name === 'NotAllowedError') return
+      onNotice(error instanceof Error ? error.message : 'Could not share the screen.', 'error')
+    }
+  }, [onNotice, sendControlMessage, stopScreenShare, updateState])
 
   return {
     state,
@@ -406,6 +587,8 @@ export function useDirectCall({ profile, people, onNotice }: UseDirectCallOption
     endCall,
     toggleMute,
     toggleCamera,
+    startScreenShare,
+    stopScreenShare,
   }
 }
 
@@ -455,12 +638,53 @@ function StreamVideo({ stream, muted, className }: { stream: MediaStream; muted?
   return <video ref={ref} autoPlay playsInline muted={muted} className={className} />
 }
 
+function StreamAudio({ stream }: { stream: MediaStream }) {
+  const ref = useRef<HTMLAudioElement>(null)
+  const [blocked, setBlocked] = useState(false)
+
+  const play = useCallback(() => {
+    const audio = ref.current
+    if (!audio) return
+    void audio.play().then(() => setBlocked(false)).catch(() => setBlocked(true))
+  }, [])
+
+  useEffect(() => {
+    const audio = ref.current
+    if (!audio) return
+    audio.srcObject = stream
+    play()
+    return () => {
+      audio.srcObject = null
+    }
+  }, [play, stream])
+
+  return (
+    <>
+      <audio ref={ref} autoPlay />
+      {blocked && (
+        <button
+          type="button"
+          onClick={play}
+          className="absolute right-5 top-5 z-20 inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-medium text-gray-950 shadow-lg transition hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        >
+          <Volume2 size={15} />
+          Play call audio
+        </button>
+      )}
+    </>
+  )
+}
+
 export function DirectCallOverlay({ call }: { call: DirectCallController }) {
   const { state } = call
   if (state.status === 'idle' || !state.peer) return null
 
   const isIncoming = state.status === 'incoming'
   const isVideo = state.media === 'video'
+  const showRemoteVideo = Boolean(
+    state.remoteStream && (isVideo || state.remoteScreenSharing)
+  )
+  const localPreviewStream = state.screenSharing ? state.screenStream : state.localStream
   const statusLabel =
     state.status === 'calling'
       ? 'Ringing…'
@@ -481,10 +705,18 @@ export function DirectCallOverlay({ call }: { call: DirectCallController }) {
         className="relative flex min-h-[28rem] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-gray-950 text-white shadow-2xl"
       >
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(168,85,247,0.22),_transparent_48%)]" />
+        {state.remoteStream && <StreamAudio stream={state.remoteStream} />}
 
         <div className="relative flex flex-1 items-center justify-center p-6 sm:p-10">
-          {isVideo && state.remoteStream ? (
-            <StreamVideo stream={state.remoteStream} className="absolute inset-0 h-full w-full object-cover" />
+          {showRemoteVideo && state.remoteStream ? (
+            <StreamVideo
+              stream={state.remoteStream}
+              muted
+              className={cn(
+                'absolute inset-0 h-full w-full bg-black',
+                state.remoteScreenSharing ? 'object-contain' : 'object-cover'
+              )}
+            />
           ) : (
             <div className="flex flex-col items-center text-center">
               <Avatar name={state.peer.name} src={state.peer.avatar_url} size="lg" className="h-24 w-24 text-2xl ring-4 ring-white/10" />
@@ -493,22 +725,25 @@ export function DirectCallOverlay({ call }: { call: DirectCallController }) {
             </div>
           )}
 
-          {isVideo && state.localStream && !state.cameraOff && (
+          {(isVideo || state.screenSharing) && localPreviewStream && (!state.cameraOff || state.screenSharing) && (
             <StreamVideo
-              stream={state.localStream}
+              stream={localPreviewStream}
               muted
-              className="absolute bottom-5 right-5 h-32 w-24 rounded-2xl border border-white/20 bg-gray-900 object-cover shadow-xl sm:h-40 sm:w-28"
+              className={cn(
+                'absolute bottom-5 right-5 h-32 w-24 rounded-2xl border border-white/20 bg-gray-900 shadow-xl sm:h-40 sm:w-28',
+                state.screenSharing ? 'object-contain' : 'object-cover'
+              )}
             />
           )}
 
-          {isVideo && state.remoteStream && (
+          {showRemoteVideo && (
             <div className="absolute left-5 top-5 rounded-full bg-black/45 px-3 py-1.5 text-sm backdrop-blur-sm">
-              {state.peer.name}
+              {state.remoteScreenSharing ? `${state.peer.name} is sharing a screen` : state.peer.name}
             </div>
           )}
         </div>
 
-        <div className="relative flex min-h-24 items-center justify-center gap-3 border-t border-white/10 bg-black/20 px-5 py-5">
+        <div className="relative flex min-h-24 flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-black/20 px-5 py-5 sm:gap-3">
           {isIncoming ? (
             <>
               <CallActionButton label="Decline" tone="danger" onClick={call.declineCall}>
@@ -524,10 +759,18 @@ export function DirectCallOverlay({ call }: { call: DirectCallController }) {
                 {state.muted ? <MicOff size={20} /> : <Mic size={20} />}
               </CallActionButton>
               {isVideo && (
-                <CallActionButton label={state.cameraOff ? 'Camera on' : 'Camera off'} active={state.cameraOff} onClick={call.toggleCamera}>
+                <CallActionButton label={state.cameraOff ? 'Camera on' : 'Camera off'} active={state.cameraOff} disabled={state.screenSharing} onClick={call.toggleCamera}>
                   {state.cameraOff ? <VideoOff size={20} /> : <Video size={20} />}
                 </CallActionButton>
               )}
+              <CallActionButton
+                label={state.screenSharing ? 'Stop sharing' : 'Share screen'}
+                active={state.screenSharing}
+                disabled={state.status !== 'active'}
+                onClick={() => void (state.screenSharing ? call.stopScreenShare() : call.startScreenShare())}
+              >
+                {state.screenSharing ? <ScreenShareOff size={20} /> : <ScreenShare size={20} />}
+              </CallActionButton>
               <CallActionButton label="End" tone="danger" onClick={call.endCall}>
                 <PhoneOff size={20} />
               </CallActionButton>
@@ -543,12 +786,14 @@ function CallActionButton({
   label,
   tone,
   active,
+  disabled,
   onClick,
   children,
 }: {
   label: string
   tone?: 'danger' | 'accept'
   active?: boolean
+  disabled?: boolean
   onClick: () => void
   children: React.ReactNode
 }) {
@@ -556,8 +801,10 @@ function CallActionButton({
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active || undefined}
       className={cn(
-        'inline-flex min-w-20 flex-col items-center gap-1.5 rounded-2xl px-4 py-3 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white',
+        'inline-flex min-w-16 flex-col items-center gap-1.5 rounded-2xl px-3 py-3 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:pointer-events-none disabled:opacity-40 sm:min-w-20 sm:px-4',
         tone === 'danger'
           ? 'bg-red-600 text-white hover:bg-red-500'
           : tone === 'accept'

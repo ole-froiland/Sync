@@ -6,6 +6,11 @@ export const CALL_SIGNAL_KINDS = ['offer', 'answer', 'reject', 'end'] as const
 export type CallSignalKind = (typeof CALL_SIGNAL_KINDS)[number]
 export type CallMedia = 'audio' | 'video'
 
+export type CallControlMessage = {
+  type: 'screen-share'
+  active: boolean
+}
+
 export type CallSignalPayload = {
   media: CallMedia
   description?: {
@@ -35,6 +40,21 @@ export function isCallSignalKind(value: unknown): value is CallSignalKind {
 
 export function isCallMedia(value: unknown): value is CallMedia {
   return value === 'audio' || value === 'video'
+}
+
+export function parseCallControlMessage(value: unknown): CallControlMessage | null {
+  let parsed: unknown = value
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value)
+    } catch {
+      return null
+    }
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+  const message = parsed as Record<string, unknown>
+  if (message.type !== 'screen-share' || typeof message.active !== 'boolean') return null
+  return { type: 'screen-share', active: message.active }
 }
 
 export function parseCallSignalPayload(value: unknown, kind: CallSignalKind): CallSignalPayload | null {

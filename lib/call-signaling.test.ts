@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   isFreshCallOffer,
+  parseCallControlMessage,
   parseCallSignal,
   parseCallSignalPayload,
 } from './call-signaling'
@@ -51,5 +52,19 @@ describe('call signaling', () => {
     expect(isFreshCallOffer('2026-07-21T12:00:00.001Z', now)).toBe(true)
     expect(isFreshCallOffer('2026-07-21T11:59:59.999Z', now)).toBe(false)
     expect(isFreshCallOffer('not-a-date', now)).toBe(false)
+  })
+
+  it('accepts only valid screen-sharing control messages', () => {
+    expect(parseCallControlMessage('{"type":"screen-share","active":true}')).toEqual({
+      type: 'screen-share',
+      active: true,
+    })
+    expect(parseCallControlMessage({ type: 'screen-share', active: false })).toEqual({
+      type: 'screen-share',
+      active: false,
+    })
+    expect(parseCallControlMessage('{not-json')).toBeNull()
+    expect(parseCallControlMessage({ type: 'screen-share', active: 'yes' })).toBeNull()
+    expect(parseCallControlMessage({ type: 'unknown', active: true })).toBeNull()
   })
 })
