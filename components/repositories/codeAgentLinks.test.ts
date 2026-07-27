@@ -8,9 +8,9 @@ describe('code agent deep links', () => {
     )
   })
 
-  it('opens Claude Code in Claude Desktop with repository context', () => {
-    expect(claudeAppDeepLink('acme/payments', 'main')).toBe(
-      'claude://code/new?q=Work+in+the+GitHub+repository+acme%2Fpayments+on+branch+main.'
+  it('opens Claude Code in Claude Desktop with the selected local folder', () => {
+    expect(claudeAppDeepLink('acme/payments', 'main', '/Users/me/Code/payments')).toBe(
+      'claude://code/new?q=Work+in+the+GitHub+repository+acme%2Fpayments+on+branch+main.&folder=%2FUsers%2Fme%2FCode%2Fpayments'
     )
   })
 
@@ -26,6 +26,9 @@ describe('code agent deep links', () => {
     )
     expect(claudeAppDeepLink('acme/repo&q=unsafe', 'main&folder=/tmp')).toBe(
       'claude://code/new?q=Work+in+the+GitHub+repository+acme%2Frepo%26q%3Dunsafe+on+branch+main%26folder%3D%2Ftmp.'
+    )
+    expect(claudeAppDeepLink('acme/payments', 'main', '/tmp/repo&file=/etc/passwd')).toBe(
+      'claude://code/new?q=Work+in+the+GitHub+repository+acme%2Fpayments+on+branch+main.&folder=%2Ftmp%2Frepo%26file%3D%2Fetc%2Fpasswd'
     )
   })
 })

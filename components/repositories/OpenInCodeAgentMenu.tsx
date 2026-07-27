@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ChevronDown, SquareTerminal } from 'lucide-react'
+import { useLanguage } from '@/context/LanguageContext'
 import { claudeAppDeepLink, codexDeepLink } from './codeAgentLinks'
 
 const BUTTON_CLASS =
@@ -14,11 +15,20 @@ type OpenInCodeAgentMenuProps = {
   defaultBranch: string
 }
 
+function claudeFolderStorageKey(repoFullName: string) {
+  return `sync:claude-folder:${repoFullName.toLowerCase()}`
+}
+
+function isAbsoluteFolderPath(folder: string) {
+  return folder.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(folder) || folder.startsWith('\\\\')
+}
+
 export default function OpenInCodeAgentMenu({
   cloneUrl,
   repoFullName,
   defaultBranch,
 }: OpenInCodeAgentMenuProps) {
+  const { locale } = useLanguage()
   const [open, setOpen] = useState(false)
   const [alignment, setAlignment] = useState<'left' | 'right'>('right')
   const containerRef = useRef<HTMLDivElement>(null)
@@ -67,6 +77,47 @@ export default function OpenInCodeAgentMenu({
     setOpen((current) => !current)
   }
 
+  const openInClaude = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault()
+
+    const storageKey = claudeFolderStorageKey(repoFullName)
+    let folder = ''
+    try {
+      folder = window.localStorage.getItem(storageKey) ?? ''
+    } catch {
+      // Claude can still open when browser storage is unavailable.
+    }
+
+    if (!folder || event.altKey) {
+      const selectedFolder = window.prompt(
+        locale === 'no'
+          ? `Skriv inn den absolutte lokale stien til ${repoFullName}, slik at Claude åpner riktig mappe:`
+          : `Enter the absolute local path to ${repoFullName} so Claude opens the correct folder:`,
+        folder
+      )
+      if (selectedFolder === null) return
+
+      folder = selectedFolder.trim()
+      if (!isAbsoluteFolderPath(folder)) {
+        window.alert(
+          locale === 'no'
+            ? 'Skriv inn en absolutt mappesti, for eksempel /Users/deg/Kode/prosjekt.'
+            : 'Enter an absolute folder path, for example /Users/you/Code/project.'
+        )
+        return
+      }
+
+      try {
+        window.localStorage.setItem(storageKey, folder)
+      } catch {
+        // The deep link still works even if the preference cannot be saved.
+      }
+    }
+
+    setOpen(false)
+    window.location.href = claudeAppDeepLink(repoFullName, defaultBranch, folder)
+  }
+
   return (
     <div ref={containerRef} className="relative">
       <button
@@ -108,8 +159,13 @@ export default function OpenInCodeAgentMenu({
           </a>
           <a
             href={claudeAppDeepLink(repoFullName, defaultBranch)}
-            onClick={() => setOpen(false)}
+            onClick={openInClaude}
             aria-label="Open in Claude Code"
+            title={
+              locale === 'no'
+                ? 'Åpne i Claude Desktop. Hold Option eller Alt for å endre den lagrede lokale mappen.'
+                : 'Open in Claude Desktop. Hold Option or Alt to change the saved local folder.'
+            }
             className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500 dark:text-gray-200 dark:hover:bg-gray-800"
           >
             <Image
