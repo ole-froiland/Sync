@@ -13,11 +13,13 @@ import { ChevronDown, SquareTerminal } from 'lucide-react'
 import {
   claudeAppDeepLink,
   codexDeepLink,
-  guessProjectsRoot,
   localRepoFolder,
   readLocalProjectsRoot,
   writeLocalProjectsRoot,
 } from './codeAgentLinks'
+import LocalProjectsFolderDialog from './LocalProjectsFolderDialog'
+
+type CodeAgent = 'codex' | 'claude'
 
 const BUTTON_CLASS =
   'inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 dark:focus-visible:ring-offset-gray-900'
@@ -36,11 +38,10 @@ export default function OpenInCodeAgentMenu({
   const [open, setOpen] = useState(false)
   const [alignment, setAlignment] = useState<'left' | 'right'>('right')
   const [projectsRoot, setProjectsRoot] = useState('')
-  const [askingForRoot, setAskingForRoot] = useState(false)
-  const [rootDraft, setRootDraft] = useState('')
+  const [pendingAgent, setPendingAgent] = useState<CodeAgent | null>(null)
+  const [editingRoot, setEditingRoot] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
-  const rootInputRef = useRef<HTMLInputElement>(null)
   const panelId = useId()
 
   const localFolder = localRepoFolder(projectsRoot, repoFullName)
@@ -82,49 +83,47 @@ export default function OpenInCodeAgentMenu({
     }
   }, [open, updateAlignment])
 
-  useEffect(() => {
-    if (askingForRoot) rootInputRef.current?.focus()
-  }, [askingForRoot])
-
   const toggleMenu = () => {
     if (!open) {
       updateAlignment()
-      setAskingForRoot(false)
       // Read on open so the menu picks up a root saved from another repository.
       setProjectsRoot(readLocalProjectsRoot())
     }
     setOpen((current) => !current)
   }
 
-  const askForRoot = () => {
-    setRootDraft(projectsRoot || guessProjectsRoot(repoFullName))
-    setAskingForRoot(true)
-  }
+  const agentLink = (agent: CodeAgent, folder: string | null) =>
+    agent === 'codex'
+      ? codexDeepLink(cloneUrl, folder)
+      : claudeAppDeepLink(repoFullName, defaultBranch, folder)
 
-  const handleClaudeClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+  const handleAgentClick = (agent: CodeAgent) => (event: ReactMouseEvent<HTMLAnchorElement>) => {
     if (localFolder) {
       setOpen(false)
       return
     }
-    // Without a local folder Claude Code can only open an empty session, so ask
-    // for the projects root instead of firing a deep link that looks like a no-op.
+    // Neither app can open a repository it cannot find on disk, so ask once and
+    // resume the click afterwards instead of firing a link that does nothing.
     event.preventDefault()
-    askForRoot()
+    setPendingAgent(agent)
+    setOpen(false)
   }
 
-  // Codex falls back to matching the clone URL against its known workspaces, so
-  // it still opens without a folder and must never be blocked by the prompt.
-  const handleCodexClick = () => setOpen(false)
+  const saveProjectsRoot = (projectsRootValue: string) => {
+    writeLocalProjectsRoot(projectsRootValue)
+    setProjectsRoot(projectsRootValue)
 
-  const saveProjectsRoot = () => {
-    const trimmed = rootDraft.trim()
-    if (!localRepoFolder(trimmed, repoFullName)) {
-      rootInputRef.current?.focus()
-      return
-    }
-    writeLocalProjectsRoot(trimmed)
-    setProjectsRoot(trimmed)
-    setAskingForRoot(false)
+    const folder = localRepoFolder(projectsRootValue, repoFullName)
+    const agent = pendingAgent
+    setPendingAgent(null)
+    setEditingRoot(false)
+
+    if (agent && folder) window.location.href = agentLink(agent, folder)
+  }
+
+  const closeDialog = () => {
+    setPendingAgent(null)
+    setEditingRoot(false)
   }
 
   return (
@@ -152,7 +151,7 @@ export default function OpenInCodeAgentMenu({
         >
           <a
             href={codexDeepLink(cloneUrl, localFolder)}
-            onClick={handleCodexClick}
+            onClick={handleAgentClick('codex')}
             aria-label="Open in ChatGPT Codex"
             className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500 dark:text-gray-200 dark:hover:bg-gray-800"
           >
@@ -168,7 +167,7 @@ export default function OpenInCodeAgentMenu({
           </a>
           <a
             href={claudeAppDeepLink(repoFullName, defaultBranch, localFolder)}
-            onClick={handleClaudeClick}
+            onClick={handleAgentClick('claude')}
             aria-label="Open in Claude Code"
             className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500 dark:text-gray-200 dark:hover:bg-gray-800"
           >
@@ -182,59 +181,34 @@ export default function OpenInCodeAgentMenu({
             Claude Code
           </a>
 
-          {askingForRoot ? (
-            <div className="border-t border-gray-100 px-3 pb-2 pt-2 dark:border-gray-800">
-              <label
-                htmlFor={`${panelId}-root`}
-                className="block text-[11px] leading-relaxed text-gray-500 dark:text-gray-400"
-              >
-                Is this where your projects are?
-              </label>
-              <input
-                ref={rootInputRef}
-                id={`${panelId}-root`}
-                type="text"
-                value={rootDraft}
-                onChange={(event) => setRootDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter') return
-                  event.preventDefault()
-                  saveProjectsRoot()
-                }}
-                placeholder="/Users/you/Projects"
-                spellCheck={false}
-                autoComplete="off"
-                className="mt-1.5 w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-              />
-              <button
-                type="button"
-                onClick={saveProjectsRoot}
-                className="mt-1.5 w-full rounded-md bg-purple-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
-              >
-                Yes, use this folder
-              </button>
-              <p className="mt-1.5 text-[10px] leading-relaxed text-gray-400 dark:text-gray-500">
-                Wrong? In Finder, right-click the folder holding your projects, hold
-                Option and choose Copy as Pathname, then paste it here.
-              </p>
-            </div>
-          ) : (
-            <div className="border-t border-gray-100 px-3 pb-1.5 pt-1.5 dark:border-gray-800">
-              <p className="text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">
-                {localFolder
-                  ? 'Both open this repository straight from your projects folder.'
-                  : 'Set your local projects folder once to open the right repository in either app.'}
-              </p>
-              <button
-                type="button"
-                onClick={askForRoot}
-                className="mt-1 text-[11px] font-medium text-purple-600 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:text-purple-400"
-              >
-                {localFolder ? 'Change folder' : 'Choose folder'}
-              </button>
-            </div>
-          )}
+          <div className="border-t border-gray-100 px-3 pb-1.5 pt-1.5 dark:border-gray-800">
+            <p className="text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">
+              {localFolder
+                ? 'Both open this repository straight from your projects folder.'
+                : 'Set your local projects folder once to open the right repository in either app.'}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingRoot(true)
+                setOpen(false)
+              }}
+              className="mt-1 text-[11px] font-medium text-purple-600 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:text-purple-400"
+            >
+              {localFolder ? 'Change folder' : 'Choose folder'}
+            </button>
+          </div>
         </div>
+      )}
+
+      {(pendingAgent || editingRoot) && (
+        <LocalProjectsFolderDialog
+          repoFullName={repoFullName}
+          cloneUrl={cloneUrl}
+          initialValue={projectsRoot}
+          onSave={saveProjectsRoot}
+          onCancel={closeDialog}
+        />
       )}
     </div>
   )
