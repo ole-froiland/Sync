@@ -96,6 +96,11 @@ export default function OpenInCodeAgentMenu({
     setOpen((current) => !current)
   }
 
+  const askForRoot = () => {
+    setRootDraft(projectsRoot || guessProjectsRoot(repoFullName))
+    setAskingForRoot(true)
+  }
+
   const handleClaudeClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
     if (localFolder) {
       setOpen(false)
@@ -104,12 +109,11 @@ export default function OpenInCodeAgentMenu({
     // Without a local folder Claude Code can only open an empty session, so ask
     // for the projects root instead of firing a deep link that looks like a no-op.
     event.preventDefault()
-    setRootDraft(projectsRoot || guessProjectsRoot(repoFullName))
-    setAskingForRoot(true)
+    askForRoot()
   }
 
-  // Codex resolves the repository from the clone URL on its own, so it must keep
-  // opening even when no local folder is known.
+  // Codex falls back to matching the clone URL against its known workspaces, so
+  // it still opens without a folder and must never be blocked by the prompt.
   const handleCodexClick = () => setOpen(false)
 
   const saveProjectsRoot = () => {
@@ -215,11 +219,20 @@ export default function OpenInCodeAgentMenu({
               </p>
             </div>
           ) : (
-            <p className="border-t border-gray-100 px-3 pb-1 pt-1.5 text-[11px] leading-relaxed text-gray-400 dark:border-gray-800 dark:text-gray-500">
-              {localFolder
-                ? 'Both open the repository straight in the app.'
-                : 'Set your local projects folder once to open the right repository in either app.'}
-            </p>
+            <div className="border-t border-gray-100 px-3 pb-1.5 pt-1.5 dark:border-gray-800">
+              <p className="text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">
+                {localFolder
+                  ? 'Both open this repository straight from your projects folder.'
+                  : 'Set your local projects folder once to open the right repository in either app.'}
+              </p>
+              <button
+                type="button"
+                onClick={askForRoot}
+                className="mt-1 text-[11px] font-medium text-purple-600 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:text-purple-400"
+              >
+                {localFolder ? 'Change folder' : 'Choose folder'}
+              </button>
+            </div>
           )}
         </div>
       )}
