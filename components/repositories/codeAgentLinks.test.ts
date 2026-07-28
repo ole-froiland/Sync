@@ -1,10 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import { claudeAppDeepLink, codexDeepLink, localRepoFolder } from './codeAgentLinks'
+import {
+  claudeAppDeepLink,
+  codexDeepLink,
+  guessProjectsRoot,
+  localRepoFolder,
+} from './codeAgentLinks'
 
 describe('code agent deep links', () => {
   it('opens Codex in the workspace matching the clone remote', () => {
     expect(codexDeepLink('https://github.com/acme/payments.git')).toBe(
       'codex://threads/new?originUrl=https%3A%2F%2Fgithub.com%2Facme%2Fpayments.git'
+    )
+  })
+
+  it('opens Codex in the explicit local checkout when its folder is known', () => {
+    expect(
+      codexDeepLink(
+        'https://github.com/acme/payments.git',
+        '/Users/me/Projects/payments'
+      )
+    ).toBe(
+      'codex://threads/new?originUrl=https%3A%2F%2Fgithub.com%2Facme%2Fpayments.git&path=%2FUsers%2Fme%2FProjects%2Fpayments'
     )
   })
 
@@ -21,8 +37,13 @@ describe('code agent deep links', () => {
   })
 
   it('encodes query-string control characters instead of leaking parameters', () => {
-    expect(codexDeepLink('https://github.com/acme/payments.git?x=1&prompt=unsafe')).toBe(
-      'codex://threads/new?originUrl=https%3A%2F%2Fgithub.com%2Facme%2Fpayments.git%3Fx%3D1%26prompt%3Dunsafe'
+    expect(
+      codexDeepLink(
+        'https://github.com/acme/payments.git?x=1&prompt=unsafe',
+        '/Users/me/Projects/payments?prompt=unsafe&x=1'
+      )
+    ).toBe(
+      'codex://threads/new?originUrl=https%3A%2F%2Fgithub.com%2Facme%2Fpayments.git%3Fx%3D1%26prompt%3Dunsafe&path=%2FUsers%2Fme%2FProjects%2Fpayments%3Fprompt%3Dunsafe%26x%3D1'
     )
     expect(claudeAppDeepLink('acme/repo&q=unsafe', 'main&folder=/tmp')).toBe(
       'claude://code/new?q=Work+in+the+GitHub+repository+acme%2Frepo%26q%3Dunsafe+on+branch+main%26folder%3D%2Ftmp.'
@@ -39,6 +60,24 @@ describe('code agent deep links', () => {
     expect(claudeAppDeepLink('acme/payments', 'main', null)).toBe(
       'claude://code/new?q=Work+in+the+GitHub+repository+acme%2Fpayments+on+branch+main.'
     )
+  })
+})
+
+describe('guessProjectsRoot', () => {
+  it('builds a starting point from the repository owner', () => {
+    expect(guessProjectsRoot('ole-froiland/Be-Social')).toBe(
+      '/Users/ole-froiland/Desktop/Prosjekter'
+    )
+  })
+
+  it('produces a root the folder builder accepts', () => {
+    const guess = guessProjectsRoot('acme/payments')
+    expect(localRepoFolder(guess, 'acme/payments')).toBe('/Users/acme/Desktop/Prosjekter/payments')
+  })
+
+  it('returns nothing when there is no owner to guess from', () => {
+    expect(guessProjectsRoot('')).toBe('')
+    expect(guessProjectsRoot('/payments')).toBe('')
   })
 })
 

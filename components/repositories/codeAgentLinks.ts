@@ -1,7 +1,8 @@
 export const LOCAL_PROJECTS_ROOT_STORAGE_KEY = 'sync-local-projects-root'
 
-export function codexDeepLink(originUrl: string) {
+export function codexDeepLink(originUrl: string, localFolder?: string | null) {
   const query = new URLSearchParams({ originUrl })
+  if (localFolder) query.set('path', localFolder)
   return `codex://threads/new?${query.toString()}`
 }
 
@@ -40,6 +41,17 @@ export function localRepoFolder(projectsRoot: string, repoFullName: string) {
   if (!repoName) return null
 
   return `${root}/${repoName}`
+}
+
+/**
+ * A starting point for the projects-root prompt. The browser is not allowed to
+ * read the filesystem, so this is only a guess the user confirms or corrects —
+ * it assumes the macOS account is named after the repository owner.
+ */
+export function guessProjectsRoot(repoFullName: string) {
+  const owner = repoFullName.split('/')[0]?.trim()
+  if (!owner) return ''
+  return `/Users/${owner}/Desktop/Prosjekter`
 }
 
 // --- localStorage wrappers (mirror lib/chat-channels.ts; not unit-tested) ---

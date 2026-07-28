@@ -13,6 +13,7 @@ import { ChevronDown, SquareTerminal } from 'lucide-react'
 import {
   claudeAppDeepLink,
   codexDeepLink,
+  guessProjectsRoot,
   localRepoFolder,
   readLocalProjectsRoot,
   writeLocalProjectsRoot,
@@ -42,7 +43,7 @@ export default function OpenInCodeAgentMenu({
   const rootInputRef = useRef<HTMLInputElement>(null)
   const panelId = useId()
 
-  const claudeFolder = localRepoFolder(projectsRoot, repoFullName)
+  const localFolder = localRepoFolder(projectsRoot, repoFullName)
 
   const updateAlignment = useCallback(() => {
     const button = buttonRef.current
@@ -96,16 +97,20 @@ export default function OpenInCodeAgentMenu({
   }
 
   const handleClaudeClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
-    if (claudeFolder) {
+    if (localFolder) {
       setOpen(false)
       return
     }
     // Without a local folder Claude Code can only open an empty session, so ask
     // for the projects root instead of firing a deep link that looks like a no-op.
     event.preventDefault()
-    setRootDraft(projectsRoot)
+    setRootDraft(projectsRoot || guessProjectsRoot(repoFullName))
     setAskingForRoot(true)
   }
+
+  // Codex resolves the repository from the clone URL on its own, so it must keep
+  // opening even when no local folder is known.
+  const handleCodexClick = () => setOpen(false)
 
   const saveProjectsRoot = () => {
     const trimmed = rootDraft.trim()
@@ -142,8 +147,8 @@ export default function OpenInCodeAgentMenu({
           }`}
         >
           <a
-            href={codexDeepLink(cloneUrl)}
-            onClick={() => setOpen(false)}
+            href={codexDeepLink(cloneUrl, localFolder)}
+            onClick={handleCodexClick}
             aria-label="Open in ChatGPT Codex"
             className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500 dark:text-gray-200 dark:hover:bg-gray-800"
           >
@@ -158,7 +163,7 @@ export default function OpenInCodeAgentMenu({
             ChatGPT Codex
           </a>
           <a
-            href={claudeAppDeepLink(repoFullName, defaultBranch, claudeFolder)}
+            href={claudeAppDeepLink(repoFullName, defaultBranch, localFolder)}
             onClick={handleClaudeClick}
             aria-label="Open in Claude Code"
             className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500 dark:text-gray-200 dark:hover:bg-gray-800"
@@ -179,7 +184,7 @@ export default function OpenInCodeAgentMenu({
                 htmlFor={`${panelId}-root`}
                 className="block text-[11px] leading-relaxed text-gray-500 dark:text-gray-400"
               >
-                Where do you keep your projects on this computer?
+                Is this where your projects are?
               </label>
               <input
                 ref={rootInputRef}
@@ -202,14 +207,18 @@ export default function OpenInCodeAgentMenu({
                 onClick={saveProjectsRoot}
                 className="mt-1.5 w-full rounded-md bg-purple-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
               >
-                Save folder
+                Yes, use this folder
               </button>
+              <p className="mt-1.5 text-[10px] leading-relaxed text-gray-400 dark:text-gray-500">
+                Wrong? In Finder, right-click the folder holding your projects, hold
+                Option and choose Copy as Pathname, then paste it here.
+              </p>
             </div>
           ) : (
             <p className="border-t border-gray-100 px-3 pb-1 pt-1.5 text-[11px] leading-relaxed text-gray-400 dark:border-gray-800 dark:text-gray-500">
-              {claudeFolder
+              {localFolder
                 ? 'Both open the repository straight in the app.'
-                : 'Codex matches a known workspace. Claude needs to know your local projects folder once.'}
+                : 'Set your local projects folder once to open the right repository in either app.'}
             </p>
           )}
         </div>
