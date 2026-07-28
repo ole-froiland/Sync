@@ -1,9 +1,22 @@
 'use client'
 
 import Image from 'next/image'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react'
 import { ChevronDown, SquareTerminal } from 'lucide-react'
-import { claudeAppDeepLink, codexDeepLink } from './codeAgentLinks'
+import {
+  claudeAppDeepLink,
+  codexDeepLink,
+  localRepoFolder,
+  readLocalProjectsRoot,
+  writeLocalProjectsRoot,
+} from './codeAgentLinks'
 
 const BUTTON_CLASS =
   'inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 dark:focus-visible:ring-offset-gray-900'
@@ -21,9 +34,15 @@ export default function OpenInCodeAgentMenu({
 }: OpenInCodeAgentMenuProps) {
   const [open, setOpen] = useState(false)
   const [alignment, setAlignment] = useState<'left' | 'right'>('right')
+  const [projectsRoot, setProjectsRoot] = useState('')
+  const [askingForRoot, setAskingForRoot] = useState(false)
+  const [rootDraft, setRootDraft] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
+  const rootInputRef = useRef<HTMLInputElement>(null)
   const panelId = useId()
+
+  const claudeFolder = localRepoFolder(projectsRoot, repoFullName)
 
   const updateAlignment = useCallback(() => {
     const button = buttonRef.current
@@ -62,9 +81,41 @@ export default function OpenInCodeAgentMenu({
     }
   }, [open, updateAlignment])
 
+  useEffect(() => {
+    if (askingForRoot) rootInputRef.current?.focus()
+  }, [askingForRoot])
+
   const toggleMenu = () => {
-    if (!open) updateAlignment()
+    if (!open) {
+      updateAlignment()
+      setAskingForRoot(false)
+      // Read on open so the menu picks up a root saved from another repository.
+      setProjectsRoot(readLocalProjectsRoot())
+    }
     setOpen((current) => !current)
+  }
+
+  const handleClaudeClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    if (claudeFolder) {
+      setOpen(false)
+      return
+    }
+    // Without a local folder Claude Code can only open an empty session, so ask
+    // for the projects root instead of firing a deep link that looks like a no-op.
+    event.preventDefault()
+    setRootDraft(projectsRoot)
+    setAskingForRoot(true)
+  }
+
+  const saveProjectsRoot = () => {
+    const trimmed = rootDraft.trim()
+    if (!localRepoFolder(trimmed, repoFullName)) {
+      rootInputRef.current?.focus()
+      return
+    }
+    writeLocalProjectsRoot(trimmed)
+    setProjectsRoot(trimmed)
+    setAskingForRoot(false)
   }
 
   return (
@@ -107,8 +158,8 @@ export default function OpenInCodeAgentMenu({
             ChatGPT Codex
           </a>
           <a
-            href={claudeAppDeepLink(repoFullName, defaultBranch)}
-            onClick={() => setOpen(false)}
+            href={claudeAppDeepLink(repoFullName, defaultBranch, claudeFolder)}
+            onClick={handleClaudeClick}
             aria-label="Open in Claude Code"
             className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500 dark:text-gray-200 dark:hover:bg-gray-800"
           >
@@ -121,9 +172,46 @@ export default function OpenInCodeAgentMenu({
             />
             Claude Code
           </a>
-          <p className="border-t border-gray-100 px-3 pb-1 pt-1.5 text-[11px] leading-relaxed text-gray-400 dark:border-gray-800 dark:text-gray-500">
-            Codex matches a known workspace. Claude may ask you to choose the local folder.
-          </p>
+
+          {askingForRoot ? (
+            <div className="border-t border-gray-100 px-3 pb-2 pt-2 dark:border-gray-800">
+              <label
+                htmlFor={`${panelId}-root`}
+                className="block text-[11px] leading-relaxed text-gray-500 dark:text-gray-400"
+              >
+                Where do you keep your projects on this computer?
+              </label>
+              <input
+                ref={rootInputRef}
+                id={`${panelId}-root`}
+                type="text"
+                value={rootDraft}
+                onChange={(event) => setRootDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter') return
+                  event.preventDefault()
+                  saveProjectsRoot()
+                }}
+                placeholder="/Users/you/Projects"
+                spellCheck={false}
+                autoComplete="off"
+                className="mt-1.5 w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              />
+              <button
+                type="button"
+                onClick={saveProjectsRoot}
+                className="mt-1.5 w-full rounded-md bg-purple-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+              >
+                Save folder
+              </button>
+            </div>
+          ) : (
+            <p className="border-t border-gray-100 px-3 pb-1 pt-1.5 text-[11px] leading-relaxed text-gray-400 dark:border-gray-800 dark:text-gray-500">
+              {claudeFolder
+                ? 'Both open the repository straight in the app.'
+                : 'Codex matches a known workspace. Claude needs to know your local projects folder once.'}
+            </p>
+          )}
         </div>
       )}
     </div>
