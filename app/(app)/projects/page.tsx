@@ -50,7 +50,9 @@ import {
   filterProjectFolderLevel,
   reorderSiblingFolder,
   resolveProjectItemDeleteRequest,
+  searchProjectContent,
   type ProjectItemDeleteRequest,
+  type ProjectSearchResult,
 } from '@/lib/project-folder-view'
 import { openExternalUrl } from '@/lib/project-item-open'
 import {
@@ -769,6 +771,11 @@ export default function ProjectsPage() {
   )
   const visibleFolders = visibleLevel.folders
   const visibleLevelItems = visibleLevel.items
+  const hasProjectSearch = search.trim().length > 0
+  const projectSearchResults = useMemo(
+    () => searchProjectContent(folders, search),
+    [folders, search]
+  )
 
   const folderPath = useMemo(
     () => projectFolderPath(folders, activeParentFolder?.id ?? null),
@@ -1360,7 +1367,8 @@ export default function ProjectsPage() {
                   <input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Søk i mapper og innhold"
+                    placeholder="Søk i prosjekter og innhold"
+                    aria-label="Søk i prosjekter og innhold"
                     className="h-10 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100"
                   />
                 </div>
@@ -1460,16 +1468,39 @@ export default function ProjectsPage() {
                   Lag mappe
                 </Button>
               </div>
+            ) : hasProjectSearch && projectSearchResults.length === 0 ? (
+              <div className="flex min-h-[42vh] flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 text-center dark:border-gray-800 dark:bg-gray-900/30">
+                <Search size={38} className="mb-4 text-gray-300 dark:text-gray-700" />
+                <h2 className="font-medium text-gray-950 dark:text-gray-100">Ingen treff</h2>
+                <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+                  Prøv et annet navn, en innholdstype eller en del av en lenke.
+                </p>
+              </div>
+            ) : hasProjectSearch ? (
+              <div className="space-y-3">
+                <p aria-live="polite" className="text-sm text-gray-500 dark:text-gray-400">
+                  {projectSearchResults.length} treff i prosjekter og innhold
+                </p>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-3">
+                  {projectSearchResults.map((result) => (
+                    <ProjectSearchResultCard
+                      key={
+                        result.kind === 'folder'
+                          ? `folder:${result.folder.id}`
+                          : `item:${result.folder.id}:${result.item.id}`
+                      }
+                      result={result}
+                      onOpenFolder={openFolderFromOverview}
+                    />
+                  ))}
+                </div>
+              </div>
             ) : visibleFolders.length === 0 && visibleLevelItems.length === 0 ? (
               <div className="flex min-h-[42vh] flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 text-center dark:border-gray-800 dark:bg-gray-900/30">
                 <FolderOpen size={38} className="mb-4 text-gray-300 dark:text-gray-700" />
-                <h2 className="font-medium text-gray-950 dark:text-gray-100">
-                  {search.trim() ? 'Ingen mapper funnet' : 'Ingen undermapper her'}
-                </h2>
+                <h2 className="font-medium text-gray-950 dark:text-gray-100">Ingen undermapper her</h2>
                 <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-                  {search.trim()
-                    ? 'Prøv et annet søk, eller gå tilbake til en annen mappe.'
-                    : 'Dra en mappe hit, eller lag en ny mappe på dette nivået.'}
+                  Dra en mappe hit, eller lag en ny mappe på dette nivået.
                 </p>
               </div>
             ) : previewMode && visibleFolders.length > 0 ? (
@@ -2675,18 +2706,73 @@ function LogoEditorModal({
     </Modal>
   )
 }
-function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
+function ProjectSearchResultCard({
+  result,
+  onOpenFolder,
+}: {
+  result: ProjectSearchResult
+  onOpenFolder: (folder: ProjectFolder) => void
+}) {
+  const pathLabel = ['Prosjekter', ...result.path.map((folder) => folder.name)].join(' / ')
+
+  if (result.kind === 'item') {
+    return (
+      <ProjectItemPreviewCard
+        item={result.item}
+        context={pathLabel}
+        onOpenFallback={() => onOpenFolder(result.folder)}
+      />
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpenFolder(result.folder)}
+      className="flex min-w-0 items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-left transition hover:border-purple-400 hover:bg-purple-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
+    >
+      <ProjectLogoThumbnail folder={result.folder} className="h-10 w-10" iconSize={19} />
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium text-gray-950 dark:text-gray-100">
+            {result.folder.name}
+          </span>
+          <span className="shrink-0 rounded-md bg-white px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-950 dark:text-gray-400">
+            {result.folder.parentId ? 'Mappe' : 'Prosjekt'}
+          </span>
+        </span>
+        <span className="mt-1 block truncate text-xs text-gray-500 dark:text-gray-400" title={pathLabel}>
+          {pathLabel}
+        </span>
+      </span>
+      <FolderOpen size={16} className="shrink-0 text-gray-400" />
+    </button>
+  )
+}
+
+function ProjectItemPreviewCard({
+  item,
+  context,
+  onOpenFallback,
+}: {
+  item: ProjectItem
+  context?: string
+  onOpenFallback?: () => void
+}) {
   const openTarget = projectItemOpenTarget(item)
+  const actionable = Boolean(openTarget || onOpenFallback)
 
   return (
     <article
-      role={openTarget ? 'button' : undefined}
-      tabIndex={openTarget ? 0 : undefined}
+      role={actionable ? 'button' : undefined}
+      tabIndex={actionable ? 0 : undefined}
       onClick={() => {
         if (openTarget) openProjectItem(item)
+        else onOpenFallback?.()
       }}
       onKeyDown={(event) => {
         if (event.key === 'Enter' && openTarget) openProjectItem(item)
+        else if (event.key === 'Enter') onOpenFallback?.()
       }}
       className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-900"
     >
@@ -2700,6 +2786,11 @@ function ProjectItemPreviewCard({ item }: { item: ProjectItem }) {
                 {projectItemTypeLabel(item)}
               </span>
             </div>
+            {context && (
+              <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400" title={context}>
+                {context}
+              </p>
+            )}
           </div>
         </div>
         {openTarget && (

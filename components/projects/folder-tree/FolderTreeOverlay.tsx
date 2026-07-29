@@ -2,10 +2,14 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Folder, Network, X } from 'lucide-react'
+import { Folder, Network, Search, X } from 'lucide-react'
 import type { ProjectFolder, ProjectItem } from '@/types'
 import { openExternalUrl, syncRepositoryHref } from '@/lib/project-item-open'
-import type { FolderReorderPlacement } from '@/lib/project-folder-view'
+import {
+  filterProjectTreeForSearch,
+  searchProjectContent,
+  type FolderReorderPlacement,
+} from '@/lib/project-folder-view'
 import type { AddKind } from './constants'
 import { NODE_H, NODE_W, ROOT_ID } from './constants'
 import { buildTreeLayout, visibleSubtreeBounds, type TreeNodeModel, type TreeOrientation } from './buildTreeLayout'
@@ -85,15 +89,38 @@ export default function FolderTreeOverlay({
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [menuFolderId, setMenuFolderId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
   const [ghost, setGhost] = useState<{ nodeId: string; x: number; y: number } | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const pressRef = useRef<PressState | null>(null)
   const { transform, bind, zoomIn, zoomOut, fit, fitBounds } = usePanZoom()
 
+  const searchActive = search.trim().length > 0
+  const searchResults = useMemo(() => searchProjectContent(folders, search), [folders, search])
+  const visibleFolders = useMemo(
+    () => filterProjectTreeForSearch(folders, search),
+    [folders, search]
+  )
+  const matchedNodeIds = useMemo(
+    () =>
+      new Set(
+        searchResults.map((result) => (result.kind === 'folder' ? result.folder.id : result.item.id))
+      ),
+    [searchResults]
+  )
+  const visibleCollapsed = useMemo(
+    () => (searchActive ? new Set<string>() : collapsed),
+    [collapsed, searchActive]
+  )
   const layout = useMemo(
-    () => buildTreeLayout(folders, { collapsed, currentId: currentFolderId, orientation }),
-    [folders, collapsed, currentFolderId, orientation]
+    () => buildTreeLayout(visibleFolders, {
+      collapsed: visibleCollapsed,
+      currentId: currentFolderId,
+      orientation,
+    }),
+    [visibleFolders, visibleCollapsed, currentFolderId, orientation]
   )
 
   // Re-fit when the content size or orientation changes.
@@ -103,18 +130,24 @@ export default function FolderTreeOverlay({
     fit(layout.width, layout.height, clientWidth, clientHeight)
   }, [layout.width, layout.height, fit])
 
-  // Escape backs out one layer at a time: rename → menu → selection → close.
+  // Escape backs out one layer at a time: rename → menu → selection → search → close.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        return
+      }
       if (e.key !== 'Escape') return
       if (renamingId) setRenamingId(null)
       else if (menuFolderId) setMenuFolderId(null)
       else if (selectedId) setSelectedId(null)
+      else if (search) setSearch('')
       else onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, renamingId, menuFolderId, selectedId])
+  }, [onClose, renamingId, menuFolderId, search, selectedId])
 
   function toggle(id: string) {
     setCollapsed((prev) => {
@@ -287,10 +320,10 @@ export default function FolderTreeOverlay({
   const content = (
     <>
       {/* header */}
-      <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex items-center gap-3 border-b border-white/5 px-4 py-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
           <span className="text-[13px] font-semibold text-gray-200">Mappetre</span>
-          <span className="truncate text-[12px] font-medium text-gray-500">
+          <span className="hidden truncate text-[12px] font-medium text-gray-500 md:inline">
             Prosjekter
             {breadcrumb.map((n) => (
               <span key={n}>
@@ -300,6 +333,42 @@ export default function FolderTreeOverlay({
             ))}
           </span>
         </div>
+        <div data-no-drag className="relative w-44 shrink-0 sm:w-64">
+          <Search
+            size={14}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500"
+          />
+          <input
+            ref={searchInputRef}
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setSelectedId(null)
+              setMenuFolderId(null)
+            }}
+            placeholder="Søk i treet"
+            aria-label="Søk i prosjekter, mapper og innhold i treet"
+            className="h-[30px] w-full rounded-lg border border-white/[0.07] bg-[#0f1115] pl-8 pr-8 text-[12px] font-medium text-gray-200 outline-none transition placeholder:text-gray-600 focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/20"
+          />
+          {searchActive && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('')
+                searchInputRef.current?.focus()
+              }}
+              aria-label="Tøm søk"
+              className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-gray-500 transition hover:bg-white/5 hover:text-gray-200"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        {searchActive && (
+          <span aria-live="polite" className="hidden shrink-0 text-[11px] font-medium text-gray-500 lg:inline">
+            {searchResults.length} treff
+          </span>
+        )}
         <div className="flex items-center gap-1.5">
           <HeaderBtn
             label={orientation === 'vertical' ? 'Vis vannrett' : 'Vis loddrett'}
@@ -358,6 +427,7 @@ export default function FolderTreeOverlay({
                   orientation={orientation}
                   renaming={renamingId === node.id}
                   selected={selectedId === node.id}
+                  matched={matchedNodeIds.has(node.id)}
                   isDropTarget={dropTarget?.kind === 'move' && dropTarget.targetId === node.id}
                   reorderDrop={dropTarget?.kind === 'reorder' && dropTarget.targetId === node.id ? dropTarget.placement : null}
                   onToggle={() => toggle(node.id)}
@@ -409,6 +479,16 @@ export default function FolderTreeOverlay({
           >
             <Folder size={15} className="text-violet-300" />
             <span className="max-w-[160px] truncate">{ghostNode.label}</span>
+          </div>
+        )}
+
+        {searchActive && searchResults.length === 0 && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div className="rounded-xl border border-white/10 bg-[#0f1115]/95 px-5 py-4 text-center shadow-[0_18px_40px_-12px_rgba(0,0,0,0.95)]">
+              <Search size={22} className="mx-auto mb-2 text-gray-600" />
+              <p className="text-[13px] font-semibold text-gray-300">Ingen treff i treet</p>
+              <p className="mt-1 text-[11px] text-gray-500">Prøv et annet navn, en type eller en del av en lenke.</p>
+            </div>
           </div>
         )}
 
