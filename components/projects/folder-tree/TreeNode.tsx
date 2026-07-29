@@ -45,6 +45,7 @@ interface Props {
   orientation: TreeOrientation
   renaming: boolean
   selected: boolean
+  matched: boolean
   isDropTarget: boolean
   reorderDrop: 'before' | 'after' | null
   onToggle: () => void
@@ -66,6 +67,7 @@ export default function TreeNode({
   orientation,
   renaming,
   selected,
+  matched,
   isDropTarget,
   reorderDrop,
   onToggle,
@@ -159,6 +161,8 @@ export default function TreeNode({
             ? 'border-emerald-400 bg-[#274c39] text-emerald-50 ring-2 ring-emerald-400/60'
             : selected
             ? 'border-violet-400 bg-[#3f3569] text-white ring-2 ring-violet-400/50'
+            : matched
+            ? 'border-violet-300 bg-[#45396f] text-white ring-2 ring-violet-400/40'
             : node.isCurrent
             ? 'border-violet-400/80 bg-[#3a3160] text-violet-50'
             : node.onPath
@@ -172,7 +176,7 @@ export default function TreeNode({
             'shrink-0',
             isDropTarget
               ? 'text-emerald-300'
-              : node.isCurrent || selected
+              : node.isCurrent || selected || matched
               ? 'text-violet-300'
               : node.onPath
               ? 'text-violet-400/80'
