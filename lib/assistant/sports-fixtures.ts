@@ -108,9 +108,10 @@ export async function planPremierLeagueFixtures(
 function isPremierLeagueCalendarRequest(value: string) {
   const normalized = normalizeTeamTypos(normalize(value))
   const namedSupportedTeam = /(?:manchester united|man utd)/.test(normalized)
+  const importIntent = /(?:legg|legge|add|import|sett|putt)/.test(normalized)
   return (
     (/(?:premier league|premierliga)/.test(normalized) || namedSupportedTeam) &&
-    /(?:kalender|calendar)/.test(normalized) &&
+    (/(?:kalender|calendar)/.test(normalized) || importIntent) &&
     /(?:alle|all|hver|every|samtlige)/.test(normalized) &&
     /(?:kamp|kamper|matches|fixtures|games)/.test(normalized)
   )
