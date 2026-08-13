@@ -109,7 +109,7 @@ export type SyncAssistantPlan = {
 export type SyncAssistantChatResponse = {
   message: SyncAssistantMessage
   actions: SyncAssistantActionEnvelope[]
-  planner: 'openai' | 'gemma' | 'local'
+  planner: 'openai' | 'gemma' | 'browser' | 'local'
   model?: string
 }
 

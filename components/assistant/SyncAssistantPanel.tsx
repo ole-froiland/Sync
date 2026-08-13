@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bot, CalendarPlus, Check, FolderPlus, Languages, Loader2, Maximize2, MessageSquare, Minimize2, Navigation, Send, Sparkles, StickyNote, Workflow, X } from 'lucide-react'
+import { Bot, CalendarPlus, Check, Cpu, FolderPlus, Languages, Loader2, Maximize2, MessageSquare, Minimize2, Navigation, Send, Sparkles, StickyNote, Workflow, X } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Textarea from '@/components/ui/Textarea'
 import { useLanguage } from '@/context/LanguageContext'
@@ -21,6 +21,7 @@ import {
   type AssistantLocalCalendarEvent,
 } from '@/lib/assistant/client-actions'
 import { cn } from '@/lib/utils'
+import { initializeDeviceAi, planWithDeviceAi, shutdownDeviceAi, supportsDeviceAi } from '@/lib/assistant/browser-ai'
 import {
   ASSISTANT_PANEL_DEFAULT_WIDTH,
   ASSISTANT_PANEL_MAX_WIDTH,
@@ -51,6 +52,7 @@ const STORAGE_KEY = 'sync-calendar-events'
 const CALENDAR_EVENT_CREATED = 'sync:calendar-event-created'
 const CALENDAR_EVENTS_CHANGED = 'sync:calendar-events-changed'
 const PANEL_WIDTH_STORAGE_KEY = 'sync-assistant-panel-width'
+const DEVICE_AI_STORAGE_KEY = 'sync-device-ai-enabled'
 
 const starterMessage: SyncAssistantMessage = {
   role: 'assistant',
@@ -72,6 +74,10 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
   const [panelWidth, setPanelWidth] = useState(ASSISTANT_PANEL_DEFAULT_WIDTH)
   const [panelMaxWidth, setPanelMaxWidth] = useState(ASSISTANT_PANEL_MAX_WIDTH)
   const [resizing, setResizing] = useState(false)
+  const [deviceAiEnabled, setDeviceAiEnabled] = useState(false)
+  const [deviceAiSupported, setDeviceAiSupported] = useState<boolean | null>(null)
+  const [deviceAiProgress, setDeviceAiProgress] = useState<number | null>(null)
+  const [deviceAiStatus, setDeviceAiStatus] = useState<'idle' | 'loading' | 'ready' | 'thinking' | 'error'>('idle')
   const [sessionId] = useState(() => crypto.randomUUID())
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -111,6 +117,20 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
     window.addEventListener('resize', syncWidth)
     return () => window.removeEventListener('resize', syncWidth)
   }, [])
+
+  useEffect(() => {
+    const supported = supportsDeviceAi()
+    const enabled = supported && window.localStorage.getItem(DEVICE_AI_STORAGE_KEY) === '1'
+    setDeviceAiSupported(supported)
+    setDeviceAiEnabled(enabled)
+  }, [])
+
+  useEffect(() => {
+    if (!open || !deviceAiEnabled || !deviceAiSupported || deviceAiStatus !== 'idle') return
+    void loadDeviceAi()
+    // loadDeviceAi intentionally starts only after the user has opted in on this device.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deviceAiEnabled, deviceAiStatus, deviceAiSupported, open])
 
   useEffect(() => {
     if (!resizing) return
@@ -159,25 +179,46 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
     setBusy(true)
 
     try {
-      const res = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: nextMessages,
-          currentPath: pathname,
-          sessionId,
-          calendarEvents: readCalendarEvents().map((event) => ({
-            id: event.id,
-            title: event.title,
-            start: event.start,
-            end: event.end,
-            eventKind: event.kind,
-            allDay: event.allDay === true,
-          })),
-        }),
-      })
-      const body = (await res.json().catch(() => ({}))) as Partial<SyncAssistantChatResponse> & { error?: string }
-      if (!res.ok || !body.message) throw new Error(body.error ?? 'Sync AI svarte ikke.')
+      const calendarEvents = readCalendarEvents().map((event) => ({
+        id: event.id,
+        title: event.title,
+        start: event.start,
+        end: event.end,
+        eventKind: event.kind,
+        allDay: event.allDay === true,
+      }))
+      const requestPlan = async (clientPlan?: unknown) => {
+        const res = await fetch('/api/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: nextMessages,
+            currentPath: pathname,
+            sessionId,
+            calendarEvents,
+            clientPlan,
+          }),
+        })
+        const body = (await res.json().catch(() => ({}))) as Partial<SyncAssistantChatResponse> & { error?: string }
+        if (!res.ok || !body.message) throw new Error(body.error ?? 'Sync AI svarte ikke.')
+        return body
+      }
+
+      let body = await requestPlan()
+      if (body.planner === 'local' && (body.actions?.length ?? 0) === 0 && deviceAiEnabled && deviceAiSupported) {
+        try {
+          setDeviceAiStatus('thinking')
+          const clientPlan = await planWithDeviceAi(nextMessages, {
+            currentPath: pathname,
+            now: new Date(),
+            calendarEvents,
+          }, updateDeviceAiProgress)
+          if (clientPlan) body = await requestPlan(clientPlan)
+          setDeviceAiStatus('ready')
+        } catch {
+          setDeviceAiStatus('error')
+        }
+      }
 
       setMessages((prev) => [...prev, body.message as SyncAssistantMessage])
       const plannedActions = body.actions ?? []
@@ -199,6 +240,40 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
     } finally {
       setBusy(false)
     }
+  }
+
+  async function enableDeviceAi() {
+    if (!deviceAiSupported) {
+      setDeviceAiStatus('error')
+      return
+    }
+    window.localStorage.setItem(DEVICE_AI_STORAGE_KEY, '1')
+    setDeviceAiEnabled(true)
+    await loadDeviceAi()
+  }
+
+  async function loadDeviceAi() {
+    setDeviceAiStatus('loading')
+    setDeviceAiProgress(0)
+    try {
+      await initializeDeviceAi(updateDeviceAiProgress)
+      setDeviceAiStatus('ready')
+      setDeviceAiProgress(1)
+    } catch {
+      setDeviceAiStatus('error')
+    }
+  }
+
+  async function disableDeviceAi() {
+    window.localStorage.removeItem(DEVICE_AI_STORAGE_KEY)
+    setDeviceAiEnabled(false)
+    setDeviceAiStatus('idle')
+    setDeviceAiProgress(null)
+    await shutdownDeviceAi()
+  }
+
+  function updateDeviceAiProgress(report: { progress: number }) {
+    setDeviceAiProgress(Math.max(0, Math.min(1, report.progress)))
   }
 
   async function runAction(envelope: SyncAssistantActionEnvelope) {
@@ -503,6 +578,14 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
       </div>
 
       <div className="shrink-0 border-t border-gray-100 bg-white p-4 dark:border-gray-800 dark:bg-gray-950">
+        <DeviceAiControl
+          enabled={deviceAiEnabled}
+          supported={deviceAiSupported}
+          status={deviceAiStatus}
+          progress={deviceAiProgress}
+          onEnable={() => void enableDeviceAi()}
+          onDisable={() => void disableDeviceAi()}
+        />
         {messages.length === 1 && (
           <div className="mb-3 flex flex-wrap gap-2">
             {suggestions.map((suggestion) => (
@@ -546,6 +629,70 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
         </div>
       </div>
     </aside>
+  )
+}
+
+function DeviceAiControl({
+  enabled,
+  supported,
+  status,
+  progress,
+  onEnable,
+  onDisable,
+}: {
+  enabled: boolean
+  supported: boolean | null
+  status: 'idle' | 'loading' | 'ready' | 'thinking' | 'error'
+  progress: number | null
+  onEnable: () => void
+  onDisable: () => void
+}) {
+  if (supported === null) return null
+  if (!supported) {
+    return (
+      <p className="mb-3 flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+        <Cpu size={14} /> Smart lokal AI krever en nettleser med WebGPU.
+      </p>
+    )
+  }
+  if (!enabled) {
+    return (
+      <div className="mb-3 rounded-xl border border-fuchsia-100 bg-fuchsia-50/70 p-3 dark:border-fuchsia-950 dark:bg-fuchsia-950/20">
+        <button
+          type="button"
+          onClick={onEnable}
+          className="flex w-full items-center gap-2 text-left text-sm font-semibold text-fuchsia-800 dark:text-fuchsia-200"
+        >
+          <Cpu size={16} /> Aktiver gratis lokal AI
+        </button>
+        <p className="mt-1 text-xs leading-5 text-fuchsia-700/75 dark:text-fuchsia-300/70">
+          Den smarte modellen kjører på denne enheten og lastes ned én gang, omtrent 0,9 GB.
+        </p>
+      </div>
+    )
+  }
+
+  const percent = Math.round((progress ?? 0) * 100)
+  const label = status === 'loading'
+    ? `Laster lokal AI · ${percent} %`
+    : status === 'thinking'
+      ? 'Lokal AI tenker på denne enheten'
+      : status === 'error'
+        ? 'Lokal AI kunne ikke startes på denne enheten'
+        : 'Lokal AI er klar på denne enheten'
+
+  return (
+    <div className="mb-3 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+      {status === 'loading' || status === 'thinking'
+        ? <Loader2 size={14} className="animate-spin text-fuchsia-500" />
+        : <Cpu size={14} className={status === 'error' ? 'text-red-500' : 'text-emerald-500'} />}
+      <span className="min-w-0 flex-1">{label}</span>
+      {status !== 'loading' && status !== 'thinking' && (
+        <button type="button" onClick={onDisable} className="font-medium text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+          Slå av
+        </button>
+      )}
+    </div>
   )
 }
 
