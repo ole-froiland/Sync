@@ -103,4 +103,22 @@ describe('local Gemma bridge', () => {
     expect(plan?.actions[0]).toMatchObject({ kind: 'create_note' })
     expect(JSON.stringify(plan?.actions).toLowerCase()).toContain('pass')
   }, 35_000)
+
+  it.runIf(process.env.LOCAL_AI_LIVE_TEST === '1')('plans a multi-day trip with the local model', async () => {
+    vi.stubEnv('LOCAL_AI_OWNER_USER_IDS', 'live-test-user')
+    const plan = await planLocalGemmaResponse(
+      [{ role: 'user', content: 'legg inn at jeg skal på ferie til Seoul fra 10. januar 2027 til 19. januar 2027' }],
+      { userId: 'live-test-user', currentPath: '/calendar', now: new Date('2026-08-13T15:00:00+02:00') },
+    )
+
+    expect(plan?.actions[0]).toMatchObject({
+      kind: 'create_calendar_events',
+      events: [{
+        title: expect.stringMatching(/Seoul/i),
+        start: '2027-01-10T00:00:00',
+        end: '2027-01-20T00:00:00',
+        allDay: true,
+      }],
+    })
+  }, 35_000)
 })

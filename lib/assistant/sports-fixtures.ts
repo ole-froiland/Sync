@@ -42,7 +42,8 @@ export async function planPremierLeagueFixtures(
   options: FixturePlannerOptions = {}
 ): Promise<SyncAssistantPlan | null> {
   const request = [...messages].reverse().find((message) => message.role === 'user')?.content.trim() ?? ''
-  if (!isPremierLeagueCalendarRequest(request)) return null
+  if (!isFixtureImportRequest(request)) return null
+  const explicitlyPremierLeague = mentionsPremierLeague(request)
 
   const season = requestedSeason(request) ?? currentSeasonStart(options.now ?? new Date())
   const fetcher = options.fetcher ?? fetch
@@ -58,6 +59,7 @@ export async function planPremierLeagueFixtures(
     const team = findRequestedTeam(request, teams)
 
     if (!team?.id || !team.name) {
+      if (!explicitlyPremierLeague) return null
       return {
         reply: `Jeg fant Premier League-sesongen ${season}/${String(season + 1).slice(-2)}, men ikke laget i forespørselen. Skriv hele lagnavnet, for eksempel "Manchester United".`,
         actions: [],
@@ -105,16 +107,18 @@ export async function planPremierLeagueFixtures(
   }
 }
 
-function isPremierLeagueCalendarRequest(value: string) {
+function isFixtureImportRequest(value: string) {
   const normalized = normalizeTeamTypos(normalize(value))
-  const namedSupportedTeam = /(?:manchester united|man utd)/.test(normalized)
   const importIntent = /(?:legg|legge|add|import|sett|putt)/.test(normalized)
   return (
-    (/(?:premier league|premierliga)/.test(normalized) || namedSupportedTeam) &&
     (/(?:kalender|calendar)/.test(normalized) || importIntent) &&
     /(?:alle|all|hver|every|samtlige)/.test(normalized) &&
     /(?:kamp|kamper|matches|fixtures|games)/.test(normalized)
   )
+}
+
+function mentionsPremierLeague(value: string) {
+  return /(?:premier league|premierliga)/.test(normalize(value))
 }
 
 function requestedSeason(value: string) {

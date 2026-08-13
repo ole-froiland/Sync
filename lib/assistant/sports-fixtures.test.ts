@@ -5,6 +5,7 @@ const teamsResponse = {
   data: [
     { id: '1', name: 'Manchester United', shortName: 'Man Utd', abbr: 'MUN' },
     { id: '43', name: 'Manchester City', shortName: 'Man City', abbr: 'MCI' },
+    { id: '42', name: 'Arsenal', shortName: 'Arsenal', abbr: 'ARS' },
   ],
 }
 
@@ -29,6 +30,16 @@ const matchesResponse = {
       kickoffTimezoneString: 'Europe/London',
       homeTeam: { id: '1', name: 'Manchester United', shortName: 'Man Utd', abbr: 'MUN' },
       awayTeam: { id: '40', name: 'Ipswich Town', shortName: 'Ipswich', abbr: 'IPS' },
+    },
+    {
+      matchId: 'arsenal-1',
+      competitionId: '8',
+      competition: 'Premier League',
+      season: '2026',
+      kickoff: '2026-09-12 15:00:00',
+      kickoffTimezoneString: 'Europe/London',
+      homeTeam: { id: '42', name: 'Arsenal', shortName: 'Arsenal', abbr: 'ARS' },
+      awayTeam: { id: '43', name: 'Manchester City', shortName: 'Man City', abbr: 'MCI' },
     },
   ],
 }
@@ -92,6 +103,35 @@ describe('planPremierLeagueFixtures', () => {
 
     expect(fetcher).toHaveBeenCalledTimes(2)
     expect(plan?.actions[0]).toMatchObject({ kind: 'create_calendar_events' })
+  })
+
+  it('discovers any current Premier League team from the official team list', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(teamsResponse))
+      .mockResolvedValueOnce(Response.json(matchesResponse))
+
+    const plan = await planPremierLeagueFixtures(
+      [{ role: 'user', content: 'legg inn alle Arsenal-kampene' }],
+      { fetcher, now: new Date('2026-08-13T10:00:00Z') }
+    )
+
+    expect(plan?.actions[0]).toMatchObject({
+      kind: 'create_calendar_events',
+      events: [{ id: 'pl-arsenal-1', title: 'Arsenal – Manchester City' }],
+    })
+  })
+
+  it('lets another fixture provider handle an unknown non-Premier-League team', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(teamsResponse))
+
+    const plan = await planPremierLeagueFixtures(
+      [{ role: 'user', content: 'legg inn alle KFUM-kampene' }],
+      { fetcher }
+    )
+
+    expect(plan).toBeNull()
+    expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
   it('understands a common Manchester United typo', async () => {

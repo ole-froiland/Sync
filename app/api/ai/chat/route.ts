@@ -40,23 +40,35 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid local AI plan' }, { status: 400 })
   }
   if (plan) planner = 'browser'
-  if (!plan) plan = planCalendarAutomation(messages, { events: calendarEvents, now })
-  if (!plan) plan = await planPremierLeagueFixtures(messages, { now })
   if (!plan) plan = await planNorwegianFootballFixtures(messages, { now })
+  if (!plan) plan = await planPremierLeagueFixtures(messages, { now })
   const model = process.env.OPENAI_MODEL || 'gpt-5.4-mini'
+  let gemmaFallback: SyncAssistantPlan | null = null
 
   if (!plan) {
     try {
-      plan = await planLocalGemmaResponse(messages, {
+      const gemmaPlan = await planLocalGemmaResponse(messages, {
         userId: auth.user.id,
         currentPath: body.currentPath,
         now,
         calendarEvents,
       })
-      if (plan) planner = 'gemma'
+      if (gemmaPlan?.actions.length) {
+        plan = gemmaPlan
+        planner = 'gemma'
+      } else {
+        gemmaFallback = gemmaPlan
+      }
     } catch {
       plan = null
     }
+  }
+
+  if (!plan) plan = planCalendarAutomation(messages, { events: calendarEvents, now })
+
+  if (!plan && gemmaFallback) {
+    plan = gemmaFallback
+    planner = 'gemma'
   }
 
   if (!plan) {
