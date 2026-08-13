@@ -6,9 +6,10 @@ type CalendarAutomationContext = {
 }
 
 const MONTHS: Record<string, number> = {
-  januar: 0, january: 0, februar: 1, february: 1, mars: 2, march: 2,
-  april: 3, mai: 4, may: 4, juni: 5, june: 5, juli: 6, july: 6,
-  august: 7, september: 8, oktober: 9, october: 9, november: 10, desember: 11, december: 11,
+  jan: 0, januar: 0, january: 0, feb: 1, februar: 1, february: 1, mar: 2, mars: 2, march: 2,
+  apr: 3, april: 3, mai: 4, may: 4, jun: 5, juni: 5, june: 5, jul: 6, juli: 6, july: 6,
+  aug: 7, august: 7, sep: 8, sept: 8, september: 8, okt: 9, oktober: 9, october: 9,
+  nov: 10, november: 10, des: 11, desember: 11, december: 11,
 }
 
 const WEEKDAYS: Record<string, number> = {
@@ -34,11 +35,11 @@ export function planCalendarAutomation(
   if (isDeleteRequest(normalized)) return planDelete(request, events, now)
   if (isUpdateRequest(normalized)) return planMove(request, events, now)
   if (isRecurringRequest(normalized)) return planWeeklySeries(request, now)
-  if (isTripRequest(normalized)) return planTrip(request, now)
+  if (isTripRequest(normalized)) return planTrip(request, events, now)
   return null
 }
 
-function planTrip(request: string, now: Date): SyncAssistantPlan {
+function planTrip(request: string, events: SyncAssistantCalendarEvent[], now: Date): SyncAssistantPlan {
   const range = parseMonthRange(request, now)
   if (!range) {
     return { reply: 'Hvilke datoer gjelder reisen? Skriv for eksempel «Seoul 10.–19. januar».', actions: [] }
@@ -54,6 +55,17 @@ function planTrip(request: string, now: Date): SyncAssistantPlan {
     end: localDateTime(range.endExclusive),
     eventKind: 'meeting',
     allDay: true,
+  }
+  const existing = events.find((candidate) =>
+    compactKey(candidate.title) === compactKey(event.title)
+    && +new Date(candidate.start) === +new Date(event.start)
+    && +new Date(candidate.end) === +new Date(event.end)
+  )
+  if (existing) {
+    return {
+      reply: `«${existing.title}» ligger allerede i kalenderen fra ${formatDate(range.start)} til ${formatDate(range.endInclusive)}. Jeg oppretter ikke et duplikat.`,
+      actions: [],
+    }
   }
   return {
     reply: `Jeg har gjort klar ${title} fra ${formatDate(range.start)} til ${formatDate(range.endInclusive)} som én heldagshendelse. Bekreft før den legges inn.`,
@@ -148,12 +160,12 @@ function matchEvents(request: string, events: SyncAssistantCalendarEvent[], now:
 }
 
 function isTripRequest(value: string) {
-  return /\b(?:ferie|reise|tur|vacation|holiday|trip)\b/.test(value)
+  return /\b(?:ferie(?:n|r)?|reise(?:n|r)?|tur(?:en|er)?|vacation|holiday|trip)\b/.test(value)
     || /\b(?:jeg|vi)\s+(?:skal|drar|reiser|flyr)\s+til\b/.test(value)
 }
 
 function isVacationRequest(value: string) {
-  return /\b(?:ferie|vacation|holiday)\b/.test(value)
+  return /\b(?:ferie(?:n|r)?|vacation|holiday)\b/.test(value)
 }
 
 function isRecurringRequest(value: string) {
@@ -224,7 +236,7 @@ function parseMonthRange(text: string, now: Date) {
 }
 
 function tripDestination(text: string) {
-  const match = text.match(/\b(?:ferie|reise|tur|vacation|holiday|trip)\s+(?:til|i|to|in)\s+(.+?)(?=\s+(?:mellom|fra|from|between|\d{1,2}\.?\s*[–—-]))/i)
+  const match = text.match(/\b(?:ferie(?:n|r)?|reise(?:n|r)?|tur(?:en|er)?|vacation|holiday|trip)(?:\s+(?:min|mi|mitt|vår|vart|our|my))?\s+(?:til|i|to|in)\s+(.+?)(?=\s+(?:mellom|fra|from|between|\d{1,2}\.?\s*[–—-]))/i)
     ?? text.match(/\b(?:jeg|vi)\s+(?:skal|drar|reiser|flyr)\s+til\s+(.+?)(?=\s+(?:mellom|fra|from|between|\d{1,2}))/i)
   return match?.[1]?.trim().replace(/[,.]+$/, '') ?? ''
 }
@@ -332,6 +344,10 @@ function normalize(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9æøå:-]+/g, ' ')
     .trim()
+}
+
+function compactKey(value: string) {
+  return normalize(value).replace(/[^a-z0-9æøå]/g, '')
 }
 
 function slug(value: string) {

@@ -5,6 +5,7 @@ import { buildActionEnvelopes } from '@/lib/assistant/envelope'
 import { planCalendarAutomation } from '@/lib/assistant/calendar-automation'
 import { planLocalSyncResponse, planOpenAiSyncResponse } from '@/lib/assistant/planner'
 import { planPremierLeagueFixtures } from '@/lib/assistant/sports-fixtures'
+import { planNorwegianFootballFixtures } from '@/lib/assistant/norwegian-fixtures'
 import type { SyncAssistantCalendarEvent, SyncAssistantMessage, SyncAssistantPlan } from '@/lib/assistant/types'
 
 export const runtime = 'nodejs'
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
   const now = new Date()
   let plan: SyncAssistantPlan | null = planCalendarAutomation(messages, { events: calendarEvents, now })
   if (!plan) plan = await planPremierLeagueFixtures(messages, { now })
+  if (!plan) plan = await planNorwegianFootballFixtures(messages, { now })
   const model = process.env.OPENAI_MODEL || 'gpt-5.4-mini'
 
   if (!plan) {

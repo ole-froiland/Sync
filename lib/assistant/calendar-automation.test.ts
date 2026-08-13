@@ -31,6 +31,40 @@ describe('calendar automation', () => {
     })
   })
 
+  it('understands inflected Norwegian trip language and compact dates', () => {
+    const plan = planCalendarAutomation(
+      [{ role: 'user', content: 'kan du legg in reisen min til sørkorea mellom 10.jan til 19.jan' }],
+      { now }
+    )
+    expect(plan?.actions[0]).toMatchObject({
+      kind: 'create_calendar_events',
+      events: [{
+        title: 'Reise til sørkorea',
+        start: '2027-01-10T00:00:00',
+        end: '2027-01-20T00:00:00',
+        allDay: true,
+      }],
+    })
+  })
+
+  it('does not duplicate a trip that already exists', () => {
+    const plan = planCalendarAutomation(
+      [{ role: 'user', content: 'legg inn reisen min til sørkorea 10.–19. januar 2027' }],
+      {
+        now,
+        events: [{
+          id: 'existing-trip',
+          title: 'Reise til Sør-Korea',
+          start: '2027-01-10T00:00:00',
+          end: '2027-01-20T00:00:00',
+          allDay: true,
+        }],
+      }
+    )
+    expect(plan?.actions).toEqual([])
+    expect(plan?.reply).toContain('allerede i kalenderen')
+  })
+
   it('creates the next twelve weekly workouts with exact times', () => {
     const plan = planCalendarAutomation(
       [{ role: 'user', content: 'Hver tirsdag: trening 18–20' }],
