@@ -106,7 +106,7 @@ export async function planPremierLeagueFixtures(
 }
 
 function isPremierLeagueCalendarRequest(value: string) {
-  const normalized = normalize(value)
+  const normalized = normalizeTeamTypos(normalize(value))
   const namedSupportedTeam = /(?:manchester united|man utd)/.test(normalized)
   return (
     (/(?:premier league|premierliga)/.test(normalized) || namedSupportedTeam) &&
@@ -129,7 +129,7 @@ function currentSeasonStart(now: Date) {
 }
 
 function findRequestedTeam(request: string, teams: PremierLeagueTeam[]) {
-  const normalizedRequest = normalize(request)
+  const normalizedRequest = normalizeTeamTypos(normalize(request))
   return [...teams]
     .sort((a, b) => (b.name?.length ?? 0) - (a.name?.length ?? 0))
     .find((team) =>
@@ -137,6 +137,12 @@ function findRequestedTeam(request: string, teams: PremierLeagueTeam[]) {
         .filter((name): name is string => Boolean(name && name.length >= 3))
         .some((name) => normalizedRequest.includes(normalize(name)))
     )
+}
+
+function normalizeTeamTypos(value: string) {
+  return value
+    .replace(/\bmanchester\s+untied\b/g, 'manchester united')
+    .replace(/\bmanchster\s+united\b/g, 'manchester united')
 }
 
 function fixtureCalendarEvent(match: PremierLeagueMatch, sourceUrl: string): SyncAssistantCalendarEvent | null {

@@ -20,6 +20,7 @@ import {
 import { buildCalendarList, filterByCalendars } from '@/lib/calendar/calendar-filter'
 import { upsertEvent, removeEvent } from '@/lib/calendar/event-mutations'
 import { publishCalendarToPanel } from '@/lib/calendar/panel-sync'
+import { eventOccursOnDay } from '@/lib/calendar/event-days'
 import type { CalendarProvider, ExternalEvent } from '@/lib/calendar/providers/types'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
@@ -313,18 +314,6 @@ export default function CalendarPage() {
     return () => window.clearTimeout(timeout)
   }, [externalLoading, panelEvents, storageReady])
 
-  const eventMap = useMemo(() => {
-    const map = new Map<string, CalendarEvent[]>()
-    for (const event of filteredEvents) {
-      const key = new Date(event.start).toDateString()
-      const list = map.get(key) ?? []
-      list.push(event)
-      list.sort((a, b) => +new Date(a.start) - +new Date(b.start))
-      map.set(key, list)
-    }
-    return map
-  }, [filteredEvents])
-
   const currentMonth = startOfMonth(viewDate)
 
   const visibleDays = useMemo(() => {
@@ -573,12 +562,14 @@ export default function CalendarPage() {
   }
 
   function dayEvents(day: Date) {
-    return eventMap.get(day.toDateString()) ?? []
+    return filteredEvents
+      .filter((event) => eventOccursOnDay(event, day))
+      .sort((a, b) => +new Date(a.start) - +new Date(b.start))
   }
 
   function timelineEvents(day: Date) {
     return filteredEvents
-      .filter((event) => isSameDay(new Date(event.start), day))
+      .filter((event) => eventOccursOnDay(event, day))
       .filter((event) => {
         if (event.allDay) return true
         const hour = new Date(event.start).getHours()

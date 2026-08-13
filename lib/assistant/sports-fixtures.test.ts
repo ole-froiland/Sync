@@ -79,6 +79,20 @@ describe('planPremierLeagueFixtures', () => {
     expect(plan?.actions[0]).toMatchObject({ kind: 'create_calendar_events' })
   })
 
+  it('understands a common Manchester United typo', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(teamsResponse))
+      .mockResolvedValueOnce(Response.json(matchesResponse))
+
+    const plan = await planPremierLeagueFixtures(
+      [{ role: 'user', content: 'legg inn alle manchester untied sine kamper i kalenderen' }],
+      { fetcher, now: new Date('2026-08-13T10:00:00Z') }
+    )
+
+    expect(plan?.actions[0]).toMatchObject({ kind: 'create_calendar_events' })
+  })
+
   it('returns null without calling the provider for unrelated requests', async () => {
     const fetcher = vi.fn<typeof fetch>()
 
