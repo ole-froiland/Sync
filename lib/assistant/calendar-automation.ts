@@ -44,7 +44,9 @@ function planTrip(request: string, now: Date): SyncAssistantPlan {
     return { reply: 'Hvilke datoer gjelder reisen? Skriv for eksempel «Seoul 10.–19. januar».', actions: [] }
   }
   const destination = tripDestination(request) || 'Reise'
-  const title = destination === 'Reise' ? destination : `Ferie i ${destination}`
+  const title = destination === 'Reise'
+    ? destination
+    : isVacationRequest(normalize(request)) ? `Ferie i ${destination}` : `Reise til ${destination}`
   const event: SyncAssistantCalendarEvent = {
     id: `trip-${slug(destination)}-${dateKey(range.start)}`,
     title,
@@ -147,6 +149,11 @@ function matchEvents(request: string, events: SyncAssistantCalendarEvent[], now:
 
 function isTripRequest(value: string) {
   return /\b(?:ferie|reise|tur|vacation|holiday|trip)\b/.test(value)
+    || /\b(?:jeg|vi)\s+(?:skal|drar|reiser|flyr)\s+til\b/.test(value)
+}
+
+function isVacationRequest(value: string) {
+  return /\b(?:ferie|vacation|holiday)\b/.test(value)
 }
 
 function isRecurringRequest(value: string) {
@@ -163,6 +170,39 @@ function isUpdateRequest(value: string) {
 
 function parseMonthRange(text: string, now: Date) {
   const normalized = normalize(text)
+  const fullDates = normalized.match(
+    /\b(\d{1,2})\s+([a-zæøå]+)(?:\s+(20\d{2}))?\s+(?:-|til|to|og|and)\s+(\d{1,2})\s+([a-zæøå]+)(?:\s+(20\d{2}))?\b/
+  )
+  if (fullDates) {
+    const startMonth = MONTHS[fullDates[2]]
+    const endMonth = MONTHS[fullDates[5]]
+    if (startMonth === undefined || endMonth === undefined) return null
+
+    const explicitStartYear = fullDates[3] ? Number(fullDates[3]) : null
+    const explicitEndYear = fullDates[6] ? Number(fullDates[6]) : null
+    const startYear = explicitStartYear ?? explicitEndYear ?? now.getFullYear()
+    let endYear = explicitEndYear ?? explicitStartYear ?? startYear
+    let start = validDate(startYear, startMonth, Number(fullDates[1]))
+    let endInclusive = validDate(endYear, endMonth, Number(fullDates[4]))
+    if (!start || !endInclusive) return null
+
+    if (!explicitStartYear && !explicitEndYear && +endInclusive < +start && endMonth !== startMonth) {
+      endYear += 1
+      endInclusive = validDate(endYear, endMonth, Number(fullDates[4]))
+    }
+    if (!start || !endInclusive || +endInclusive < +start) return null
+
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    if (!explicitStartYear && !explicitEndYear && +endInclusive < +today) {
+      start = validDate(startYear + 1, startMonth, Number(fullDates[1]))
+      endInclusive = validDate(endYear + 1, endMonth, Number(fullDates[4]))
+    }
+    if (!start || !endInclusive) return null
+    const endExclusive = new Date(endInclusive)
+    endExclusive.setDate(endExclusive.getDate() + 1)
+    return { start, endInclusive, endExclusive }
+  }
+
   const match = normalized.match(/\b(\d{1,2})\s*(?:-|til|to)\s*(\d{1,2})\s+([a-zæøå]+)(?:\s+(\d{4}))?\b/)
   if (!match) return null
   const month = MONTHS[match[3]]
@@ -184,7 +224,8 @@ function parseMonthRange(text: string, now: Date) {
 }
 
 function tripDestination(text: string) {
-  const match = text.match(/\b(?:ferie|reise|tur|vacation|holiday|trip)\s+(?:til|i|to|in)\s+(.+?)(?=\s+(?:mellom|fra|from|\d{1,2}\.?\s*[–—-]))/i)
+  const match = text.match(/\b(?:ferie|reise|tur|vacation|holiday|trip)\s+(?:til|i|to|in)\s+(.+?)(?=\s+(?:mellom|fra|from|between|\d{1,2}\.?\s*[–—-]))/i)
+    ?? text.match(/\b(?:jeg|vi)\s+(?:skal|drar|reiser|flyr)\s+til\s+(.+?)(?=\s+(?:mellom|fra|from|between|\d{1,2}))/i)
   return match?.[1]?.trim().replace(/[,.]+$/, '') ?? ''
 }
 

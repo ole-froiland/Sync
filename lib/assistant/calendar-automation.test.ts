@@ -15,6 +15,22 @@ describe('calendar automation', () => {
     })
   })
 
+  it('understands a conversational trip with two fully written dates', () => {
+    const plan = planCalendarAutomation(
+      [{ role: 'user', content: 'legg inn at jeg skal til sør korea mellom 10. januar 2027 og 19. januar' }],
+      { now }
+    )
+    expect(plan?.actions[0]).toMatchObject({
+      kind: 'create_calendar_events',
+      events: [{
+        title: 'Reise til sør korea',
+        start: '2027-01-10T00:00:00',
+        end: '2027-01-20T00:00:00',
+        allDay: true,
+      }],
+    })
+  })
+
   it('creates the next twelve weekly workouts with exact times', () => {
     const plan = planCalendarAutomation(
       [{ role: 'user', content: 'Hver tirsdag: trening 18–20' }],
