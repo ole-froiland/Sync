@@ -109,7 +109,7 @@ export type SyncAssistantPlan = {
 export type SyncAssistantChatResponse = {
   message: SyncAssistantMessage
   actions: SyncAssistantActionEnvelope[]
-  planner: 'openai' | 'local'
+  planner: 'openai' | 'gemma' | 'local'
   model?: string
 }
 
@@ -167,7 +167,7 @@ export function normalizeAssistantAction(input: unknown): SyncAssistantAction | 
     const title = stringValue(value.title)
     const start = stringValue(value.start)
     const end = stringValue(value.end)
-    if (!title || !isValidDateTime(start) || !isValidDateTime(end)) return null
+    if (!title || !isValidDateTime(start) || !isValidDateTime(end) || +new Date(end) <= +new Date(start)) return null
     const eventKind = normalizeEventKind(value.eventKind)
     return { kind, title, start, end, eventKind }
   }

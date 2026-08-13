@@ -6,6 +6,7 @@ import { planCalendarAutomation } from '@/lib/assistant/calendar-automation'
 import { planLocalSyncResponse, planOpenAiSyncResponse } from '@/lib/assistant/planner'
 import { planPremierLeagueFixtures } from '@/lib/assistant/sports-fixtures'
 import { planNorwegianFootballFixtures } from '@/lib/assistant/norwegian-fixtures'
+import { planLocalGemmaResponse } from '@/lib/assistant/local-gemma'
 import type { SyncAssistantCalendarEvent, SyncAssistantMessage, SyncAssistantPlan } from '@/lib/assistant/types'
 
 export const runtime = 'nodejs'
@@ -29,12 +30,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'messages required' }, { status: 400 })
   }
 
-  let planner: 'openai' | 'local' = 'local'
+  let planner: 'openai' | 'gemma' | 'local' = 'local'
   const now = new Date()
   let plan: SyncAssistantPlan | null = planCalendarAutomation(messages, { events: calendarEvents, now })
   if (!plan) plan = await planPremierLeagueFixtures(messages, { now })
   if (!plan) plan = await planNorwegianFootballFixtures(messages, { now })
   const model = process.env.OPENAI_MODEL || 'gpt-5.4-mini'
+
+  if (!plan) {
+    try {
+      plan = await planLocalGemmaResponse(messages, {
+        currentPath: body.currentPath,
+        now,
+        calendarEvents,
+      })
+      if (plan) planner = 'gemma'
+    } catch {
+      plan = null
+    }
+  }
 
   if (!plan) {
     try {
@@ -62,7 +76,7 @@ export async function POST(request: Request) {
       sessionId: body.sessionId,
       action: item.action,
       status: 'planned',
-      model: planner === 'openai' ? model : 'local',
+      model: planner === 'openai' ? model : planner === 'gemma' ? 'gemma4:latest' : 'local',
     })
   ))
 
@@ -70,7 +84,7 @@ export async function POST(request: Request) {
     message: { role: 'assistant', content: plan.reply },
     actions,
     planner,
-    model: planner === 'openai' ? model : 'local',
+    model: planner === 'openai' ? model : planner === 'gemma' ? 'gemma4:latest' : 'local',
   })
 }
 
