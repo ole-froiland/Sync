@@ -11,6 +11,7 @@
   "workspace": {
     "packageJson": {
       "dependencies": [
+        "npm:@mlc-ai/web-llm@~0.2.84",
         "npm:@modelcontextprotocol/sdk@1.29.0",
         "npm:@netlify/plugin-nextjs@^5.15.10",
         "npm:@supabase/ssr@~0.10.2",
