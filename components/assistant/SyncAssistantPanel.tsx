@@ -10,9 +10,7 @@ import { useLanguage } from '@/context/LanguageContext'
 import { useUser } from '@/context/UserContext'
 import {
   automaticBrowserAction,
-  applyCalendarAction,
   buildAssistantProjectFolder,
-  calendarEventsForAction,
   PROJECT_FOLDER_CREATED_EVENT,
   PROJECT_FOLDERS_STORAGE_KEY,
   PROJECTS_TREE_EVENT,
@@ -37,6 +35,11 @@ import type {
   SyncAssistantChatResponse,
   SyncAssistantMessage,
 } from '@/lib/assistant/types'
+import {
+  APPLE_CALENDAR_CHANGED_EVENT,
+  APPLE_CALENDAR_EVENTS_KEY,
+  writeAssistantCalendarActionToApple,
+} from '@/lib/calendar/apple-sync-client'
 
 type SyncAssistantPanelProps = {
   open: boolean
@@ -49,8 +52,6 @@ type Toast = {
 }
 
 const STORAGE_KEY = 'sync-calendar-events'
-const CALENDAR_EVENT_CREATED = 'sync:calendar-event-created'
-const CALENDAR_EVENTS_CHANGED = 'sync:calendar-events-changed'
 const PANEL_WIDTH_STORAGE_KEY = 'sync-assistant-panel-width'
 const DEVICE_AI_STORAGE_KEY = 'sync-device-ai-enabled'
 
@@ -328,22 +329,22 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
         setLocale(action.locale)
         return action.locale === 'en' ? 'Changed Sync to English.' : 'Endret Sync til norsk.'
       case 'create_calendar_event':
-        applyLocalCalendarAction(action)
+        await applyCalendarActionWithApple(action)
         router.push('/calendar')
         closeOnMobile()
         return `La "${action.title}" i kalenderen.`
       case 'create_calendar_events':
-        applyLocalCalendarAction(action)
+        await applyCalendarActionWithApple(action)
         router.push('/calendar')
         closeOnMobile()
         return `La ${action.events.length} hendelser i kalenderen.`
       case 'update_calendar_events':
-        applyLocalCalendarAction(action)
+        await applyCalendarActionWithApple(action)
         router.push('/calendar')
         closeOnMobile()
         return `Endret ${action.events.length} ${action.events.length === 1 ? 'hendelse' : 'hendelser'} i kalenderen.`
       case 'delete_calendar_events':
-        applyLocalCalendarAction(action)
+        await applyCalendarActionWithApple(action)
         router.push('/calendar')
         closeOnMobile()
         return `Slettet ${action.events.length} ${action.events.length === 1 ? 'hendelse' : 'hendelser'} fra kalenderen.`
@@ -443,20 +444,13 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
     }
   }
 
-  function applyLocalCalendarAction(
+  async function applyCalendarActionWithApple(
     action: Extract<SyncAssistantAction, {
       kind: 'create_calendar_event' | 'create_calendar_events' | 'update_calendar_events' | 'delete_calendar_events'
     }>
   ) {
-    const existing = readCalendarEvents()
-    const next = applyCalendarAction(existing, action)
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-    window.dispatchEvent(new CustomEvent<AssistantLocalCalendarEvent[]>(CALENDAR_EVENTS_CHANGED, { detail: next }))
-    if (action.kind !== 'delete_calendar_events') {
-      for (const calendarEvent of calendarEventsForAction(action)) {
-        window.dispatchEvent(new CustomEvent<AssistantLocalCalendarEvent>(CALENDAR_EVENT_CREATED, { detail: calendarEvent }))
-      }
-    }
+    await writeAssistantCalendarActionToApple(action)
+    window.dispatchEvent(new Event(APPLE_CALENDAR_CHANGED_EVENT))
   }
 
   return (
@@ -796,8 +790,10 @@ function modalEventName(modal: Extract<SyncAssistantAction, { kind: 'open_modal'
 
 function readCalendarEvents() {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '[]') as AssistantLocalCalendarEvent[]
-    return Array.isArray(parsed) ? parsed : []
+    const local = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '[]') as AssistantLocalCalendarEvent[]
+    const apple = JSON.parse(window.localStorage.getItem(APPLE_CALENDAR_EVENTS_KEY) ?? '[]') as AssistantLocalCalendarEvent[]
+    const combined = [...(Array.isArray(local) ? local : []), ...(Array.isArray(apple) ? apple : [])]
+    return [...new Map(combined.filter((event) => event?.id).map((event) => [event.id, event])).values()].slice(0, 100)
   } catch {
     return []
   }

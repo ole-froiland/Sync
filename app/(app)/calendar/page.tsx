@@ -20,6 +20,12 @@ import {
 import { buildCalendarList, filterByCalendars } from '@/lib/calendar/calendar-filter'
 import { upsertEvent, removeEvent } from '@/lib/calendar/event-mutations'
 import { publishCalendarToPanel } from '@/lib/calendar/panel-sync'
+import {
+  APPLE_CALENDAR_CHANGED_EVENT,
+  APPLE_CALENDAR_CONTEXT_KEY,
+  APPLE_CALENDAR_EVENTS_KEY,
+  mutateAppleCalendar,
+} from '@/lib/calendar/apple-sync-client'
 import { eventOccursOnDay } from '@/lib/calendar/event-days'
 import type { CalendarProvider, ExternalEvent } from '@/lib/calendar/providers/types'
 import TopBar from '@/components/layout/TopBar'
@@ -202,6 +208,7 @@ export default function CalendarPage() {
   const [applePassword, setApplePassword] = useState('')
   const [appleServerUrl, setAppleServerUrl] = useState('https://caldav.icloud.com')
   const [appleSaving, setAppleSaving] = useState(false)
+  const [pendingNoteId, setPendingNoteId] = useState<string | null>(null)
   const fetchSeqRef = useRef(0)
   // Guards the persist effects below: without it they would run on mount with
   // the initial empty state and overwrite localStorage before the deferred
@@ -286,6 +293,11 @@ export default function CalendarPage() {
     void refreshProviderStatus()
   }, [])
 
+  useEffect(() => {
+    const connected = providerStatuses.some((item) => item.provider === 'apple' && item.connected)
+    window.localStorage.setItem(APPLE_CALENDAR_CONTEXT_KEY, connected ? 'connected' : 'disconnected')
+  }, [providerStatuses])
+
   const calendarList = useMemo(
     () => buildCalendarList([...events, ...externalEvents]),
     [events, externalEvents],
@@ -363,7 +375,11 @@ export default function CalendarPage() {
         providerErrors?: { provider: string; message: string }[]
       }
       if (seq !== fetchSeqRef.current) return
-      setExternalEvents((body.events ?? []).map(externalToCalendarEvent))
+      const nextExternalEvents = (body.events ?? []).map(externalToCalendarEvent)
+      setExternalEvents(nextExternalEvents)
+      window.localStorage.setItem(APPLE_CALENDAR_EVENTS_KEY, JSON.stringify(
+        nextExternalEvents.filter((event) => event.provider === 'apple').slice(0, 100)
+      ))
       setProviderErrors(body.providerErrors ?? [])
       setProviderError(null)
     } catch (error) {
@@ -373,6 +389,23 @@ export default function CalendarPage() {
       if (seq === fetchSeqRef.current) setExternalLoading(false)
     }
   }, [view, viewDate])
+
+  useEffect(() => {
+    function refreshAppleEvents() {
+      void fetchExternalEvents()
+    }
+    window.addEventListener(APPLE_CALENDAR_CHANGED_EVENT, refreshAppleEvents)
+    const interval = window.setInterval(refreshAppleEvents, 60_000)
+    function handleVisibility() {
+      if (document.visibilityState === 'visible') refreshAppleEvents()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      window.removeEventListener(APPLE_CALENDAR_CHANGED_EVENT, refreshAppleEvents)
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [fetchExternalEvents])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -423,19 +456,20 @@ export default function CalendarPage() {
     })
   }
 
-  function openCreateModal(day: Date, time = '09:00', title = '') {
+  function openCreateModal(day: Date, time = '09:00', title = '', noteId: string | null = null) {
     setEditingId(null)
     setConfirmDelete(false)
     setEventTitle(title)
     setEventStart(time)
     setEventEnd(endTimeFor(time))
     setEventKind('meeting')
+    setPendingNoteId(noteId)
     setCreateTarget({ date: new Date(day.getFullYear(), day.getMonth(), day.getDate()), time })
     setViewDate(day)
   }
 
   function openEditModal(calendarEvent: CalendarEvent) {
-    if (calendarEvent.external) return
+    if (calendarEvent.external && calendarEvent.provider !== 'apple') return
     const startDate = new Date(calendarEvent.start)
     const endDate = new Date(calendarEvent.end)
     const time = `${pad(startDate.getHours())}:${pad(startDate.getMinutes())}`
@@ -445,6 +479,7 @@ export default function CalendarPage() {
     setEventStart(time)
     setEventEnd(`${pad(endDate.getHours())}:${pad(endDate.getMinutes())}`)
     setEventKind(calendarEvent.kind)
+    setPendingNoteId(null)
     setCreateTarget({
       date: new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate()),
       time,
@@ -455,19 +490,31 @@ export default function CalendarPage() {
     setCreateTarget(null)
     setEditingId(null)
     setConfirmDelete(false)
+    setPendingNoteId(null)
   }
 
-  function deleteCurrentEvent() {
+  async function deleteCurrentEvent() {
     if (!editingId) return
     if (!confirmDelete) {
       setConfirmDelete(true)
       return
     }
-    setEvents((prev) => removeEvent(prev, editingId))
-    closeEventModal()
+    const existing = [...events, ...externalEvents].find((event) => event.id === editingId)
+    if (!existing) return
+    try {
+      if (existing.provider === 'apple') {
+        await mutateAppleCalendar('delete', [{ id: existing.id, title: existing.title, start: existing.start, end: existing.end }])
+        await fetchExternalEvents()
+      } else {
+        setEvents((prev) => removeEvent(prev, editingId))
+      }
+      closeEventModal()
+    } catch (error) {
+      setProviderError(error instanceof Error ? error.message : 'Apple Calendar could not be updated.')
+    }
   }
 
-  function saveEvent(event: FormEvent<HTMLFormElement>) {
+  async function saveEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!createTarget || !eventTitle.trim()) return
     const selectedKind = kindOptions.find((option) => option.kind === eventKind) ?? kindOptions[0]
@@ -476,7 +523,7 @@ export default function CalendarPage() {
     if (+end <= +start) end.setHours(start.getHours() + 1, start.getMinutes())
 
     if (editingId) {
-      const existing = events.find((e) => e.id === editingId)
+      const existing = [...events, ...externalEvents].find((e) => e.id === editingId)
       if (!existing) {
         closeEventModal()
         return
@@ -489,7 +536,20 @@ export default function CalendarPage() {
         tone: selectedKind.tone,
         kind: selectedKind.kind,
       }
-      setEvents((prev) => upsertEvent(prev, updated))
+      try {
+        await mutateAppleCalendar(existing.provider === 'apple' ? 'update' : 'create', [{
+          id: updated.id,
+          title: updated.title,
+          start: updated.start,
+          end: updated.end,
+          allDay: updated.allDay,
+        }])
+        if (existing.provider !== 'apple') setEvents((prev) => removeEvent(prev, existing.id))
+        await fetchExternalEvents()
+      } catch (error) {
+        setProviderError(error instanceof Error ? error.message : 'Apple Calendar could not be updated.')
+        return
+      }
     } else {
       const newEvent: CalendarEvent = {
         id: `cal-${Date.now()}`,
@@ -499,7 +559,19 @@ export default function CalendarPage() {
         tone: selectedKind.tone,
         kind: selectedKind.kind,
       }
-      setEvents((prev) => upsertEvent(prev, newEvent))
+      try {
+        await mutateAppleCalendar('create', [{
+          id: newEvent.id,
+          title: newEvent.title,
+          start: newEvent.start,
+          end: newEvent.end,
+          noteId: pendingNoteId ?? undefined,
+        }])
+        await fetchExternalEvents()
+      } catch (error) {
+        setProviderError(error instanceof Error ? error.message : 'Apple Calendar could not be updated.')
+        return
+      }
     }
     closeEventModal()
   }
@@ -509,7 +581,7 @@ export default function CalendarPage() {
   }
 
   function handleEventDragStart(event: DragEvent<HTMLDivElement>, calendarEvent: CalendarEvent) {
-    if (calendarEvent.external) return
+    if (calendarEvent.external && calendarEvent.provider !== 'apple') return
     event.stopPropagation()
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData(CALENDAR_EVENT_DRAG_TYPE, calendarEvent.id)
@@ -527,37 +599,40 @@ export default function CalendarPage() {
     }
   }
 
-  function moveEventToDay(eventId: string, day: Date, hour?: number) {
-    setEvents((prev) =>
-      prev.map((event) => {
-        if (event.id !== eventId || event.external) return event
-        const start = new Date(event.start)
-        const end = new Date(event.end)
-        const duration = +end - +start
-        const nextStart = new Date(
-          day.getFullYear(),
-          day.getMonth(),
-          day.getDate(),
-          hour ?? start.getHours(),
-          hour == null ? start.getMinutes() : 0,
-          0
-        )
-        const nextEnd = new Date(+nextStart + duration)
-        return { ...event, start: localDateTimeString(nextStart), end: localDateTimeString(nextEnd) }
-      })
-    )
+  async function moveEventToDay(eventId: string, day: Date, hour?: number) {
+    const existing = [...events, ...externalEvents].find((event) => event.id === eventId)
+    if (!existing || (existing.external && existing.provider !== 'apple')) return
+    const start = new Date(existing.start)
+    const end = new Date(existing.end)
+    const duration = +end - +start
+    const nextStart = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour ?? start.getHours(), hour == null ? start.getMinutes() : 0, 0)
+    const nextEnd = new Date(+nextStart + duration)
+    const updated = { ...existing, start: localDateTimeString(nextStart), end: localDateTimeString(nextEnd) }
+    try {
+      await mutateAppleCalendar(existing.provider === 'apple' ? 'update' : 'create', [{
+        id: updated.id,
+        title: updated.title,
+        start: updated.start,
+        end: updated.end,
+        allDay: updated.allDay,
+      }])
+      if (existing.provider !== 'apple') setEvents((prev) => removeEvent(prev, existing.id))
+      await fetchExternalEvents()
+    } catch (error) {
+      setProviderError(error instanceof Error ? error.message : 'Apple Calendar could not be updated.')
+    }
   }
 
   function handleCalendarDrop(event: DragEvent<HTMLElement>, day: Date, preferredHour: number) {
     event.preventDefault()
     const eventId = event.dataTransfer.getData(CALENDAR_EVENT_DRAG_TYPE)
     if (eventId) {
-      moveEventToDay(eventId, day, preferredHour)
+      void moveEventToDay(eventId, day, preferredHour)
       return
     }
     const note = draggedNoteFrom(event)
     if (note) {
-      openCreateModal(day, `${pad(preferredHour)}:00`, note.title)
+      openCreateModal(day, `${pad(preferredHour)}:00`, note.title, note.id)
     }
   }
 
@@ -583,13 +658,13 @@ export default function CalendarPage() {
     return (
       <div
         key={event.id}
-        draggable={view === 'month' && !event.external}
+        draggable={view === 'month' && (!event.external || event.provider === 'apple')}
         onClick={(clickEvent) => {
           clickEvent.stopPropagation()
-          if (!event.external) openEditModal(event)
+          if (!event.external || event.provider === 'apple') openEditModal(event)
         }}
-        onDragStart={(dragEvent) => !event.external && handleEventDragStart(dragEvent, event)}
-        className={`rounded-md px-2 py-1 text-[11px] ring-1 ${event.external ? 'cursor-default opacity-90' : 'cursor-grab active:cursor-grabbing'} ${toneClasses(event.tone, isSearchHit)}`}
+        onDragStart={(dragEvent) => (!event.external || event.provider === 'apple') && handleEventDragStart(dragEvent, event)}
+        className={`rounded-md px-2 py-1 text-[11px] ring-1 ${event.external && event.provider !== 'apple' ? 'cursor-default opacity-90' : 'cursor-grab active:cursor-grabbing'} ${toneClasses(event.tone, isSearchHit)}`}
       >
         <p className="truncate font-semibold">
           {event.external && <span className="mr-1 opacity-60">●</span>}
@@ -1090,9 +1165,9 @@ function TimelineColumn({
               key={event.id}
               onClick={(e) => {
                 e.stopPropagation()
-                if (!event.external) onEventClick(event)
+                if (!event.external || event.provider === 'apple') onEventClick(event)
               }}
-              className={`absolute left-1 right-1 z-10 overflow-hidden rounded-md px-2 py-1 text-[11px] ring-1 ${event.external ? 'cursor-default' : 'cursor-pointer'} ${toneClasses(event.tone)}`}
+              className={`absolute left-1 right-1 z-10 overflow-hidden rounded-md px-2 py-1 text-[11px] ring-1 ${event.external && event.provider !== 'apple' ? 'cursor-default' : 'cursor-pointer'} ${toneClasses(event.tone)}`}
               style={{ top: position.top + 2, height: Math.max(22, position.height - 4) }}
             >
               <p className="truncate font-semibold">{event.title}</p>
@@ -1107,7 +1182,7 @@ function TimelineColumn({
             key={event.id}
             onClick={(e) => {
               e.stopPropagation()
-              if (!event.external) onEventClick(event)
+              if (!event.external || event.provider === 'apple') onEventClick(event)
             }}
             className={`absolute left-1 right-1 z-20 overflow-hidden rounded-md px-2 py-0.5 text-[11px] ring-1 ${toneClasses(event.tone)}`}
             style={{ top: 1 + index * 20, height: 18 }}
