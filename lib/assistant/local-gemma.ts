@@ -9,6 +9,7 @@ import {
 } from './types'
 
 export type LocalGemmaContext = {
+  userId?: string
   currentPath?: string
   now?: Date
   calendarEvents?: SyncAssistantCalendarEvent[]
@@ -27,6 +28,8 @@ export async function planLocalGemmaResponse(
   messages: SyncAssistantMessage[],
   context: LocalGemmaContext,
 ): Promise<SyncAssistantPlan | null> {
+  if (!localGemmaAllowedForUser(context.userId)) return null
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   const token = process.env.LOCAL_AI_BRIDGE_TOKEN
@@ -96,6 +99,18 @@ export async function planLocalGemmaResponse(
   } finally {
     await client.removeAllChannels()
   }
+}
+
+export function localGemmaAllowedForUser(
+  userId: string | undefined,
+  configuredOwnerIds = process.env.LOCAL_AI_OWNER_USER_IDS,
+) {
+  if (!userId || !configuredOwnerIds) return false
+  return configuredOwnerIds
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .includes(userId)
 }
 
 export function normalizeLocalModelPlan(raw: unknown, context: LocalGemmaContext): SyncAssistantPlan | null {

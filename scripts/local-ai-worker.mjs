@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createClient } from '@supabase/supabase-js'
 import { LOCAL_AI_PLAN_SCHEMA, LOCAL_AI_SYSTEM_PROMPT } from '../lib/assistant/local-ai-contract.mjs'
+import { LocalAiLoadGuard } from '../lib/assistant/local-ai-load-guard.mjs'
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..')
 const selectedEnv = await readSelectedEnv(join(rootDir, '.env.local'))
@@ -25,6 +26,7 @@ const client = createClient(supabaseUrl, supabaseKey, {
   realtime: { reconnectAfterMs: (tries) => Math.min(1_000 * 2 ** tries, 30_000) },
 })
 const processed = new Map()
+const loadGuard = new LocalAiLoadGuard({ maxPending: 2, maxPerWindow: 8, windowMs: 60_000 })
 let chain = Promise.resolve()
 
 const channel = client
@@ -39,9 +41,22 @@ const channel = client
     if (!validEnvelope(envelope) || processed.has(envelope.id)) return
     processed.set(envelope.id, Date.now())
     pruneProcessed()
-    chain = chain.then(() => handleJob(envelope)).catch((error) => {
-      console.error('[Sync Local AI] Jobb feilet:', error instanceof Error ? error.message : 'ukjent feil')
-    })
+    if (!loadGuard.tryStart()) {
+      void sendPlan(envelope.id, {
+        reply: 'Den lokale AI-en er opptatt akkurat nå. Vent litt og prøv igjen.',
+        actions: [],
+        outOfScope: false,
+      }).catch((error) => {
+        console.error('[Sync Local AI] Klarte ikke å sende opptatt-svar:', error instanceof Error ? error.message : 'ukjent feil')
+      })
+      return
+    }
+    chain = chain
+      .then(() => handleJob(envelope))
+      .catch((error) => {
+        console.error('[Sync Local AI] Jobb feilet:', error instanceof Error ? error.message : 'ukjent feil')
+      })
+      .finally(() => loadGuard.finish())
   })
   .subscribe((status) => {
     if (status === 'SUBSCRIBED') {
@@ -97,11 +112,15 @@ async function handleJob(envelope) {
     throw new Error('Ollama returnerte ugyldig JSON')
   }
 
+  await sendPlan(envelope.id, plan)
+}
+
+async function sendPlan(id, plan) {
   const body = encryptBody(plan)
   await channel.send({
     type: 'broadcast',
     event: 'result',
-    payload: { id: envelope.id, body, signature: sign(envelope.id, body) },
+    payload: { id, body, signature: sign(id, body) },
   })
 }
 

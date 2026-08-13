@@ -40,6 +40,7 @@ export async function POST(request: Request) {
   if (!plan) {
     try {
       plan = await planLocalGemmaResponse(messages, {
+        userId: auth.user.id,
         currentPath: body.currentPath,
         now,
         calendarEvents,
