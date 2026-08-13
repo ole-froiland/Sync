@@ -26,7 +26,7 @@ export function planCalendarAutomation(
   messages: SyncAssistantMessage[],
   context: CalendarAutomationContext = {}
 ): SyncAssistantPlan | null {
-  const request = [...messages].reverse().find((message) => message.role === 'user')?.content.trim() ?? ''
+  const request = contextualAutomationRequest(messages)
   if (!request) return null
   const normalized = normalize(request)
   const now = context.now ?? new Date()
@@ -169,7 +169,10 @@ function isVacationRequest(value: string) {
 }
 
 function isRecurringRequest(value: string) {
-  return /\b(?:hver|every)\b/.test(value) && Object.keys(WEEKDAYS).some((day) => value.includes(day))
+  return (
+    /\b(?:hver|every)\b/.test(value)
+    && (requestedWeekday(value) !== null || /\b(?:uke|ukentlig|week|weekly)\b/.test(value))
+  )
 }
 
 function isDeleteRequest(value: string) {
@@ -236,15 +239,61 @@ function parseMonthRange(text: string, now: Date) {
 }
 
 function tripDestination(text: string) {
-  const match = text.match(/\b(?:ferie(?:n|r)?|reise(?:n|r)?|tur(?:en|er)?|vacation|holiday|trip)(?:\s+(?:min|mi|mitt|vår|vart|our|my))?\s+(?:til|i|to|in)\s+(.+?)(?=\s+(?:mellom|fra|from|between|\d{1,2}\.?\s*[–—-]))/i)
+  const match = text.match(/\b(?:ferie(?:n|r)?|reise(?:n|r)?|tur(?:en|er)?|vacation|holiday|trip)(?:\s+(?:min|mi|mitt|vår|vart|our|my))?\s+(?:til|i|to|in)\s+(.+?)(?=\s+(?:mellom|fra|from|between|\d{1,2}))/i)
     ?? text.match(/\b(?:jeg|vi)\s+(?:skal|drar|reiser|flyr)\s+til\s+(.+?)(?=\s+(?:mellom|fra|from|between|\d{1,2}))/i)
   return match?.[1]?.trim().replace(/[,.]+$/, '') ?? ''
 }
 
 function requestedWeekday(text: string) {
-  const normalized = normalize(text)
-  const entry = Object.entries(WEEKDAYS).find(([name]) => normalized.includes(name))
+  const entry = matchedWeekday(text)
   return entry ? entry[1] : null
+}
+
+function matchedWeekday(text: string) {
+  const tokens = normalize(text).split(' ')
+  const entries = Object.entries(WEEKDAYS)
+  for (const token of tokens) {
+    const exact = entries.find(([name]) => token === name)
+    if (exact) return exact
+  }
+  for (const token of tokens) {
+    if (token.length < 5) continue
+    const fuzzy = entries.find(([name]) => name.length >= 5 && isSingleTypo(token, name))
+    if (fuzzy) return fuzzy
+  }
+  return null
+}
+
+function isSingleTypo(left: string, right: string) {
+  if (left === right) return true
+  if (Math.abs(left.length - right.length) > 1) return false
+  if (left.length === right.length) {
+    const differences: number[] = []
+    for (let index = 0; index < left.length; index += 1) {
+      if (left[index] !== right[index]) differences.push(index)
+    }
+    if (differences.length === 1) return true
+    return differences.length === 2
+      && differences[1] === differences[0] + 1
+      && left[differences[0]] === right[differences[1]]
+      && left[differences[1]] === right[differences[0]]
+  }
+  const [shorter, longer] = left.length < right.length ? [left, right] : [right, left]
+  let shortIndex = 0
+  let longIndex = 0
+  let skipped = false
+  while (shortIndex < shorter.length && longIndex < longer.length) {
+    if (shorter[shortIndex] === longer[longIndex]) {
+      shortIndex += 1
+      longIndex += 1
+    } else if (skipped) {
+      return false
+    } else {
+      skipped = true
+      longIndex += 1
+    }
+  }
+  return true
 }
 
 function requestedTimeRange(text: string) {
@@ -267,15 +316,17 @@ function requestedDestinationTime(text: string) {
 
 function recurringTitle(text: string) {
   return text
-    .replace(/\b(?:hver|every)\s+(?:søndag|sondag|sunday|mandag|monday|tirsdag|tuesday|onsdag|wednesday|torsdag|thursday|fredag|friday|lørdag|lordag|saturday)\b/gi, '')
+    .replace(/\b(?:hver|every)\s+[a-zæøå]+\b/i, '')
     .replace(/\b(?:skal jeg|jeg skal|i will|we will)\b/gi, '')
     .replace(/\b(?:mellom|fra)\s+\d{1,2}(?::[0-5]\d)?\s*(?:-|til|to)\s*\d{1,2}(?::[0-5]\d)?\b/gi, '')
-    .replace(/\b\d{1,2}(?::[0-5]\d)?\s*[–—-]\s*\d{1,2}(?::[0-5]\d)?\b/gi, '')
+    .replace(/\b\d{1,2}(?::[0-5]\d)?\s*(?:[–—-]|til|to)\s*\d{1,2}(?::[0-5]\d)?\b/gi, '')
     .replace(/\b(?:i|på)\s+(?:min\s+)?kalender(?:en)?\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/^[:;,–—-]+\s*/, '')
     .replace(/^(?:legge? inn|lag|opprett|add|create)\s+/i, '')
+    .replace(/[.:;,–—-]+$/g, '')
+    .trim()
     .replace(/^tr(?:ene|ening)$/i, 'Trening')
 }
 
@@ -344,6 +395,23 @@ function normalize(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9æøå:-]+/g, ' ')
     .trim()
+}
+
+function contextualAutomationRequest(messages: SyncAssistantMessage[]) {
+  const latestIndex = messages.findLastIndex((message) => message.role === 'user')
+  if (latestIndex === -1) return ''
+  const latest = messages[latestIndex].content.trim()
+  if (hasAutomationIntent(normalize(latest))) return latest
+
+  const priorAssistant = [...messages.slice(0, latestIndex)].reverse().find((message) => message.role === 'assistant')
+  if (!priorAssistant || !/\b(?:dato(?:er)?|date|ukedag|weekday|klokkeslett|tidspunkt|time)\b/i.test(priorAssistant.content)) return latest
+  const priorUser = [...messages.slice(0, latestIndex)].reverse().find((message) => message.role === 'user')
+  if (!priorUser || !hasAutomationIntent(normalize(priorUser.content))) return latest
+  return `${priorUser.content} ${latest}`
+}
+
+function hasAutomationIntent(value: string) {
+  return isDeleteRequest(value) || isUpdateRequest(value) || isRecurringRequest(value) || isTripRequest(value)
 }
 
 function compactKey(value: string) {

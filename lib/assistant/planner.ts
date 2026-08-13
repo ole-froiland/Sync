@@ -433,7 +433,7 @@ function normalizeIntent(value: string) {
 
 function parseNoteTitle(text: string) {
   return cleanLeadingCommand(
-    afterFirstMarker(text, ['note:', 'notes:', 'notat:', 'husk:', 'legg til note', 'legg til notat', 'add note', 'create note', 'ny note']) || text
+    afterFirstMarker(text, ['note:', 'notes:', 'notat:', 'husk:', 'husk at', 'huske at', 'legg til note', 'legg til notat', 'add note', 'create note', 'ny note']) || text
   )
 }
 

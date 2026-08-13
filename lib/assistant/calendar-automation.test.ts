@@ -78,6 +78,57 @@ describe('calendar automation', () => {
     expect(action.events.at(-1)?.start).toBe('2026-11-03T18:00:00')
   })
 
+  it('keeps the trip intent when the user answers a date clarification', () => {
+    const plan = planCalendarAutomation(
+      [
+        { role: 'user', content: 'jeg skal på ferie til Seoul' },
+        { role: 'assistant', content: 'Hvilke datoer gjelder reisen?' },
+        { role: 'user', content: '10 til 19 januar' },
+      ],
+      { now }
+    )
+    expect(plan?.actions[0]).toMatchObject({
+      kind: 'create_calendar_events',
+      events: [{ title: 'Ferie i Seoul', start: '2027-01-10T00:00:00', end: '2027-01-20T00:00:00' }],
+    })
+  })
+
+  it('keeps a recurring intent when the user answers with only a time range', () => {
+    const plan = planCalendarAutomation(
+      [
+        { role: 'user', content: 'legg inn trening hver tirsdag' },
+        { role: 'assistant', content: 'Hvilket klokkeslett skal den gjentakende hendelsen ha?' },
+        { role: 'user', content: '18 til 20' },
+      ],
+      { now }
+    )
+    const action = plan?.actions[0]
+    expect(action?.kind).toBe('create_calendar_events')
+    if (action?.kind !== 'create_calendar_events') return
+    expect(action.events).toHaveLength(12)
+    expect(action.events[0]).toMatchObject({ title: 'Trening', start: '2026-08-18T18:00:00', end: '2026-08-18T20:00:00' })
+  })
+
+  it('asks for the weekday when a weekly request is incomplete', () => {
+    const plan = planCalendarAutomation(
+      [{ role: 'user', content: 'legg inn trening hver uke kl 18 til 20' }],
+      { now }
+    )
+    expect(plan?.actions).toEqual([])
+    expect(plan?.reply.toLowerCase()).toContain('ukedag')
+  })
+
+  it('tolerates a small typo in a weekday', () => {
+    const plan = planCalendarAutomation(
+      [{ role: 'user', content: 'hver tirsadg skal jeg trene 18-20' }],
+      { now }
+    )
+    const action = plan?.actions[0]
+    expect(action?.kind).toBe('create_calendar_events')
+    if (action?.kind !== 'create_calendar_events') return
+    expect(action.events[0]?.start).toBe('2026-08-18T18:00:00')
+  })
+
   it('moves one matching event while preserving its duration', () => {
     const plan = planCalendarAutomation(
       [{ role: 'user', content: 'flytt treningen neste tirsdag til kl 19' }],
