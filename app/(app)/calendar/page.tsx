@@ -19,6 +19,7 @@ import {
 } from '@/lib/calendar/range'
 import { buildCalendarList, filterByCalendars } from '@/lib/calendar/calendar-filter'
 import { upsertEvent, removeEvent } from '@/lib/calendar/event-mutations'
+import { publishCalendarToPanel } from '@/lib/calendar/panel-sync'
 import type { CalendarProvider, ExternalEvent } from '@/lib/calendar/providers/types'
 import TopBar from '@/components/layout/TopBar'
 import Button from '@/components/ui/Button'
@@ -50,6 +51,7 @@ const SLOT_HOURS = Array.from(
 )
 const STORAGE_KEY = 'sync-calendar-events'
 const CALENDAR_EVENT_CREATED = 'sync:calendar-event-created'
+const CALENDAR_EVENTS_CHANGED = 'sync:calendar-events-changed'
 const HIDDEN_CALENDARS_KEY = 'sync-calendar-hidden-calendars'
 const CALENDAR_EVENT_DRAG_TYPE = 'application/x-sync-calendar-event'
 const NOTE_DRAG_TYPE = 'application/x-sync-note'
@@ -192,6 +194,7 @@ export default function CalendarPage() {
   const [providerError, setProviderError] = useState<string | null>(null)
   const [externalEvents, setExternalEvents] = useState<CalendarEvent[]>([])
   const [externalLoading, setExternalLoading] = useState(false)
+  const [storageReady, setStorageReady] = useState(false)
   const [providerErrors, setProviderErrors] = useState<{ provider: string; message: string }[]>([])
   const [appleModalOpen, setAppleModalOpen] = useState(false)
   const [appleUsername, setAppleUsername] = useState('')
@@ -234,7 +237,18 @@ export default function CalendarPage() {
       }
 
       storageLoadedRef.current = true
+      setStorageReady(true)
     })
+  }, [])
+
+  useEffect(() => {
+    function handleAiCalendarChange(event: Event) {
+      const calendarEvents = (event as CustomEvent<CalendarEvent[]>).detail
+      if (!Array.isArray(calendarEvents)) return
+      setEvents(calendarEvents)
+    }
+    window.addEventListener(CALENDAR_EVENTS_CHANGED, handleAiCalendarChange)
+    return () => window.removeEventListener(CALENDAR_EVENTS_CHANGED, handleAiCalendarChange)
   }, [])
 
   useEffect(() => {
@@ -283,6 +297,21 @@ export default function CalendarPage() {
       ),
     [events, externalEvents, searchQuery, hiddenCalendarIds],
   )
+
+  const panelEvents = useMemo(
+    () => filterByCalendars([...events, ...externalEvents], hiddenCalendarIds),
+    [events, externalEvents, hiddenCalendarIds],
+  )
+
+  useEffect(() => {
+    if (!storageReady || externalLoading) return
+    const timeout = window.setTimeout(() => {
+      void publishCalendarToPanel(panelEvents).catch(() => {
+        // The iPad panel is optional and may be offline when Sync is used elsewhere.
+      })
+    }, 350)
+    return () => window.clearTimeout(timeout)
+  }, [externalLoading, panelEvents, storageReady])
 
   const eventMap = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()

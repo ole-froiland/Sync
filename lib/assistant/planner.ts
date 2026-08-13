@@ -1,8 +1,9 @@
-import { SYNC_NAV_TARGETS, type SyncAssistantMessage, type SyncAssistantPlan } from './types'
+import { SYNC_NAV_TARGETS, type SyncAssistantCalendarEvent, type SyncAssistantMessage, type SyncAssistantPlan } from './types'
 
 type PlannerContext = {
   currentPath?: string
   now?: Date
+  calendarEvents?: SyncAssistantCalendarEvent[]
 }
 
 const OUT_OF_SCOPE_PATTERNS = [
@@ -197,6 +198,7 @@ export async function planOpenAiSyncResponse(messages: SyncAssistantMessage[], c
             currentProjectId: projectIdFromPath(context.currentPath),
             now: (context.now ?? new Date()).toISOString(),
             messages: latest,
+            calendarEvents: (context.calendarEvents ?? []).slice(0, 100),
             allowedSurfaces: ['notes', 'calendar', 'projects', 'tasks', 'posts', 'chat', 'repositories', 'people', 'settings'],
             rules: [
               'Only plan actions inside Sync.',
@@ -207,6 +209,10 @@ export async function planOpenAiSyncResponse(messages: SyncAssistantMessage[], c
               'Use create_task only when currentProjectId is present, and set projectId to currentProjectId.',
               'Use open_modal for settings, new_post, and new_repo when the user asks to open those controls.',
               'Only create a calendar event when the user supplied a concrete date and start time. Ask a short clarifying question with zero actions when either is missing.',
+              'For calendar updates and deletes, use only exact ids from calendarEvents. Never modify external or missing events.',
+              'Use update_calendar_events with complete replacement events, preserving duration and unchanged fields unless the user asked otherwise.',
+              'Use delete_calendar_events with the exact matching existing events so the user can preview what will be deleted.',
+              'Use create_calendar_events for trips, recurring series, or multiple concrete dates. Default an unspecified weekly series to 12 occurrences and explain that choice.',
               'Never invent sports fixtures, schedules, dates, people, repository data, or other external facts. If external data is required and was not supplied, explain what the user must provide and return zero actions.',
               'Set every unused action field to null.',
               'Refuse briefly with no actions for weather, web search, general knowledge, coding, or other non-Sync requests.',
@@ -267,6 +273,9 @@ function syncPlannerTool() {
                   'create_note',
                   'complete_note',
                   'create_calendar_event',
+                  'create_calendar_events',
+                  'update_calendar_events',
+                  'delete_calendar_events',
                   'create_post',
                   'create_project_folder',
                   'create_task',
@@ -280,6 +289,24 @@ function syncPlannerTool() {
               start: nullableString,
               end: nullableString,
               eventKind: { type: ['string', 'null'], enum: ['meeting', 'focus', 'launch', 'deadline', null] },
+              events: {
+                type: ['array', 'null'],
+                maxItems: 100,
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    id: nullableString,
+                    title: { type: 'string' },
+                    start: { type: 'string' },
+                    end: { type: 'string' },
+                    eventKind: { type: ['string', 'null'], enum: ['meeting', 'focus', 'launch', 'deadline', null] },
+                    sourceUrl: nullableString,
+                    allDay: { type: 'boolean' },
+                  },
+                  required: ['id', 'title', 'start', 'end', 'eventKind', 'sourceUrl', 'allDay'],
+                },
+              },
               body: nullableString,
               postType: { type: ['string', 'null'], enum: ['update', 'news', 'question', 'resource', null] },
               sourceUrl: nullableString,
@@ -298,6 +325,7 @@ function syncPlannerTool() {
               'start',
               'end',
               'eventKind',
+              'events',
               'body',
               'postType',
               'sourceUrl',

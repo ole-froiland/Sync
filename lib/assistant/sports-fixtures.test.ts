@@ -65,6 +65,20 @@ describe('planPremierLeagueFixtures', () => {
     })
   })
 
+  it('understands the natural Manchester United request without requiring the league name', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(teamsResponse))
+      .mockResolvedValueOnce(Response.json(matchesResponse))
+
+    const plan = await planPremierLeagueFixtures(
+      [{ role: 'user', content: 'jeg vil ha alle Manchester United-kampene inn i kalenderen' }],
+      { fetcher, now: new Date('2026-08-13T10:00:00Z') }
+    )
+
+    expect(plan?.actions[0]).toMatchObject({ kind: 'create_calendar_events' })
+  })
+
   it('returns null without calling the provider for unrelated requests', async () => {
     const fetcher = vi.fn<typeof fetch>()
 

@@ -7,6 +7,7 @@ import BottomNav from './BottomNav'
 import GlobalPrimaryActions from './GlobalPrimaryActions'
 import SyncAssistantPanel from '@/components/assistant/SyncAssistantPanel'
 import SettingsModal from '@/components/settings/SettingsModal'
+import PanelNotesBridge from '@/components/notes/PanelNotesBridge'
 import { UserProvider } from '@/context/UserContext'
 import { GitHubProvider, type GitHubStatus } from '@/context/GitHubContext'
 import type { Profile } from '@/types'
@@ -69,6 +70,7 @@ export default function AppShell({ profile, githubStatus, children }: AppShellPr
   return (
     <UserProvider profile={profile}>
       <GitHubProvider status={githubStatus}>
+        {profile?.id && <PanelNotesBridge userId={profile.id} />}
         <div className="flex h-[100dvh] overflow-hidden bg-gray-50 dark:bg-gray-950">
           <Sidebar profile={profile} onSignOut={handleSignOut} signingOut={signingOut} hidden={sidebarHidden} />
           <MobileDrawer

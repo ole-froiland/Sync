@@ -10,6 +10,7 @@ import { useLanguage } from '@/context/LanguageContext'
 import { useUser } from '@/context/UserContext'
 import {
   automaticBrowserAction,
+  applyCalendarAction,
   buildAssistantProjectFolder,
   calendarEventsForAction,
   PROJECT_FOLDER_CREATED_EVENT,
@@ -48,6 +49,7 @@ type Toast = {
 
 const STORAGE_KEY = 'sync-calendar-events'
 const CALENDAR_EVENT_CREATED = 'sync:calendar-event-created'
+const CALENDAR_EVENTS_CHANGED = 'sync:calendar-events-changed'
 const PANEL_WIDTH_STORAGE_KEY = 'sync-assistant-panel-width'
 
 const starterMessage: SyncAssistantMessage = {
@@ -138,9 +140,9 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
 
   const suggestions = useMemo(
     () => [
-      'Legg til note: ring Ola',
-      'Lag kalenderaktivitet demo i morgen 10:30',
-      'Åpne settings',
+      'Ferie til Seoul 10.–19. januar',
+      'Hver tirsdag: trening 18–20',
+      'Legg inn alle Manchester United-kampene',
     ],
     [],
   )
@@ -160,7 +162,19 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: nextMessages, currentPath: pathname, sessionId }),
+        body: JSON.stringify({
+          messages: nextMessages,
+          currentPath: pathname,
+          sessionId,
+          calendarEvents: readCalendarEvents().map((event) => ({
+            id: event.id,
+            title: event.title,
+            start: event.start,
+            end: event.end,
+            eventKind: event.kind,
+            allDay: event.allDay === true,
+          })),
+        }),
       })
       const body = (await res.json().catch(() => ({}))) as Partial<SyncAssistantChatResponse> & { error?: string }
       if (!res.ok || !body.message) throw new Error(body.error ?? 'Sync AI svarte ikke.')
@@ -239,15 +253,25 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
         setLocale(action.locale)
         return action.locale === 'en' ? 'Changed Sync to English.' : 'Endret Sync til norsk.'
       case 'create_calendar_event':
-        createLocalCalendarEvents(action)
+        applyLocalCalendarAction(action)
         router.push('/calendar')
         closeOnMobile()
         return `La "${action.title}" i kalenderen.`
       case 'create_calendar_events':
-        createLocalCalendarEvents(action)
+        applyLocalCalendarAction(action)
         router.push('/calendar')
         closeOnMobile()
         return `La ${action.events.length} hendelser i kalenderen.`
+      case 'update_calendar_events':
+        applyLocalCalendarAction(action)
+        router.push('/calendar')
+        closeOnMobile()
+        return `Endret ${action.events.length} ${action.events.length === 1 ? 'hendelse' : 'hendelser'} i kalenderen.`
+      case 'delete_calendar_events':
+        applyLocalCalendarAction(action)
+        router.push('/calendar')
+        closeOnMobile()
+        return `Slettet ${action.events.length} ${action.events.length === 1 ? 'hendelse' : 'hendelser'} fra kalenderen.`
       case 'create_project_folder':
         await createProjectFolder(action)
         router.push('/projects')
@@ -344,15 +368,19 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
     }
   }
 
-  function createLocalCalendarEvents(
-    action: Extract<SyncAssistantAction, { kind: 'create_calendar_event' | 'create_calendar_events' }>
+  function applyLocalCalendarAction(
+    action: Extract<SyncAssistantAction, {
+      kind: 'create_calendar_event' | 'create_calendar_events' | 'update_calendar_events' | 'delete_calendar_events'
+    }>
   ) {
-    const calendarEvents = calendarEventsForAction(action)
     const existing = readCalendarEvents()
-    const next = calendarEvents.reduce(upsertCalendarEvent, existing)
+    const next = applyCalendarAction(existing, action)
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-    for (const calendarEvent of calendarEvents) {
-      window.dispatchEvent(new CustomEvent<AssistantLocalCalendarEvent>(CALENDAR_EVENT_CREATED, { detail: calendarEvent }))
+    window.dispatchEvent(new CustomEvent<AssistantLocalCalendarEvent[]>(CALENDAR_EVENTS_CHANGED, { detail: next }))
+    if (action.kind !== 'delete_calendar_events') {
+      for (const calendarEvent of calendarEventsForAction(action)) {
+        window.dispatchEvent(new CustomEvent<AssistantLocalCalendarEvent>(CALENDAR_EVENT_CREATED, { detail: calendarEvent }))
+      }
     }
   }
 
@@ -600,6 +628,8 @@ function renderActionIcon(action: SyncAssistantAction) {
       return <Languages size={16} />
     case 'create_calendar_event':
     case 'create_calendar_events':
+    case 'update_calendar_events':
+    case 'delete_calendar_events':
       return <CalendarPlus size={16} />
     case 'create_note':
     case 'complete_note':
@@ -633,10 +663,4 @@ function readProjectFolders() {
   } catch {
     return []
   }
-}
-
-function upsertCalendarEvent(events: AssistantLocalCalendarEvent[], event: AssistantLocalCalendarEvent) {
-  return events.some((item) => item.id === event.id)
-    ? events.map((item) => (item.id === event.id ? event : item))
-    : [...events, event]
 }

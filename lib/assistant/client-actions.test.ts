@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { automaticBrowserAction, buildAssistantProjectFolder, calendarEventsForAction } from './client-actions'
+import { applyCalendarAction, automaticBrowserAction, buildAssistantProjectFolder, calendarEventsForAction } from './client-actions'
 import type { SyncAssistantActionEnvelope } from './types'
 
 function envelope(
@@ -78,5 +78,24 @@ describe('assistant client actions', () => {
       tone: 'violet',
       note: 'Kilde: https://www.premierleague.com/en/clubs/1/fixtures',
     })
+  })
+
+  it('updates and deletes exact local calendar events without touching others', () => {
+    const existing = [
+      { id: 'cal-ai-training-1', title: 'Trening', start: '2026-08-18T18:00:00', end: '2026-08-18T20:00:00', kind: 'focus' as const, tone: 'sky' as const },
+      { id: 'cal-other', title: 'Møte', start: '2026-08-18T10:00:00', end: '2026-08-18T11:00:00', kind: 'meeting' as const, tone: 'violet' as const },
+    ]
+    const updated = applyCalendarAction(existing, {
+      kind: 'update_calendar_events',
+      events: [{ id: 'cal-ai-training-1', title: 'Trening', start: '2026-08-18T19:00:00', end: '2026-08-18T21:00:00', eventKind: 'focus' }],
+    })
+    expect(updated.find((event) => event.id === 'cal-ai-training-1')?.start).toBe('2026-08-18T19:00:00')
+    expect(updated).toHaveLength(2)
+
+    const deleted = applyCalendarAction(updated, {
+      kind: 'delete_calendar_events',
+      events: [{ id: 'cal-ai-training-1', title: 'Trening', start: '2026-08-18T19:00:00', end: '2026-08-18T21:00:00' }],
+    })
+    expect(deleted.map((event) => event.id)).toEqual(['cal-other'])
   })
 })
