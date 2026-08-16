@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectFolder } from '@/types'
 import {
+  collaborationFingerprint,
   collaborationSnapshot,
   extractProjectFolderTree,
   mergeProjectFolderCollaborations,
@@ -97,5 +98,25 @@ describe('project folder collaboration trees', () => {
     }
 
     expect(collaborationSnapshot([root], 'shared-root')[0]).not.toHaveProperty('collaborationId')
+  })
+})
+
+describe('collaboration fingerprint', () => {
+  it('stays the same when nothing changed, regardless of row order', () => {
+    const rows = [
+      { id: 'b', updated_at: '2026-08-16T10:00:00Z' },
+      { id: 'a', updated_at: '2026-08-15T09:00:00Z' },
+    ]
+    expect(collaborationFingerprint(rows)).toBe(collaborationFingerprint([...rows].reverse()))
+  })
+
+  it('changes when a folder tree is touched, added or removed', () => {
+    const base = [{ id: 'a', updated_at: '2026-08-15T09:00:00Z' }]
+    const touched = [{ id: 'a', updated_at: '2026-08-16T09:00:00Z' }]
+    const added = [...base, { id: 'b', updated_at: '2026-08-16T10:00:00Z' }]
+
+    expect(collaborationFingerprint(touched)).not.toBe(collaborationFingerprint(base))
+    expect(collaborationFingerprint(added)).not.toBe(collaborationFingerprint(base))
+    expect(collaborationFingerprint([])).not.toBe(collaborationFingerprint(base))
   })
 })

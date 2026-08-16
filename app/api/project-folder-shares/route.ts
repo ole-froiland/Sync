@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { collaborationSnapshot } from '@/lib/project-folder-collaboration'
+import { collaborationFingerprint, collaborationSnapshot } from '@/lib/project-folder-collaboration'
 import { isUuid } from '@/lib/uuid'
 import type { ProjectFolder, ProjectFolderMember } from '@/types'
 
@@ -126,12 +126,32 @@ const COLLABORATION_SELECT = `
   )
 `
 
-export async function GET() {
+// Billig endringssjekk: `updated_at` per rad er noen få byte, mot et helt
+// mappetre med notatinnhold og logoer i det fulle svaret.
+const CHANGE_PROBE_SELECT = 'id, updated_at'
+
+export async function GET(request: Request) {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const knownFingerprint = new URL(request.url).searchParams.get('fingerprint')
+
+  const { data: stamps, error: stampsError } = await supabase
+    .from('shared_project_folders')
+    .select(CHANGE_PROBE_SELECT)
+
+  if (isMissingCollaborationTable(stampsError)) {
+    return NextResponse.json({ collaborations: [], sync: 'unavailable' })
+  }
+  if (stampsError) return NextResponse.json({ error: stampsError.message }, { status: 500 })
+
+  const fingerprint = collaborationFingerprint((stamps ?? []) as { id: string; updated_at: string }[])
+  if (knownFingerprint && knownFingerprint === fingerprint) {
+    return NextResponse.json({ unchanged: true, fingerprint })
+  }
 
   const { data, error } = await supabase
     .from('shared_project_folders')
@@ -144,6 +164,7 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({
+    fingerprint,
     collaborations: ((data ?? []) as unknown as SharedFolderRow[]).map((row) =>
       collaborationJson(row, user.id)
     ),

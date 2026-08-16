@@ -490,18 +490,27 @@ export default function ProjectsPage() {
   const serverLoadedRef = useRef(false)
   const collaborationHashesRef = useRef(new Map<string, string>())
   const collaborationWritesRef = useRef(new Set<string>())
+  const collaborationFingerprintRef = useRef<string | null>(null)
 
   const loadCollaborations = useCallback(async () => {
     if (!currentProfile) return
     try {
-      const response = await fetch('/api/project-folder-shares', {
-        signal: AbortSignal.timeout(10_000),
-      })
+      // Avtrykket forteller serveren hva vi allerede har. Er det uendret,
+      // slipper hele mappetreet å bli sendt — som er nesten alltid.
+      const known = collaborationFingerprintRef.current
+      const response = await fetch(
+        known ? `/api/project-folder-shares?fingerprint=${encodeURIComponent(known)}` : '/api/project-folder-shares',
+        { signal: AbortSignal.timeout(10_000) }
+      )
       if (!response.ok) return
       const body = (await response.json()) as {
         collaborations?: ProjectFolderCollaboration[]
         sync?: 'unavailable'
+        unchanged?: boolean
+        fingerprint?: string
       }
+      if (body.fingerprint) collaborationFingerprintRef.current = body.fingerprint
+      if (body.unchanged) return
       if (body.sync === 'unavailable' || !Array.isArray(body.collaborations)) return
       const latest = body.collaborations
 
