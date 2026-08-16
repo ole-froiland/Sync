@@ -96,3 +96,14 @@ export function personalProjectFolders(
       (!folder.collaborationOwnerId || folder.collaborationOwnerId === userId)
   )
 }
+
+// Klienten spør etter delte mapper hvert åttende sekund. `folders` er hele
+// mappetreet med notatinnhold og logoer, så å sende det hver gang kostet mer
+// egress enn alt annet i appen til sammen. Avtrykket er bygget av id og
+// `updated_at` alene — noen få byte — og avgjør om det tunge svaret trengs.
+export function collaborationFingerprint(rows: { id: string; updated_at: string }[]) {
+  return rows
+    .map((row) => `${row.id}:${row.updated_at}`)
+    .sort()
+    .join('|')
+}
