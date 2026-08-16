@@ -89,6 +89,72 @@ It creates the Supabase auth user, confirms the email, and upserts the matching 
 
 ---
 
+## Sync MCP for Claude and ChatGPT
+
+MCP (Model Context Protocol) is a shared standard that lets AI clients use Sync as a set of
+authenticated tools. The same remote endpoint works with Claude and compatible ChatGPT plans:
+
+```text
+https://your-sync-domain.example/api/mcp
+```
+
+The first version exposes:
+
+- project and folder overview
+- list/get/create projects
+- list/create project folders and subfolders
+- list/create project tasks
+
+There are deliberately no delete tools. Every request uses the connected user's Supabase OAuth
+token, so existing Row Level Security policies still decide what the user can read or change.
+
+### 1. Enable Supabase OAuth 2.1
+
+In the Supabase dashboard:
+
+1. Open **Authentication → OAuth Server** and enable the OAuth 2.1 server.
+2. Set **Authorization Path** to `/oauth/consent`.
+3. Enable **Dynamic Client Registration** so MCP clients can register automatically.
+4. Use an asymmetric JWT signing key (RS256 or ES256), which Supabase requires for the `openid`
+   scope.
+5. Confirm that the Supabase **Site URL** and `NEXT_PUBLIC_SITE_URL` both use the deployed Sync
+   HTTPS origin.
+
+The app serves OAuth protected-resource metadata at:
+
+```text
+https://your-sync-domain.example/.well-known/oauth-protected-resource
+```
+
+### 2. Deploy and test
+
+Deploy Sync to a stable HTTPS URL, then test the endpoint with the official inspector:
+
+```bash
+npm run dev
+npx @modelcontextprotocol/inspector
+```
+
+Choose **Streamable HTTP** and enter `http://localhost:3000/api/mcp` for local testing, or the
+deployed endpoint for an end-to-end OAuth test.
+
+### 3. Connect an AI client
+
+- **Claude:** Settings → Connectors → Add custom connector → paste the `/api/mcp` URL.
+- **ChatGPT:** enable developer mode for your workspace, create a custom MCP app, paste the
+  `/api/mcp` URL, choose OAuth, and scan the tools.
+
+Both clients redirect to Sync's consent page, where the user approves access before tools become
+available.
+
+Current setup references:
+
+- [Supabase MCP authentication](https://supabase.com/docs/guides/auth/oauth-server/mcp-authentication)
+- [Claude remote MCP connectors](https://support.anthropic.com/en/articles/11503834-building-custom-integrations-via-remote-mcp-servers)
+- [OpenAI MCP server guide](https://developers.openai.com/plugins/build/mcp-server)
+
+---
+
 ## Folder structure
 
 ```

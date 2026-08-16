@@ -12,6 +12,7 @@ export type SyncAssistantCalendarEvent = {
   end: string
   eventKind?: 'meeting' | 'focus' | 'launch' | 'deadline'
   sourceUrl?: string | null
+  allDay?: boolean
 }
 
 export type SyncAssistantAction =
@@ -51,6 +52,14 @@ export type SyncAssistantAction =
       events: SyncAssistantCalendarEvent[]
       sourceLabel?: string | null
       sourceUrl?: string | null
+    }
+  | {
+      kind: 'update_calendar_events'
+      events: SyncAssistantCalendarEvent[]
+    }
+  | {
+      kind: 'delete_calendar_events'
+      events: SyncAssistantCalendarEvent[]
     }
   | {
       kind: 'create_post'
@@ -100,7 +109,7 @@ export type SyncAssistantPlan = {
 export type SyncAssistantChatResponse = {
   message: SyncAssistantMessage
   actions: SyncAssistantActionEnvelope[]
-  planner: 'openai' | 'local'
+  planner: 'openai' | 'gemma' | 'browser' | 'local'
   model?: string
 }
 
@@ -158,7 +167,7 @@ export function normalizeAssistantAction(input: unknown): SyncAssistantAction | 
     const title = stringValue(value.title)
     const start = stringValue(value.start)
     const end = stringValue(value.end)
-    if (!title || !isValidDateTime(start) || !isValidDateTime(end)) return null
+    if (!title || !isValidDateTime(start) || !isValidDateTime(end) || +new Date(end) <= +new Date(start)) return null
     const eventKind = normalizeEventKind(value.eventKind)
     return { kind, title, start, end, eventKind }
   }
@@ -176,6 +185,15 @@ export function normalizeAssistantAction(input: unknown): SyncAssistantAction | 
       sourceLabel: stringValue(value.sourceLabel) || null,
       sourceUrl: safeHttpUrl(value.sourceUrl),
     }
+  }
+
+  if (kind === 'update_calendar_events' || kind === 'delete_calendar_events') {
+    if (!Array.isArray(value.events)) return null
+    const events = value.events
+      .map(normalizeCalendarEvent)
+      .filter((event): event is SyncAssistantCalendarEvent => Boolean(event?.id))
+      .slice(0, 100)
+    return events.length > 0 ? { kind, events } : null
   }
 
   if (kind === 'create_post') {
@@ -237,6 +255,8 @@ export function actionRequiresServer(action: SyncAssistantAction) {
     'set_language',
     'create_calendar_event',
     'create_calendar_events',
+    'update_calendar_events',
+    'delete_calendar_events',
     'create_project_folder',
   ].includes(action.kind)
 }
@@ -272,6 +292,10 @@ export function actionLabel(action: SyncAssistantAction) {
       return 'Create calendar event'
     case 'create_calendar_events':
       return `Add ${action.events.length} calendar events`
+    case 'update_calendar_events':
+      return `Endre ${action.events.length} kalender${action.events.length === 1 ? 'hendelse' : 'hendelser'}`
+    case 'delete_calendar_events':
+      return `Slett ${action.events.length} kalender${action.events.length === 1 ? 'hendelse' : 'hendelser'}`
     case 'create_post':
       return 'Create post'
     case 'create_project_folder':
@@ -300,9 +324,11 @@ export function actionDescription(action: SyncAssistantAction) {
     case 'create_calendar_event':
       return `${action.title} from ${formatActionDate(action.start)} to ${formatActionDate(action.end)}.`
     case 'create_calendar_events':
-      return action.sourceLabel
-        ? `${action.events.length} events from ${action.sourceLabel}.`
-        : `${action.events.length} calendar events.`
+      return `${summarizeCalendarEvents(action.events, 'legges til')}${action.sourceLabel ? ` Kilde: ${action.sourceLabel}.` : ''}`
+    case 'update_calendar_events':
+      return summarizeCalendarEvents(action.events, 'endres')
+    case 'delete_calendar_events':
+      return summarizeCalendarEvents(action.events, 'slettes')
     case 'create_post':
       return action.title
     case 'create_project_folder':
@@ -332,6 +358,7 @@ function normalizeCalendarEvent(input: unknown): SyncAssistantCalendarEvent | nu
     end,
     eventKind: normalizeEventKind(value.eventKind),
     sourceUrl: safeHttpUrl(value.sourceUrl),
+    allDay: value.allDay === true,
   }
 }
 
@@ -386,4 +413,10 @@ function formatActionDate(value: string) {
   } catch {
     return value
   }
+}
+
+function summarizeCalendarEvents(events: SyncAssistantCalendarEvent[], verb: string) {
+  const preview = events.slice(0, 3).map((event) => `${event.title} (${formatActionDate(event.start)})`).join(', ')
+  const rest = events.length > 3 ? ` + ${events.length - 3} til` : ''
+  return `${preview}${rest} ${verb}.`
 }

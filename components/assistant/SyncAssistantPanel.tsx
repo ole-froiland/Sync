@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bot, CalendarPlus, Check, FolderPlus, Languages, Loader2, Maximize2, MessageSquare, Minimize2, Navigation, Send, Sparkles, StickyNote, Workflow, X } from 'lucide-react'
+import { Bot, CalendarPlus, Check, Cpu, FolderPlus, Languages, Loader2, Maximize2, MessageSquare, Minimize2, Navigation, Send, Sparkles, StickyNote, Workflow, X } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Textarea from '@/components/ui/Textarea'
 import { useLanguage } from '@/context/LanguageContext'
@@ -11,7 +11,6 @@ import { useUser } from '@/context/UserContext'
 import {
   automaticBrowserAction,
   buildAssistantProjectFolder,
-  calendarEventsForAction,
   PROJECT_FOLDER_CREATED_EVENT,
   PROJECT_FOLDERS_STORAGE_KEY,
   PROJECTS_TREE_EVENT,
@@ -20,6 +19,7 @@ import {
   type AssistantLocalCalendarEvent,
 } from '@/lib/assistant/client-actions'
 import { cn } from '@/lib/utils'
+import { initializeDeviceAi, planWithDeviceAi, shutdownDeviceAi, supportsDeviceAi } from '@/lib/assistant/browser-ai'
 import {
   ASSISTANT_PANEL_DEFAULT_WIDTH,
   ASSISTANT_PANEL_MAX_WIDTH,
@@ -35,6 +35,11 @@ import type {
   SyncAssistantChatResponse,
   SyncAssistantMessage,
 } from '@/lib/assistant/types'
+import {
+  APPLE_CALENDAR_CHANGED_EVENT,
+  APPLE_CALENDAR_EVENTS_KEY,
+  writeAssistantCalendarActionToApple,
+} from '@/lib/calendar/apple-sync-client'
 
 type SyncAssistantPanelProps = {
   open: boolean
@@ -47,8 +52,8 @@ type Toast = {
 }
 
 const STORAGE_KEY = 'sync-calendar-events'
-const CALENDAR_EVENT_CREATED = 'sync:calendar-event-created'
 const PANEL_WIDTH_STORAGE_KEY = 'sync-assistant-panel-width'
+const DEVICE_AI_STORAGE_KEY = 'sync-device-ai-enabled'
 
 const starterMessage: SyncAssistantMessage = {
   role: 'assistant',
@@ -70,6 +75,10 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
   const [panelWidth, setPanelWidth] = useState(ASSISTANT_PANEL_DEFAULT_WIDTH)
   const [panelMaxWidth, setPanelMaxWidth] = useState(ASSISTANT_PANEL_MAX_WIDTH)
   const [resizing, setResizing] = useState(false)
+  const [deviceAiEnabled, setDeviceAiEnabled] = useState(false)
+  const [deviceAiSupported, setDeviceAiSupported] = useState<boolean | null>(null)
+  const [deviceAiProgress, setDeviceAiProgress] = useState<number | null>(null)
+  const [deviceAiStatus, setDeviceAiStatus] = useState<'idle' | 'loading' | 'ready' | 'thinking' | 'error'>('idle')
   const [sessionId] = useState(() => crypto.randomUUID())
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -111,6 +120,20 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
   }, [])
 
   useEffect(() => {
+    const supported = supportsDeviceAi()
+    const enabled = supported && window.localStorage.getItem(DEVICE_AI_STORAGE_KEY) === '1'
+    setDeviceAiSupported(supported)
+    setDeviceAiEnabled(enabled)
+  }, [])
+
+  useEffect(() => {
+    if (!open || !deviceAiEnabled || !deviceAiSupported || deviceAiStatus !== 'idle') return
+    void loadDeviceAi()
+    // loadDeviceAi intentionally starts only after the user has opted in on this device.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deviceAiEnabled, deviceAiStatus, deviceAiSupported, open])
+
+  useEffect(() => {
     if (!resizing) return
     const previousCursor = document.body.style.cursor
     const previousSelection = document.body.style.userSelect
@@ -138,9 +161,9 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
 
   const suggestions = useMemo(
     () => [
-      'Legg til note: ring Ola',
-      'Lag kalenderaktivitet demo i morgen 10:30',
-      'Åpne settings',
+      'Ferie til Seoul 10.–19. januar',
+      'Hver tirsdag: trening 18–20',
+      'Legg inn alle Manchester United-kampene',
     ],
     [],
   )
@@ -157,13 +180,46 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
     setBusy(true)
 
     try {
-      const res = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: nextMessages, currentPath: pathname, sessionId }),
-      })
-      const body = (await res.json().catch(() => ({}))) as Partial<SyncAssistantChatResponse> & { error?: string }
-      if (!res.ok || !body.message) throw new Error(body.error ?? 'Sync AI svarte ikke.')
+      const calendarEvents = readCalendarEvents().map((event) => ({
+        id: event.id,
+        title: event.title,
+        start: event.start,
+        end: event.end,
+        eventKind: event.kind,
+        allDay: event.allDay === true,
+      }))
+      const requestPlan = async (clientPlan?: unknown) => {
+        const res = await fetch('/api/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: nextMessages,
+            currentPath: pathname,
+            sessionId,
+            calendarEvents,
+            clientPlan,
+          }),
+        })
+        const body = (await res.json().catch(() => ({}))) as Partial<SyncAssistantChatResponse> & { error?: string }
+        if (!res.ok || !body.message) throw new Error(body.error ?? 'Sync AI svarte ikke.')
+        return body
+      }
+
+      let body = await requestPlan()
+      if (body.planner === 'local' && (body.actions?.length ?? 0) === 0 && deviceAiEnabled && deviceAiSupported) {
+        try {
+          setDeviceAiStatus('thinking')
+          const clientPlan = await planWithDeviceAi(nextMessages, {
+            currentPath: pathname,
+            now: new Date(),
+            calendarEvents,
+          }, updateDeviceAiProgress)
+          if (clientPlan) body = await requestPlan(clientPlan)
+          setDeviceAiStatus('ready')
+        } catch {
+          setDeviceAiStatus('error')
+        }
+      }
 
       setMessages((prev) => [...prev, body.message as SyncAssistantMessage])
       const plannedActions = body.actions ?? []
@@ -185,6 +241,40 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
     } finally {
       setBusy(false)
     }
+  }
+
+  async function enableDeviceAi() {
+    if (!deviceAiSupported) {
+      setDeviceAiStatus('error')
+      return
+    }
+    window.localStorage.setItem(DEVICE_AI_STORAGE_KEY, '1')
+    setDeviceAiEnabled(true)
+    await loadDeviceAi()
+  }
+
+  async function loadDeviceAi() {
+    setDeviceAiStatus('loading')
+    setDeviceAiProgress(0)
+    try {
+      await initializeDeviceAi(updateDeviceAiProgress)
+      setDeviceAiStatus('ready')
+      setDeviceAiProgress(1)
+    } catch {
+      setDeviceAiStatus('error')
+    }
+  }
+
+  async function disableDeviceAi() {
+    window.localStorage.removeItem(DEVICE_AI_STORAGE_KEY)
+    setDeviceAiEnabled(false)
+    setDeviceAiStatus('idle')
+    setDeviceAiProgress(null)
+    await shutdownDeviceAi()
+  }
+
+  function updateDeviceAiProgress(report: { progress: number }) {
+    setDeviceAiProgress(Math.max(0, Math.min(1, report.progress)))
   }
 
   async function runAction(envelope: SyncAssistantActionEnvelope) {
@@ -239,15 +329,25 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
         setLocale(action.locale)
         return action.locale === 'en' ? 'Changed Sync to English.' : 'Endret Sync til norsk.'
       case 'create_calendar_event':
-        createLocalCalendarEvents(action)
+        await applyCalendarActionWithApple(action)
         router.push('/calendar')
         closeOnMobile()
         return `La "${action.title}" i kalenderen.`
       case 'create_calendar_events':
-        createLocalCalendarEvents(action)
+        await applyCalendarActionWithApple(action)
         router.push('/calendar')
         closeOnMobile()
         return `La ${action.events.length} hendelser i kalenderen.`
+      case 'update_calendar_events':
+        await applyCalendarActionWithApple(action)
+        router.push('/calendar')
+        closeOnMobile()
+        return `Endret ${action.events.length} ${action.events.length === 1 ? 'hendelse' : 'hendelser'} i kalenderen.`
+      case 'delete_calendar_events':
+        await applyCalendarActionWithApple(action)
+        router.push('/calendar')
+        closeOnMobile()
+        return `Slettet ${action.events.length} ${action.events.length === 1 ? 'hendelse' : 'hendelser'} fra kalenderen.`
       case 'create_project_folder':
         await createProjectFolder(action)
         router.push('/projects')
@@ -344,16 +444,13 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
     }
   }
 
-  function createLocalCalendarEvents(
-    action: Extract<SyncAssistantAction, { kind: 'create_calendar_event' | 'create_calendar_events' }>
+  async function applyCalendarActionWithApple(
+    action: Extract<SyncAssistantAction, {
+      kind: 'create_calendar_event' | 'create_calendar_events' | 'update_calendar_events' | 'delete_calendar_events'
+    }>
   ) {
-    const calendarEvents = calendarEventsForAction(action)
-    const existing = readCalendarEvents()
-    const next = calendarEvents.reduce(upsertCalendarEvent, existing)
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-    for (const calendarEvent of calendarEvents) {
-      window.dispatchEvent(new CustomEvent<AssistantLocalCalendarEvent>(CALENDAR_EVENT_CREATED, { detail: calendarEvent }))
-    }
+    await writeAssistantCalendarActionToApple(action)
+    window.dispatchEvent(new Event(APPLE_CALENDAR_CHANGED_EVENT))
   }
 
   return (
@@ -475,6 +572,14 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
       </div>
 
       <div className="shrink-0 border-t border-gray-100 bg-white p-4 dark:border-gray-800 dark:bg-gray-950">
+        <DeviceAiControl
+          enabled={deviceAiEnabled}
+          supported={deviceAiSupported}
+          status={deviceAiStatus}
+          progress={deviceAiProgress}
+          onEnable={() => void enableDeviceAi()}
+          onDisable={() => void disableDeviceAi()}
+        />
         {messages.length === 1 && (
           <div className="mb-3 flex flex-wrap gap-2">
             {suggestions.map((suggestion) => (
@@ -518,6 +623,70 @@ export default function SyncAssistantPanel({ open, onClose }: SyncAssistantPanel
         </div>
       </div>
     </aside>
+  )
+}
+
+function DeviceAiControl({
+  enabled,
+  supported,
+  status,
+  progress,
+  onEnable,
+  onDisable,
+}: {
+  enabled: boolean
+  supported: boolean | null
+  status: 'idle' | 'loading' | 'ready' | 'thinking' | 'error'
+  progress: number | null
+  onEnable: () => void
+  onDisable: () => void
+}) {
+  if (supported === null) return null
+  if (!supported) {
+    return (
+      <p className="mb-3 flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+        <Cpu size={14} /> Smart lokal AI krever en nettleser med WebGPU.
+      </p>
+    )
+  }
+  if (!enabled) {
+    return (
+      <div className="mb-3 rounded-xl border border-fuchsia-100 bg-fuchsia-50/70 p-3 dark:border-fuchsia-950 dark:bg-fuchsia-950/20">
+        <button
+          type="button"
+          onClick={onEnable}
+          className="flex w-full items-center gap-2 text-left text-sm font-semibold text-fuchsia-800 dark:text-fuchsia-200"
+        >
+          <Cpu size={16} /> Aktiver gratis lokal AI
+        </button>
+        <p className="mt-1 text-xs leading-5 text-fuchsia-700/75 dark:text-fuchsia-300/70">
+          Den smarte modellen kjører på denne enheten og lastes ned én gang, omtrent 0,9 GB.
+        </p>
+      </div>
+    )
+  }
+
+  const percent = Math.round((progress ?? 0) * 100)
+  const label = status === 'loading'
+    ? `Laster lokal AI · ${percent} %`
+    : status === 'thinking'
+      ? 'Lokal AI tenker på denne enheten'
+      : status === 'error'
+        ? 'Lokal AI kunne ikke startes på denne enheten'
+        : 'Lokal AI er klar på denne enheten'
+
+  return (
+    <div className="mb-3 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+      {status === 'loading' || status === 'thinking'
+        ? <Loader2 size={14} className="animate-spin text-fuchsia-500" />
+        : <Cpu size={14} className={status === 'error' ? 'text-red-500' : 'text-emerald-500'} />}
+      <span className="min-w-0 flex-1">{label}</span>
+      {status !== 'loading' && status !== 'thinking' && (
+        <button type="button" onClick={onDisable} className="font-medium text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+          Slå av
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -600,6 +769,8 @@ function renderActionIcon(action: SyncAssistantAction) {
       return <Languages size={16} />
     case 'create_calendar_event':
     case 'create_calendar_events':
+    case 'update_calendar_events':
+    case 'delete_calendar_events':
       return <CalendarPlus size={16} />
     case 'create_note':
     case 'complete_note':
@@ -619,8 +790,10 @@ function modalEventName(modal: Extract<SyncAssistantAction, { kind: 'open_modal'
 
 function readCalendarEvents() {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '[]') as AssistantLocalCalendarEvent[]
-    return Array.isArray(parsed) ? parsed : []
+    const local = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '[]') as AssistantLocalCalendarEvent[]
+    const apple = JSON.parse(window.localStorage.getItem(APPLE_CALENDAR_EVENTS_KEY) ?? '[]') as AssistantLocalCalendarEvent[]
+    const combined = [...(Array.isArray(local) ? local : []), ...(Array.isArray(apple) ? apple : [])]
+    return [...new Map(combined.filter((event) => event?.id).map((event) => [event.id, event])).values()].slice(0, 100)
   } catch {
     return []
   }
@@ -633,10 +806,4 @@ function readProjectFolders() {
   } catch {
     return []
   }
-}
-
-function upsertCalendarEvent(events: AssistantLocalCalendarEvent[], event: AssistantLocalCalendarEvent) {
-  return events.some((item) => item.id === event.id)
-    ? events.map((item) => (item.id === event.id ? event : item))
-    : [...events, event]
 }

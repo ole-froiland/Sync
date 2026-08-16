@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
+import { safeInternalRedirect } from '@/lib/auth-redirect'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
+  const next = safeInternalRedirect(searchParams.get('next'))
   const siteUrl = new URL(request.url).origin
 
   if (code) {
@@ -27,7 +29,7 @@ export async function GET(request: Request) {
         }
       }
 
-      return NextResponse.redirect(`${siteUrl}/dashboard`)
+      return NextResponse.redirect(new URL(next, siteUrl))
     }
   }
 

@@ -2,9 +2,12 @@ import { NextResponse } from 'next/server'
 import { requireUser } from '@/lib/api-auth'
 import { logAiAuditEvent } from '@/lib/assistant/audit'
 import { buildActionEnvelopes } from '@/lib/assistant/envelope'
+import { planCalendarAutomation } from '@/lib/assistant/calendar-automation'
 import { planLocalSyncResponse, planOpenAiSyncResponse } from '@/lib/assistant/planner'
 import { planPremierLeagueFixtures } from '@/lib/assistant/sports-fixtures'
-import type { SyncAssistantMessage, SyncAssistantPlan } from '@/lib/assistant/types'
+import { planNorwegianFootballFixtures } from '@/lib/assistant/norwegian-fixtures'
+import { normalizeLocalModelPlan, planLocalGemmaResponse } from '@/lib/assistant/local-gemma'
+import type { SyncAssistantCalendarEvent, SyncAssistantMessage, SyncAssistantPlan } from '@/lib/assistant/types'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -13,6 +16,8 @@ type ChatRequest = {
   messages?: SyncAssistantMessage[]
   currentPath?: string
   sessionId?: string
+  calendarEvents?: SyncAssistantCalendarEvent[]
+  clientPlan?: unknown
 }
 
 export async function POST(request: Request) {
@@ -21,19 +26,57 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => ({}))) as ChatRequest
   const messages = sanitizeMessages(body.messages)
+  const calendarEvents = sanitizeCalendarEvents(body.calendarEvents)
   if (messages.length === 0) {
     return NextResponse.json({ error: 'messages required' }, { status: 400 })
   }
 
-  let planner: 'openai' | 'local' = 'local'
-  let plan: SyncAssistantPlan | null = await planPremierLeagueFixtures(messages, { now: new Date() })
+  let planner: 'openai' | 'gemma' | 'browser' | 'local' = 'local'
+  const now = new Date()
+  let plan: SyncAssistantPlan | null = body.clientPlan
+    ? normalizeLocalModelPlan(body.clientPlan, { currentPath: body.currentPath, now, calendarEvents })
+    : null
+  if (body.clientPlan && !plan) {
+    return NextResponse.json({ error: 'Invalid local AI plan' }, { status: 400 })
+  }
+  if (plan) planner = 'browser'
+  if (!plan) plan = await planNorwegianFootballFixtures(messages, { now })
+  if (!plan) plan = await planPremierLeagueFixtures(messages, { now })
   const model = process.env.OPENAI_MODEL || 'gpt-5.4-mini'
+  let gemmaFallback: SyncAssistantPlan | null = null
+
+  if (!plan) {
+    try {
+      const gemmaPlan = await planLocalGemmaResponse(messages, {
+        userId: auth.user.id,
+        currentPath: body.currentPath,
+        now,
+        calendarEvents,
+      })
+      if (gemmaPlan?.actions.length) {
+        plan = gemmaPlan
+        planner = 'gemma'
+      } else {
+        gemmaFallback = gemmaPlan
+      }
+    } catch {
+      plan = null
+    }
+  }
+
+  if (!plan) plan = planCalendarAutomation(messages, { events: calendarEvents, now })
+
+  if (!plan && gemmaFallback) {
+    plan = gemmaFallback
+    planner = 'gemma'
+  }
 
   if (!plan) {
     try {
       plan = await planOpenAiSyncResponse(messages, {
         currentPath: body.currentPath,
-        now: new Date(),
+        now,
+        calendarEvents,
       })
       if (plan) planner = 'openai'
     } catch {
@@ -44,7 +87,7 @@ export async function POST(request: Request) {
   if (!plan) {
     plan = planLocalSyncResponse(messages, {
       currentPath: body.currentPath,
-      now: new Date(),
+      now,
     })
   }
 
@@ -54,7 +97,7 @@ export async function POST(request: Request) {
       sessionId: body.sessionId,
       action: item.action,
       status: 'planned',
-      model: planner === 'openai' ? model : 'local',
+      model: planner === 'openai' ? model : planner === 'gemma' ? 'gemma4:latest' : planner === 'browser' ? 'browser-local' : 'local',
     })
   ))
 
@@ -62,7 +105,28 @@ export async function POST(request: Request) {
     message: { role: 'assistant', content: plan.reply },
     actions,
     planner,
-    model: planner === 'openai' ? model : 'local',
+    model: planner === 'openai' ? model : planner === 'gemma' ? 'gemma4:latest' : planner === 'browser' ? 'browser-local' : 'local',
+  })
+}
+
+function sanitizeCalendarEvents(events: unknown): SyncAssistantCalendarEvent[] {
+  if (!Array.isArray(events)) return []
+  return events.slice(0, 100).flatMap((event) => {
+    if (!event || typeof event !== 'object') return []
+    const value = event as Record<string, unknown>
+    const id = typeof value.id === 'string' ? value.id.slice(0, 200) : ''
+    const title = typeof value.title === 'string' ? value.title.trim().slice(0, 240) : ''
+    const start = typeof value.start === 'string' ? value.start : ''
+    const end = typeof value.end === 'string' ? value.end : ''
+    if (!id || !title || Number.isNaN(+new Date(start)) || Number.isNaN(+new Date(end)) || +new Date(end) <= +new Date(start)) return []
+    return [{
+      id,
+      title,
+      start,
+      end,
+      eventKind: value.eventKind === 'focus' || value.eventKind === 'launch' || value.eventKind === 'deadline' ? value.eventKind : 'meeting',
+      allDay: value.allDay === true,
+    }]
   })
 }
 

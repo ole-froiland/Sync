@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseAppleIcs } from './apple'
+import { appleUidFromId, buildAppleIcs, parseAppleIcs, selectWritableCalendar } from './apple'
 
 const TIMED_ICS = `BEGIN:VCALENDAR
 VERSION:2.0
@@ -129,5 +129,49 @@ END:VCALENDAR`
     expect(moved?.start).toBe('2026-05-11T09:00:00.000Z')
     // the original 08:00 occurrence on the 11th should not also appear
     expect(out.filter((e) => e.start.startsWith('2026-05-11')).length).toBe(1)
+  })
+})
+
+describe('Apple calendar writes', () => {
+  it('builds a timed Oslo event with a stable Sync note link', () => {
+    const ics = buildAppleIcs({
+      id: 'cal-note-1',
+      title: 'Bestill pass, og hotell',
+      start: '2027-01-10T18:00:00',
+      end: '2027-01-10T19:00:00',
+      noteId: 'note-1',
+    }, 'sync-test@sync')
+
+    expect(ics).toContain('UID:sync-test@sync')
+    expect(ics).toContain('SUMMARY:Bestill pass\\, og hotell')
+    expect(ics).toContain('DTSTART;TZID=Europe/Oslo:20270110T180000')
+    expect(ics).toContain('DTEND;TZID=Europe/Oslo:20270110T190000')
+    expect(ics).toContain('X-SYNC-NOTE-ID:note-1')
+  })
+
+  it('uses an exclusive end date for an all-day trip', () => {
+    const ics = buildAppleIcs({
+      title: 'Seoul',
+      start: '2027-01-10T00:00:00',
+      end: '2027-01-20T00:00:00',
+      allDay: true,
+    }, 'trip@sync')
+
+    expect(ics).toContain('DTSTART;VALUE=DATE:20270110')
+    expect(ics).toContain('DTEND;VALUE=DATE:20270120')
+  })
+
+  it('selects a normal Apple calendar over auxiliary calendars', () => {
+    const selected = selectWritableCalendar([
+      { url: '/birthdays', displayName: 'Birthdays', components: ['VEVENT'] },
+      { url: '/calendar', displayName: 'Calendar', components: ['VEVENT'] },
+    ])
+    expect(selected?.url).toBe('/calendar')
+  })
+
+  it('extracts the underlying UID from normal and recurring Apple ids', () => {
+    expect(appleUidFromId('apple:event@icloud.com')).toBe('event@icloud.com')
+    expect(appleUidFromId('apple:event@icloud.com:2027-01-10T18:00:00.000Z')).toBe('event@icloud.com')
+    expect(appleUidFromId('sync:event')).toBeNull()
   })
 })

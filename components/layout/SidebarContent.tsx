@@ -94,7 +94,7 @@ export default function SidebarContent({ profile, onSignOut, signingOut }: Sideb
     async function loadInboxBadge() {
       try {
         const [inboxRes, connRes] = await Promise.all([
-          fetch('/api/direct-messages/inbox'),
+          fetch('/api/direct-messages/inbox?summary=1'),
           fetch('/api/connections'),
         ])
 
@@ -106,7 +106,7 @@ export default function SidebarContent({ profile, onSignOut, signingOut }: Sideb
             receiver_id: string
             created_at: string
             state: 'sent' | 'accepted' | 'rejected'
-            payload?: { kind?: 'sync_request' } | null
+            payload_kind?: 'sync_request' | null
           }>
         }
         const connBody = (await connRes.json()) as {
@@ -123,7 +123,7 @@ export default function SidebarContent({ profile, onSignOut, signingOut }: Sideb
         let unreadMessageCount = 0
         for (const item of inboxBody.items ?? []) {
           if (item.receiver_id !== currentProfileId) continue
-          if (item.payload?.kind === 'sync_request') continue
+          if (item.payload_kind === 'sync_request') continue
           const otherId = item.sender_id
           if (mutedIds.has(otherId)) continue
           const lastReadAt = readMap[otherId]
