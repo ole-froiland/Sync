@@ -24,6 +24,7 @@ import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import type { Profile } from '@/types'
 import { CHAT_META_EVENT, readChatReadMap, readMutedUserIds } from '@/lib/chat-meta'
+import { setVisibleInterval } from '@/lib/visible-interval'
 
 const navSections: { label: string | null; items: { href: string; label: string; icon: typeof LayoutDashboard }[] }[] = [
   {
@@ -141,7 +142,7 @@ export default function SidebarContent({ profile, onSignOut, signingOut }: Sideb
     }
 
     void loadInboxBadge()
-    const interval = window.setInterval(loadInboxBadge, 180000)
+    const stopPolling = setVisibleInterval(loadInboxBadge, 180000)
     const onMetaChanged = () => void loadInboxBadge()
     const onFocus = () => void loadInboxBadge()
     window.addEventListener(CHAT_META_EVENT, onMetaChanged)
@@ -149,7 +150,7 @@ export default function SidebarContent({ profile, onSignOut, signingOut }: Sideb
 
     return () => {
       cancelled = true
-      window.clearInterval(interval)
+      stopPolling()
       window.removeEventListener(CHAT_META_EVENT, onMetaChanged)
       window.removeEventListener('focus', onFocus)
     }

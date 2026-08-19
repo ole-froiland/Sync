@@ -55,6 +55,7 @@ import {
   type ProjectSearchResult,
 } from '@/lib/project-folder-view'
 import { openExternalUrl } from '@/lib/project-item-open'
+import { setVisibleInterval } from '@/lib/visible-interval'
 import {
   collaborationSnapshot,
   collaborationSnapshotHash,
@@ -598,13 +599,13 @@ export default function ProjectsPage() {
   useEffect(() => {
     if (!currentProfile || !storageReady) return
     void loadCollaborations()
-    const interval = window.setInterval(() => void loadCollaborations(), 8_000)
+    const stopPolling = setVisibleInterval(() => void loadCollaborations(), 8_000)
     const onVisibility = () => {
       if (document.visibilityState === 'visible') void loadCollaborations()
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
-      window.clearInterval(interval)
+      stopPolling()
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [currentProfile, loadCollaborations, storageReady])
