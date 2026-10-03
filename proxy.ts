@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { safeInternalRedirect } from '@/lib/auth-redirect'
 
 // Paths that require an authenticated Supabase session
 const PROTECTED_PATHS = [
@@ -13,6 +14,7 @@ const PROTECTED_PATHS = [
   '/notes',
   '/repositories',
   '/how-to-sync',
+  '/oauth/consent',
 ]
 
 const SUPABASE_CONFIGURED =
@@ -64,7 +66,12 @@ export async function proxy(request: NextRequest) {
   // Redirect authenticated users away from the login page
   if (pathname === '/login' && user) {
     const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
+    const destination = new URL(
+      safeInternalRedirect(request.nextUrl.searchParams.get('next')),
+      request.url
+    )
+    url.pathname = destination.pathname
+    url.search = destination.search
     return NextResponse.redirect(url)
   }
 
@@ -74,6 +81,11 @@ export async function proxy(request: NextRequest) {
   if (isProtected && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    url.search = ''
+    url.searchParams.set(
+      'next',
+      `${request.nextUrl.pathname}${request.nextUrl.search}`
+    )
     return NextResponse.redirect(url)
   }
 
@@ -94,6 +106,7 @@ export const config = {
     '/notes/:path*',
     '/repositories/:path*',
     '/how-to-sync/:path*',
+    '/oauth/consent',
     '/login',
   ],
 }

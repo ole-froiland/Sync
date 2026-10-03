@@ -15,6 +15,7 @@ export type AssistantLocalCalendarEvent = {
   kind: 'meeting' | 'focus' | 'launch' | 'deadline'
   tone: 'violet' | 'sky' | 'emerald' | 'amber'
   note?: string
+  allDay?: boolean
 }
 
 type AssistantProfile = {
@@ -40,25 +41,41 @@ export function automaticBrowserAction(actions: SyncAssistantActionEnvelope[]) {
 }
 
 export function calendarEventsForAction(
-  action: Extract<SyncAssistantAction, { kind: 'create_calendar_event' | 'create_calendar_events' }>,
+  action: Extract<SyncAssistantAction, { kind: 'create_calendar_event' | 'create_calendar_events' | 'update_calendar_events' }>,
   idFactory: () => string = () => crypto.randomUUID()
 ): AssistantLocalCalendarEvent[] {
-  const inputs = action.kind === 'create_calendar_events'
+  const inputs = action.kind === 'create_calendar_events' || action.kind === 'update_calendar_events'
     ? action.events
     : [{ ...action, id: undefined, sourceUrl: null }]
 
   return inputs.map((event) => {
     const eventKind = event.eventKind ?? 'meeting'
     return {
-      id: event.id ? `cal-ai-${event.id}` : `cal-ai-${idFactory()}`,
+      id: event.id ? (event.id.startsWith('cal-') ? event.id : `cal-ai-${event.id}`) : `cal-ai-${idFactory()}`,
       title: event.title,
       start: localDateTimeString(new Date(event.start)),
       end: localDateTimeString(new Date(event.end)),
       kind: eventKind,
       tone: toneForKind(eventKind),
       note: event.sourceUrl ? `Kilde: ${event.sourceUrl}` : undefined,
+      allDay: event.allDay === true,
     }
   })
+}
+
+export function applyCalendarAction(
+  existing: AssistantLocalCalendarEvent[],
+  action: Extract<SyncAssistantAction, {
+    kind: 'create_calendar_event' | 'create_calendar_events' | 'update_calendar_events' | 'delete_calendar_events'
+  }>,
+  idFactory: () => string = () => crypto.randomUUID()
+) {
+  if (action.kind === 'delete_calendar_events') {
+    const rawIds = new Set(action.events.map((event) => event.id).filter((id): id is string => Boolean(id)))
+    const assistantIds = new Set([...rawIds].map((id) => id.startsWith('cal-ai-') ? id : `cal-ai-${id}`))
+    return existing.filter((event) => !rawIds.has(event.id) && !assistantIds.has(event.id))
+  }
+  return calendarEventsForAction(action, idFactory).reduce(upsertCalendarEvent, existing)
 }
 
 export function buildAssistantProjectFolder(
@@ -85,6 +102,12 @@ function toneForKind(kind: AssistantLocalCalendarEvent['kind']): AssistantLocalC
   if (kind === 'launch') return 'emerald'
   if (kind === 'deadline') return 'amber'
   return 'violet'
+}
+
+function upsertCalendarEvent(events: AssistantLocalCalendarEvent[], event: AssistantLocalCalendarEvent) {
+  return events.some((item) => item.id === event.id)
+    ? events.map((item) => (item.id === event.id ? event : item))
+    : [...events, event]
 }
 
 function pad(value: number) {

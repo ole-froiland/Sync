@@ -11,6 +11,7 @@ export type Profile = {
   tools_used: string[] | null
   onboarding_completed: boolean
   created_at: string
+  last_active_at?: string | null
 }
 
 export type Invite = {

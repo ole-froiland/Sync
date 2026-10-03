@@ -18,6 +18,15 @@ describe('planLocalSyncResponse', () => {
     expect(plan.actions).toEqual([{ kind: 'create_note', title: 'ring Ola' }])
   })
 
+  it('captures a natural reminder without requiring the word note', () => {
+    const plan = planLocalSyncResponse(
+      [{ role: 'user', content: 'kan du huske at jeg må bestille nytt pass' }],
+      { now }
+    )
+
+    expect(plan.actions).toEqual([{ kind: 'create_note', title: 'jeg må bestille nytt pass' }])
+  })
+
   it('plans calendar creation with tomorrow and time', () => {
     const plan = planLocalSyncResponse(
       [{ role: 'user', content: 'lag kalenderaktivitet demo med teamet i morgen 10:30' }],

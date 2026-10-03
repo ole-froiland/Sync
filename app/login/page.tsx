@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { safeInternalRedirect } from '@/lib/auth-redirect'
 import { loginAction } from './actions'
 
 const oauthErrors: Record<string, string> = {
@@ -45,10 +46,21 @@ export default function LoginPage() {
   const [forgotError, setForgotError] = useState<string | null>(null)
   // 60-second cooldown — counts down each second; survives view toggles
   const [cooldownLeft, setCooldownLeft] = useState(0)
+  const [nextPath] = useState(() => {
+    if (typeof window === 'undefined') return '/dashboard'
+    return safeInternalRedirect(new URLSearchParams(window.location.search).get('next'))
+  })
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has('error')) {
-      window.history.replaceState(null, '', window.location.pathname)
+    const params = new URLSearchParams(window.location.search)
+    if (params.has('error')) {
+      params.delete('error')
+      const query = params.toString()
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${query ? `?${query}` : ''}`
+      )
     }
   }, [])
 
@@ -76,9 +88,11 @@ export default function LoginPage() {
     setOauthLoading(true)
     setOauthError(null)
     const supabase = createClient()
+    const callback = new URL('/auth/callback', window.location.origin)
+    if (nextPath !== '/dashboard') callback.searchParams.set('next', nextPath)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'github',
-      options: { redirectTo: getAuthRedirectUrl('/auth/callback') },
+      options: { redirectTo: callback.toString() },
     })
     if (error) {
       setOauthError('GitHub signup failed. Please try again.')
@@ -222,6 +236,7 @@ export default function LoginPage() {
                 ) : (
                   /* ── Log-in panel ── */
                   <form action={loginFormAction} className="space-y-4">
+                    <input type="hidden" name="next" value={nextPath} />
                     <div>
                       <label htmlFor="identifier" className={labelCls}>Email or username</label>
                       <input

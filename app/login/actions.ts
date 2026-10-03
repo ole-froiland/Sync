@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { safeInternalRedirect } from '@/lib/auth-redirect'
 import { redirect } from 'next/navigation'
 
 export type LoginState = { error: string } | null
@@ -11,6 +12,7 @@ export async function loginAction(
 ): Promise<LoginState> {
   const identifier = String(formData.get('identifier') ?? '').trim()
   const password = String(formData.get('password') ?? '')
+  const next = safeInternalRedirect(String(formData.get('next') ?? ''))
 
   if (!identifier || !password) {
     return { error: 'Email/username and password are required.' }
@@ -48,5 +50,5 @@ export async function loginAction(
     return { error: error.message }
   }
 
-  redirect('/dashboard')
+  redirect(next)
 }

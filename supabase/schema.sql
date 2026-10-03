@@ -19,7 +19,8 @@ create table if not exists public.profiles (
   role                 text,
   tools_used           text[],
   onboarding_completed boolean not null default false,
-  created_at           timestamptz not null default now()
+  created_at           timestamptz not null default now(),
+  last_active_at       timestamptz
 );
 
 alter table public.profiles enable row level security;
@@ -357,7 +358,8 @@ alter table public.profiles
   add column if not exists last_name            text,
   add column if not exists username             text,
   add column if not exists selected_avatar      text,
-  add column if not exists onboarding_completed boolean not null default false;
+  add column if not exists onboarding_completed boolean not null default false,
+  add column if not exists last_active_at        timestamptz;
 
 -- Add unique constraint on username only if it does not exist yet
 do $$

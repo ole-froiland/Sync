@@ -39,4 +39,18 @@ describe('assistant action envelopes', () => {
       action: { kind: 'open_projects_tree' },
     })
   })
+
+  it('requires confirmation before deleting calendar events', () => {
+    const envelopes = buildActionEnvelopes('user-1', [{
+      kind: 'delete_calendar_events',
+      events: [{ id: 'cal-ai-training', title: 'Trening', start: '2027-01-05T18:00:00', end: '2027-01-05T20:00:00' }],
+    }])
+
+    expect(envelopes[0]).toMatchObject({
+      risk: 'write',
+      requiresConfirmation: true,
+      confirmationToken: undefined,
+      action: { kind: 'delete_calendar_events' },
+    })
+  })
 })

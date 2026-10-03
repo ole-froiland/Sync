@@ -19,6 +19,10 @@ const repositoryUi = [
   ['Link copied', 'Lenke kopiert'],
   ['Share with synced users', 'Del med synkede brukere'],
   ['No synced users yet', 'Ingen synkede brukere ennå'],
+  [
+    'Set your local projects folder once to open the right repository in either app.',
+    'Velg den lokale prosjektmappen én gang for å åpne riktig repo i begge appene.',
+  ],
 ] as const
 
 const projectUi = [
@@ -42,8 +46,17 @@ const learningUi = [
   ['Your team', 'Teamet ditt'],
 ] as const
 
+const peopleUi = [
+  ['Active now', 'Aktiv nå'],
+  ['Last active', 'Sist aktiv'],
+  ['No recent activity', 'Ingen nylig aktivitet'],
+  ['Overview', 'Oversikt'],
+  ['Shared projects', 'Delte prosjekter'],
+  ['Member since', 'Medlem siden'],
+] as const
+
 describe('UI translations', () => {
-  it.each([...repositoryUi, ...projectUi, ...learningUi])('translates %s to Norwegian and back', (english, norwegian) => {
+  it.each([...repositoryUi, ...projectUi, ...learningUi, ...peopleUi])('translates %s to Norwegian and back', (english, norwegian) => {
     expect(translateText(english, 'no')).toBe(norwegian)
     expect(translateText(norwegian, 'en')).toBe(english)
   })

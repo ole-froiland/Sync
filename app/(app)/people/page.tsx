@@ -8,8 +8,15 @@ import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { PersonCardSkeleton } from '@/components/ui/Skeleton'
+import { useLanguage } from '@/context/LanguageContext'
 import { useUser } from '@/context/UserContext'
 import { mockProfiles, mockProjects } from '@/lib/mock-data'
+import {
+  formatLastActiveValue,
+  formatMemberSince,
+  getPresenceInfo,
+} from '@/lib/people-presence'
+import type { Locale } from '@/lib/i18n'
 import type { Profile, Project } from '@/types'
 
 const SUPABASE_CONFIGURED = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').startsWith('http')
@@ -42,8 +49,10 @@ async function readApiError(res: Response, fallback: string): Promise<string> {
 
 export default function PeoplePage() {
   const currentUser = useUser()
+  const { locale } = useLanguage()
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [projects, setProjects] = useState<Project[]>([])
+  const [projectsAvailable, setProjectsAvailable] = useState(true)
   const [follows, setFollows] = useState<FollowSet>({})
   const [syncStates, setSyncStates] = useState<SyncMap>({})
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -52,6 +61,7 @@ export default function PeoplePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [presenceNow, setPresenceNow] = useState(() => Date.now())
 
   const showToast = useCallback((message: string, tone: 'success' | 'error' = 'success') => {
     const id = Date.now() + Math.random()
@@ -70,8 +80,9 @@ export default function PeoplePage() {
 
       if (!SUPABASE_CONFIGURED) {
         if (cancelled) return
-        setProfiles(mockProfiles)
+        setProfiles(withMockPresence(mockProfiles))
         setProjects(mockProjects)
+        setProjectsAvailable(true)
         setFollows({})
         setSyncStates({})
         setCurrentUserId(currentUser?.id ?? 'mock-current-user')
@@ -80,10 +91,11 @@ export default function PeoplePage() {
       }
 
       try {
-        const [peopleRes, projectsRes, connectionsRes] = await Promise.all([
-          fetch('/api/people'),
+        const [peopleRes, projectsRes, connectionsRes, presenceRes] = await Promise.all([
+          fetch('/api/people', { cache: 'no-store' }),
           fetch('/api/projects'),
           fetch('/api/connections'),
+          fetch('/api/presence', { method: 'POST' }),
         ])
 
         if (!peopleRes.ok) throw new Error('Failed to load people')
@@ -96,15 +108,29 @@ export default function PeoplePage() {
               sync?: SyncMap
             })
           : { userId: null, follows: [], sync: {} as SyncMap }
+        const presenceData = presenceRes.ok
+          ? ((await presenceRes.json()) as { user_id: string; last_active_at: string })
+          : null
+        const activeUserId = presenceData?.user_id ?? connData.userId ?? currentUser?.id ?? null
+        const activeAt = presenceData?.last_active_at ?? new Date().toISOString()
 
         if (cancelled) return
-        setProfiles(Array.isArray(people) ? people : [])
+        setProfiles(
+          Array.isArray(people)
+            ? people.map((profile) =>
+                profile.id === activeUserId
+                  ? { ...profile, last_active_at: activeAt }
+                  : profile
+              )
+            : []
+        )
         setProjects(Array.isArray(projs) ? projs : [])
+        setProjectsAvailable(projectsRes.ok)
         const followSet: FollowSet = {}
         for (const id of connData.follows ?? []) followSet[id] = true
         setFollows(followSet)
         setSyncStates(connData.sync ?? {})
-        setCurrentUserId(connData.userId ?? currentUser?.id ?? null)
+        setCurrentUserId(activeUserId)
       } catch (e) {
         if (cancelled) return
         setError(e instanceof Error ? e.message : 'Something went wrong loading people.')
@@ -119,6 +145,61 @@ export default function PeoplePage() {
     }
   }, [currentUser])
 
+  useEffect(() => {
+    const tick = window.setInterval(() => setPresenceNow(Date.now()), 30_000)
+    return () => window.clearInterval(tick)
+  }, [])
+
+  useEffect(() => {
+    if (!SUPABASE_CONFIGURED) return
+
+    let cancelled = false
+
+    async function refreshPresence() {
+      if (document.visibilityState !== 'visible') return
+
+      try {
+        const [presenceRes, peopleRes] = await Promise.all([
+          fetch('/api/presence', { method: 'POST' }),
+          fetch('/api/people', { cache: 'no-store' }),
+        ])
+        if (cancelled || !peopleRes.ok) return
+
+        const people = (await peopleRes.json()) as Profile[] | { error: string }
+        if (!Array.isArray(people)) return
+
+        const presenceData = presenceRes.ok
+          ? ((await presenceRes.json()) as { user_id: string; last_active_at: string })
+          : null
+        const activeUserId = presenceData?.user_id ?? currentUserId ?? currentUser?.id ?? null
+        const activeAt = presenceData?.last_active_at ?? new Date().toISOString()
+
+        setProfiles(
+          people.map((profile) =>
+            profile.id === activeUserId
+              ? { ...profile, last_active_at: activeAt }
+              : profile
+          )
+        )
+        setPresenceNow(Date.now())
+      } catch {
+        // Presence is supplemental; keep the last successful people data visible.
+      }
+    }
+
+    const interval = window.setInterval(refreshPresence, 60_000)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshPresence()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [currentUser, currentUserId])
+
   const effectiveCurrentUserId = currentUserId ?? currentUser?.id ?? null
 
   const currentProfile = useMemo(() => {
@@ -130,7 +211,12 @@ export default function PeoplePage() {
   }, [profiles, effectiveCurrentUserId, currentUser])
 
   const visibleProfiles = useMemo(() => {
-    const others = profiles.filter((p) => p.id !== currentProfile?.id)
+    const others = profiles
+      .filter((p) => p.id !== currentProfile?.id)
+      .sort(
+        (a, b) =>
+          new Date(b.last_active_at ?? 0).getTime() - new Date(a.last_active_at ?? 0).getTime()
+      )
     return currentProfile ? [currentProfile, ...others] : others
   }, [profiles, currentProfile])
 
@@ -291,7 +377,7 @@ export default function PeoplePage() {
       <TopBar title="People" />
       <div className="flex-1 overflow-y-auto px-6 py-6">
         {loading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <PersonCardSkeleton key={i} />
             ))}
@@ -301,7 +387,7 @@ export default function PeoplePage() {
         ) : visibleProfiles.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {visibleProfiles.map((profile) => {
               const userProjects = getProjectsForUser(profile.id)
               const isCurrentUser = profile.id === currentProfile?.id
@@ -313,10 +399,13 @@ export default function PeoplePage() {
                   key={profile.id}
                   profile={profile}
                   projects={userProjects}
+                  projectsAvailable={projectsAvailable}
                   isFollowing={isFollowing}
                   isCurrentUser={isCurrentUser}
                   syncState={syncState}
                   busy={busy}
+                  locale={locale}
+                  now={presenceNow}
                   onOpen={() => setSelectedProfileId(profile.id)}
                   onFollow={() => handleFollow(profile)}
                   onSync={() => handleSync(profile)}
@@ -334,7 +423,10 @@ export default function PeoplePage() {
         open={!!selectedProfile}
         onClose={() => setSelectedProfileId(null)}
         projects={selectedProfile ? getProjectsForUser(selectedProfile.id) : []}
+        projectsAvailable={projectsAvailable}
         isCurrentUser={selectedProfile?.id === currentProfile?.id}
+        locale={locale}
+        now={presenceNow}
       />
 
       <div className="pointer-events-none fixed bottom-6 right-6 z-50 flex flex-col gap-2">
@@ -358,10 +450,13 @@ export default function PeoplePage() {
 function PersonCard({
   profile,
   projects,
+  projectsAvailable,
   isFollowing,
   isCurrentUser,
   syncState,
   busy,
+  locale,
+  now,
   onOpen,
   onFollow,
   onSync,
@@ -370,10 +465,13 @@ function PersonCard({
 }: {
   profile: Profile
   projects: Project[]
+  projectsAvailable: boolean
   isFollowing: boolean
   isCurrentUser: boolean
   syncState: SyncState
   busy: 'follow' | SyncBusyAction | null
+  locale: Locale
+  now: number
   onOpen: () => void
   onFollow: () => void
   onSync: () => void
@@ -496,6 +594,14 @@ function PersonCard({
             </p>
           )}
           <p className="truncate text-xs text-gray-400 dark:text-gray-600">{profile.email}</p>
+          <div className="mt-1">
+            <PresenceLabel lastActiveAt={profile.last_active_at} locale={locale} now={now} />
+          </div>
+          {profile.role && (
+            <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
+              {profile.role}
+            </p>
+          )}
         </div>
         <div
           className="shrink-0"
@@ -562,12 +668,23 @@ function PersonCard({
         </div>
       )}
 
-      <div className="border-t border-gray-50 pt-2 dark:border-gray-800">
-        <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-          Activity
-        </p>
-        <ActivityBars seed={profile.id} />
-        <p className="mt-1 text-xs text-gray-300 dark:text-gray-600">Last 2 weeks</p>
+      <div className="mt-auto grid grid-cols-2 gap-3 border-t border-gray-50 pt-3 dark:border-gray-800">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+            Shared projects
+          </p>
+          <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-200">
+            {projectsAvailable ? projects.length : '—'}
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+            Member since
+          </p>
+          <p data-no-translate className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-200">
+            {formatMemberSince(profile.created_at, locale)}
+          </p>
+        </div>
       </div>
     </Card>
   )
@@ -578,13 +695,19 @@ function ProfileModal({
   open,
   onClose,
   projects,
+  projectsAvailable,
   isCurrentUser,
+  locale,
+  now,
 }: {
   profile: Profile | null
   open: boolean
   onClose: () => void
   projects: Project[]
+  projectsAvailable: boolean
   isCurrentUser: boolean
+  locale: Locale
+  now: number
 }) {
   if (!profile) return null
 
@@ -611,6 +734,9 @@ function ProfileModal({
                 )}
               </div>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{profile.email}</p>
+              <div className="mt-2">
+                <PresenceLabel lastActiveAt={profile.last_active_at} locale={locale} now={now} />
+              </div>
               {profile.role && (
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   Focus: {profile.role}
@@ -618,14 +744,24 @@ function ProfileModal({
               )}
             </div>
           </div>
-          <div className="min-w-[180px] rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
+          <div className="min-w-[210px] rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              Activity
+              Overview
             </p>
-            <div className="mt-3">
-              <ActivityBars seed={profile.id} barCount={14} heightClassName="h-3" />
+            <div className="mt-3 grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Shared projects</p>
+                <p className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">
+                  {projectsAvailable ? projects.length : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Member since</p>
+                <p data-no-translate className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {formatMemberSince(profile.created_at, locale)}
+                </p>
+              </div>
             </div>
-            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Last 2 weeks</p>
           </div>
         </div>
 
@@ -677,42 +813,42 @@ function ProfileModal({
   )
 }
 
-function ActivityBars({
-  seed,
-  barCount = 14,
-  heightClassName = 'h-2',
+function PresenceLabel({
+  lastActiveAt,
+  locale,
+  now,
 }: {
-  seed: string
-  barCount?: number
-  heightClassName?: string
+  lastActiveAt: string | null | undefined
+  locale: Locale
+  now: number
 }) {
-  const bars = useMemo(() => {
-    const state = { h: 0 }
-    for (let i = 0; i < seed.length; i++) {
-      state.h = (state.h * 31 + seed.charCodeAt(i)) >>> 0
-    }
-    return Array.from({ length: barCount }, () => {
-      state.h = (state.h * 1664525 + 1013904223) >>> 0
-      const r = (state.h & 0xffff) / 0xffff
-      state.h = (state.h * 1664525 + 1013904223) >>> 0
-      const intensity = (state.h & 0xffff) / 0xffff
-      return r > 0.45 ? 0.25 + intensity * 0.6 : 0
-    })
-  }, [seed, barCount])
+  const presence = getPresenceInfo(lastActiveAt, now)
+
+  if (presence.state === 'active') {
+    return (
+      <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+        <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.12)]" />
+        <span>Active now</span>
+      </p>
+    )
+  }
+
+  if (presence.state === 'away') {
+    return (
+      <p className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+        <span className="h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600" />
+        <span>Last active</span>
+        <span aria-hidden="true">·</span>
+        <span data-no-translate>{formatLastActiveValue(presence.lastActiveAt, locale, now)}</span>
+      </p>
+    )
+  }
 
   return (
-    <div className="flex gap-1">
-      {bars.map((v, i) => (
-        <div
-          key={i}
-          className={`flex-1 rounded-sm ${heightClassName}`}
-          style={{
-            backgroundColor:
-              v > 0 ? `rgba(168, 85, 247, ${0.25 + v * 0.6})` : 'rgba(168, 85, 247, 0.08)',
-          }}
-        />
-      ))}
-    </div>
+    <p className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
+      <span className="h-2 w-2 rounded-full bg-gray-200 dark:bg-gray-700" />
+      <span>No recent activity</span>
+    </p>
   )
 }
 
@@ -786,5 +922,17 @@ function buildFallbackCurrentProfile(userId: string): Profile {
     tools_used: ['Codex', 'ChatGPT', 'GitHub'],
     onboarding_completed: true,
     created_at: new Date().toISOString(),
+    last_active_at: new Date().toISOString(),
   }
+}
+
+function withMockPresence(profiles: Profile[]): Profile[] {
+  const now = Date.now()
+  const offsets = [0, 12 * 60_000, 2 * 60 * 60_000, 26 * 60 * 60_000]
+
+  return profiles.map((profile, index) => ({
+    ...profile,
+    last_active_at:
+      index < offsets.length ? new Date(now - offsets[index]).toISOString() : null,
+  }))
 }
