@@ -48,13 +48,13 @@ export async function GET(request: Request) {
   const ctx = gate(request)
   if (ctx instanceof NextResponse) return ctx
 
-  const { data, error } = await ctx.db
-    .from('notes')
-    .select(FIELDS)
-    .eq('user_id', ctx.userId)
-    .is('completed_at', null)
-    .order('created_at', { ascending: false })
-    .limit(50)
+  // ?done=1 lists what has been ticked off, newest tick first, so the
+  // widget can show it with the day each note was made and finished.
+  const done = new URL(request.url).searchParams.get('done') === '1'
+  const base = ctx.db.from('notes').select(FIELDS).eq('user_id', ctx.userId)
+  const { data, error } = done
+    ? await base.not('completed_at', 'is', null).order('completed_at', { ascending: false }).limit(30)
+    : await base.is('completed_at', null).order('created_at', { ascending: false }).limit(50)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ notes: data ?? [] }, { headers: { 'Cache-Control': 'no-store' } })
